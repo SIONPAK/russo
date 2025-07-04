@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+  --primary: #000000;
+  --secondary: #f5f5f5;
+  --accent: #e5e5e5;
+  --muted: #9ca3af;
+  --border: #d1d5db;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #ffffff;
+    --foreground: #000000;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Text clamping utilities */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Quill Editor Customization */
+.ql-editor {
+  min-height: 150px;
+}
+
+.ql-snow .ql-toolbar {
+  border-top: 1px solid #d1d5db;
+  border-left: 1px solid #d1d5db;
+  border-right: 1px solid #d1d5db;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.ql-snow .ql-container {
+  border-bottom: 1px solid #d1d5db;
+  border-left: 1px solid #d1d5db;
+  border-right: 1px solid #d1d5db;
+  border-radius: 0 0 0.5rem 0.5rem;
+}

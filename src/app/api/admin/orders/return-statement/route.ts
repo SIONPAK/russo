@@ -1,0 +1,500 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/shared/lib/supabase/server'
+import * as XLSX from 'xlsx'
+
+// 반품 명세서 생성 API
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const body = await request.json()
+    
+    const { 
+      orderNumber, 
+      customerId,
+      items, // [{ productId, productName, quantity, reason, unitPrice }]
+      returnReason, 
+      returnType = 'exchange', // 'exchange' | 'refund' | 'defect'
+      mileageCompensation = 0,
+      notes 
+    } = body
+
+    if (!orderNumber || !customerId || !items || items.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: '필수 정보가 누락되었습니다.'
+      }, { status: 400 })
+    }
+
+    // 원주문 조회
+    const { data: originalOrder, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        users!orders_user_id_fkey (
+          id,
+          company_name,
+          representative_name,
+          phone,
+          address,
+          business_number
+        )
+      `)
+      .eq('order_number', orderNumber)
+      .single()
+
+    if (orderError || !originalOrder) {
+      return NextResponse.json({
+        success: false,
+        error: '원주문을 찾을 수 없습니다.'
+      }, { status: 404 })
+    }
+
+    // 반품 명세서 번호 생성
+    const returnNumber = `RET-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Date.now().toString().slice(-6)}`
+    
+    // 반품 총액 계산
+    const totalReturnAmount = items.reduce((sum: number, item: any) => 
+      sum + (item.unitPrice * item.quantity), 0
+    )
+
+    // 반품 명세서 데이터 생성
+    const returnStatementData = {
+      returnNumber,
+      orderNumber,
+      issueDate: new Date().toISOString().split('T')[0],
+      returnType,
+      returnReason,
+      
+      // 고객 정보
+      customer: {
+        id: originalOrder.users.id,
+        companyName: originalOrder.users.company_name,
+        representativeName: originalOrder.users.representative_name,
+        businessNumber: originalOrder.users.business_number,
+        phone: originalOrder.users.phone,
+        address: originalOrder.users.address
+      },
+      
+      // 반품 상품 정보
+      returnItems: items.map((item: any) => ({
+        ...item,
+        totalPrice: item.unitPrice * item.quantity
+      })),
+      
+      // 금액 정보
+      amounts: {
+        totalReturnAmount,
+        mileageCompensation,
+        finalAmount: totalReturnAmount + mileageCompensation
+      },
+      
+      notes
+    }
+
+    // 반품 명세서 파일 생성
+    const fileUrl = await generateReturnStatementExcel(returnStatementData)
+
+    // 마일리지 보상이 있는 경우 자동 적립
+    if (mileageCompensation > 0) {
+      await processReturnMileageCompensation(supabase, {
+        customerId,
+        customerName: originalOrder.users.company_name,
+        amount: mileageCompensation,
+        returnNumber,
+        orderNumber
+      })
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        returnNumber,
+        fileUrl,
+        totalReturnAmount,
+        mileageCompensation
+      },
+      message: '반품 명세서가 성공적으로 생성되었습니다.'
+    })
+
+  } catch (error) {
+    console.error('Return statement API error:', error)
+    return NextResponse.json({
+      success: false,
+      error: '반품 명세서 생성 중 오류가 발생했습니다.'
+    }, { status: 500 })
+  }
+}
+
+// 반품 마일리지 보상 처리
+async function processReturnMileageCompensation(supabase: any, compensationData: any) {
+  try {
+    // 현재 마일리지 조회
+    const { data: currentMileage } = await supabase
+      .from('lusso_milege_info')
+      .select('milege, milege_gb, milege_fnal')
+      .eq('business_name', compensationData.customerName)
+      .order('milege_idx', { ascending: false })
+      .limit(1)
+      .single()
+
+    let currentTotal = 0
+    if (currentMileage) {
+      if (currentMileage.milege_fnal) {
+        currentTotal = parseInt(currentMileage.milege_fnal) || 0
+      } else {
+        // 전체 마일리지 계산
+        const { data: allMileage } = await supabase
+          .from('lusso_milege_info')
+          .select('milege, milege_gb')
+          .eq('business_name', compensationData.customerName)
+
+        if (allMileage) {
+          currentTotal = allMileage.reduce((sum: number, record: any) => {
+            const amount = parseInt(record.milege) || 0
+            return record.milege_gb === 1 ? sum + amount : sum - amount
+          }, 0)
+        }
+      }
+    }
+
+    const newTotal = currentTotal + compensationData.amount
+
+    // 다음 milege_idx 계산
+    const { data: lastRecord } = await supabase
+      .from('lusso_milege_info')
+      .select('milege_idx')
+      .order('milege_idx', { ascending: false })
+      .limit(1)
+      .single()
+
+    let nextIdx = 1
+    if (lastRecord && lastRecord.milege_idx) {
+      nextIdx = parseInt(lastRecord.milege_idx) + 1
+    }
+
+    // 마일리지 적립
+    const now = new Date()
+    const koreanTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const currentTime = koreanTime.toISOString()
+    const receiveDate = koreanTime.toISOString().split('T')[0]
+
+    const { error } = await supabase
+      .from('lusso_milege_info')
+      .insert({
+        milege_idx: nextIdx,
+        business_name: compensationData.customerName,
+        milege: compensationData.amount.toString(),
+        milege_gb: 1, // 적립
+        milege_fnal: newTotal,
+        milege_description: `반품보상: ${compensationData.returnNumber} (주문: ${compensationData.orderNumber})`,
+        milege_c_gb: 'RETURN',
+        receiver_date: receiveDate,
+        created_at: currentTime,
+        updated_at: currentTime,
+        writer: 'SYSTEM_AUTO'
+      })
+
+    if (error) {
+      console.error('Return mileage compensation error:', error)
+    } else {
+      console.log(`✅ 반품 마일리지 보상 완료: ${compensationData.customerName} (+${compensationData.amount})`)
+    }
+
+  } catch (error) {
+    console.error('Return mileage compensation process error:', error)
+  }
+}
+
+// 엑셀 반품 명세서 생성
+async function generateReturnStatementExcel(returnData: any): Promise<string> {
+  const wb = XLSX.utils.book_new()
+  
+  // 반품 명세서 시트 생성
+  const wsData = [
+    ['반품 명세서'],
+    [''],
+    ['반품번호:', returnData.returnNumber],
+    ['발행일:', returnData.issueDate],
+    ['원주문번호:', returnData.orderNumber],
+    ['반품유형:', getReturnTypeText(returnData.returnType)],
+    ['반품사유:', returnData.returnReason],
+    [''],
+    ['고객 정보'],
+    ['업체명:', returnData.customer.companyName],
+    ['대표자명:', returnData.customer.representativeName],
+    ['사업자번호:', returnData.customer.businessNumber],
+    ['연락처:', returnData.customer.phone],
+    ['주소:', returnData.customer.address],
+    [''],
+    ['반품 상품 정보'],
+    ['번호', '상품명', '색상', '사이즈', '수량', '단가', '금액', '반품사유'],
+  ]
+
+  // 반품 상품 목록 추가
+  returnData.returnItems.forEach((item: any, index: number) => {
+    wsData.push([
+      index + 1,
+      item.productName,
+      item.color || '',
+      item.size || '',
+      item.quantity,
+      item.unitPrice,
+      item.totalPrice,
+      item.reason || returnData.returnReason
+    ])
+  })
+
+  // 금액 정보 추가
+  wsData.push(
+    [''],
+    ['', '', '', '', '', '', '반품금액:', returnData.amounts.totalReturnAmount],
+    ['', '', '', '', '', '', '마일리지보상:', returnData.amounts.mileageCompensation],
+    ['', '', '', '', '', '', '총보상금액:', returnData.amounts.finalAmount],
+    [''],
+    ['비고:', returnData.notes || '']
+  )
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData)
+  
+  // 열 너비 설정
+  ws['!cols'] = [
+    { wch: 6 },  // 번호
+    { wch: 30 }, // 상품명
+    { wch: 10 }, // 색상
+    { wch: 10 }, // 사이즈
+    { wch: 8 },  // 수량
+    { wch: 12 }, // 단가
+    { wch: 12 }, // 금액
+    { wch: 20 }, // 반품사유
+  ]
+
+  XLSX.utils.book_append_sheet(wb, ws, '반품명세서')
+  
+  // 파일 저장 (실제로는 클라우드 스토리지에 저장)
+  const fileName = `return-statement-${returnData.returnNumber}.xlsx`
+  
+  return `/documents/return-statements/${fileName}`
+}
+
+// 반품 유형 텍스트 변환
+function getReturnTypeText(type: string): string {
+  const typeMap: { [key: string]: string } = {
+    exchange: '교환',
+    refund: '환불',
+    defect: '불량품',
+    mistake: '오배송'
+  }
+  return typeMap[type] || type
+}
+
+// GET - 반품 명세서 템플릿 다운로드
+export async function GET(request: NextRequest) {
+  try {
+    const wb = XLSX.utils.book_new()
+    
+    const wsData = [
+      ['반품 명세서 템플릿'],
+      [''],
+      ['주문번호', '고객ID', '상품명', '색상', '사이즈', '수량', '단가', '반품사유', '반품유형', '마일리지보상', '비고'],
+      ['예시) ORD-20240101-001', '1', '상품A', '블랙', 'L', '2', '50000', '사이즈 불만족', 'exchange', '10000', '교환 요청'],
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+    
+    // 열 너비 설정
+    ws['!cols'] = [
+      { wch: 20 }, // 주문번호
+      { wch: 10 }, // 고객ID
+      { wch: 30 }, // 상품명
+      { wch: 10 }, // 색상
+      { wch: 10 }, // 사이즈
+      { wch: 8 },  // 수량
+      { wch: 12 }, // 단가
+      { wch: 20 }, // 반품사유
+      { wch: 12 }, // 반품유형
+      { wch: 12 }, // 마일리지보상
+      { wch: 20 }, // 비고
+    ]
+
+    XLSX.utils.book_append_sheet(wb, ws, '반품템플릿')
+    
+    return NextResponse.json({
+      success: true,
+      data: {
+        templateUrl: '/templates/return-statement-template.xlsx',
+        columns: [
+          '주문번호',
+          '고객ID',
+          '상품명',
+          '색상',
+          '사이즈',
+          '수량',
+          '단가',
+          '반품사유',
+          '반품유형',
+          '마일리지보상',
+          '비고'
+        ]
+      },
+      message: '반품 명세서 템플릿이 생성되었습니다.'
+    })
+
+  } catch (error) {
+    console.error('Return statement template error:', error)
+    return NextResponse.json({
+      success: false,
+      error: '반품 명세서 템플릿 생성 중 오류가 발생했습니다.'
+    }, { status: 500 })
+  }
+}
+
+// GET - 반품 명세서 목록 조회
+export async function GET_LIST(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { searchParams } = new URL(request.url)
+    
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '20')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+    const customerName = searchParams.get('customerName')
+    const status = searchParams.get('status')
+    
+    let query = supabase
+      .from('return_statements')
+      .select(`
+        *,
+        orders!return_statements_order_id_fkey (
+          order_number,
+          total_amount
+        ),
+        users!return_statements_customer_id_fkey (
+          company_name,
+          representative_name
+        ),
+        return_statement_items!return_statement_items_return_statement_id_fkey (
+          id,
+          product_name,
+          quantity,
+          unit_price,
+          total_price,
+          return_reason
+        )
+      `)
+
+    // 필터 적용
+    if (startDate && endDate) {
+      query = query.gte('created_at', startDate).lte('created_at', endDate)
+    }
+    
+    if (customerName) {
+      query = query.ilike('customer_name', `%${customerName}%`)
+    }
+
+    if (status) {
+      query = query.eq('status', status)
+    }
+
+    // 페이지네이션
+    const offset = (page - 1) * limit
+    query = query.range(offset, offset + limit - 1).order('created_at', { ascending: false })
+
+    const { data: statements, error } = await query
+
+    if (error) {
+      throw error
+    }
+
+    // 전체 개수 조회
+    let countQuery = supabase
+      .from('return_statements')
+      .select('*', { count: 'exact', head: true })
+
+    if (startDate && endDate) {
+      countQuery = countQuery.gte('created_at', startDate).lte('created_at', endDate)
+    }
+    
+    if (customerName) {
+      countQuery = countQuery.ilike('customer_name', `%${customerName}%`)
+    }
+
+    if (status) {
+      countQuery = countQuery.eq('status', status)
+    }
+
+    const { count } = await countQuery
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        statements: statements || [],
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil((count || 0) / limit),
+          totalItems: count || 0,
+          itemsPerPage: limit,
+          hasNextPage: page < Math.ceil((count || 0) / limit),
+          hasPrevPage: page > 1
+        }
+      }
+    })
+
+  } catch (error) {
+    console.error('Return statements list error:', error)
+    return NextResponse.json({
+      success: false,
+      error: '반품 명세서 목록 조회 중 오류가 발생했습니다.'
+    }, { status: 500 })
+  }
+}
+
+// PUT - 반품 명세서 상태 업데이트
+export async function PUT(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const body = await request.json()
+    
+    const { returnNumber, status, processNotes } = body
+
+    if (!returnNumber || !status) {
+      return NextResponse.json({
+        success: false,
+        error: '반품번호와 상태가 필요합니다.'
+      }, { status: 400 })
+    }
+
+    const { data: statement, error } = await supabase
+      .from('return_statements')
+      .update({
+        status,
+        process_notes: processNotes,
+        processed_at: status === 'completed' ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('return_number', returnNumber)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Return statement update error:', error)
+      return NextResponse.json({
+        success: false,
+        error: '반품 명세서 업데이트에 실패했습니다.'
+      }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: statement,
+      message: '반품 명세서가 업데이트되었습니다.'
+    })
+
+  } catch (error) {
+    console.error('Return statement update API error:', error)
+    return NextResponse.json({
+      success: false,
+      error: '반품 명세서 업데이트 중 오류가 발생했습니다.'
+    }, { status: 500 })
+  }
+} 
