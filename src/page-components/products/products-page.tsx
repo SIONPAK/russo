@@ -315,7 +315,7 @@ export function ProductsPage() {
                           </div>
 
                           {/* 호버 시 상품명과 해시태그 표시 */}
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-4">
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-4 pointer-events-none">
                             <h3 className="text-base font-semibold text-white text-center mb-3 line-clamp-2">
                               {product.name}
                             </h3>
@@ -332,7 +332,7 @@ export function ProductsPage() {
                           </div>
 
                           {/* 액션 버튼들 */}
-                          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                             <button 
                               onClick={(e) => {
                                 e.preventDefault()
@@ -360,7 +360,7 @@ export function ProductsPage() {
                                   showInfo('장바구니 추가 중 오류가 발생했습니다.')
                                 }
                               }}
-                              className="w-8 h-8 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                              className="w-8 h-8 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md transition-colors pointer-events-auto"
                             >
                               <ShoppingCart className="h-4 w-4 text-gray-600" />
                             </button>

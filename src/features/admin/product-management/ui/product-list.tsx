@@ -333,9 +333,9 @@ export function ProductList({
                     <div className="col-span-3">
                       <div className="flex items-start space-x-3">
                         <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 mb-1 hover:text-blue-600 cursor-pointer" onClick={() => onViewDetail(product)}>
+                          <h6 className="text-md font-semibold text-gray-900 mb-1 hover:text-blue-600 cursor-pointer" onClick={() => onViewDetail(product)}>
                             {product.name}
-                          </h3>
+                          </h6>
                           <p className="text-sm text-gray-500 mb-1">{product.code}</p>
                           {product.description && (
                             <p className="text-xs text-gray-400 line-clamp-2">{product.description}</p>
