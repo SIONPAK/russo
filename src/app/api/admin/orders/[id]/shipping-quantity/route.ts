@@ -8,7 +8,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const supabase = createClient()
+    const supabase = await createClient()
     const { items } = await request.json()
 
     // 각 주문 아이템의 출고 수량 업데이트

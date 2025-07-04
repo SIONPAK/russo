@@ -28,9 +28,10 @@ interface OrderItem {
 
 interface OrderPageProps {
   cartItems?: any[]
+  orderType?: 'normal' | 'sample'
 }
 
-export function OrderPage({ cartItems = [] }: OrderPageProps) {
+export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
   const router = useRouter()
   const { createOrder, isLoading: isOrderLoading } = useOrder()
   const { isAuthenticated, user } = useAuthStore()

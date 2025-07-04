@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     siteName: '루소',
     images: [
       {
-        url: '/og-image.jpg',
+        url: '/images/opengraph_image.jpeg',
         width: 1200,
         height: 630,
         alt: '루소 - 의류 도매 플랫폼',
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: '루소 | 의류 도매 플랫폼',
     description: '루소는 전국 의류 도매업체들을 위한 원스톱 플랫폼입니다. 다양한 의류 상품을 합리적인 가격으로 제공하며, 신속한 배송과 전문적인 서비스로 고객만족을 실현합니다.',
-    images: ['/og-image.jpg'],
+    images: ['/images/opengraph_image.jpeg'],
   },
   robots: {
     index: true,

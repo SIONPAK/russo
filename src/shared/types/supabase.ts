@@ -424,41 +424,6 @@ export interface Database {
           updated_at?: string
         }
       }
-      banners: {
-        Row: {
-          id: string
-          title: string
-          desktop_image: string
-          mobile_image: string
-          link_url: string | null
-          order_index: number
-          is_active: boolean
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          title: string
-          desktop_image: string
-          mobile_image: string
-          link_url?: string | null
-          order_index: number
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          title?: string
-          desktop_image?: string
-          mobile_image?: string
-          link_url?: string | null
-          order_index?: number
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-      }
     }
     Views: {
       [_ in never]: never

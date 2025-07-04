@@ -89,12 +89,6 @@ const menuItems = [
     children: []
   },
   {
-    title: '배너 관리',
-    icon: Monitor,
-    href: '/admin/banners',
-    children: []
-  },
-  {
     title: '문서 관리',
     icon: FileText,
     href: '/admin/documents',

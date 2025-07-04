@@ -23,7 +23,7 @@ const supabaseAdmin = createClient(
 )
 
 // 오후 3시 기준 날짜 범위 계산
-const getDateRangeFromCutoff = (startDate?: string, endDate?: string) => {
+const getDateRangeFromCutoff = (startDate?: string | null, endDate?: string | null) => {
   const now = new Date()
   const currentHour = now.getHours()
   
