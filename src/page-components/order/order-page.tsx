@@ -2,24 +2,35 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, ChevronUp, ArrowLeft, MapPin, Plus } from 'lucide-react'
+import { ArrowLeft, ChevronUp, ChevronDown, MapPin } from 'lucide-react'
 import { MainLayout } from '@/widgets/layout/main-layout'
 import { Button } from '@/shared/ui/button'
 import { AddressSearch } from '@/shared/ui/address-search'
-import { useOrder, OrderItem } from '@/features/order/model/use-order'
-import { useOrderForm, OrderFormData } from '@/features/order/model/use-order-form'
+import { useOrderForm } from '@/features/order/model/use-order-form'
+import { useOrder } from '@/features/order/model/use-order'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
-import { ShippingAddress } from '@/entities/user/model/user-store'
+import { OrderFormData } from '@/features/order/model/use-order-form'
 import { formatCurrency } from '@/shared/lib/utils'
-import { generateReceipt, formatDate, ReceiptData } from '@/shared/lib/receipt-utils'
 import { showInfo, showSuccess } from '@/shared/lib/toast'
+import { generateReceipt, formatDate, ReceiptData } from '@/shared/lib/receipt-utils'
+
+interface OrderItem {
+  productId: string
+  productName: string
+  productCode: string
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+  color: string
+  size: string
+  options: any
+}
 
 interface OrderPageProps {
   cartItems?: any[]
-  orderType?: 'normal' | 'sample'
 }
 
-export function OrderPage({ cartItems = [], orderType: initialOrderType = 'normal' }: OrderPageProps) {
+export function OrderPage({ cartItems = [] }: OrderPageProps) {
   const router = useRouter()
   const { createOrder, isLoading: isOrderLoading } = useOrder()
   const { isAuthenticated, user } = useAuthStore()
@@ -39,9 +50,6 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
     validateForm
   } = useOrderForm(user?.id || '')
 
-  // 주문 타입 관련 상태 (샘플은 촬영용만)
-  const [orderType, setOrderType] = useState<'normal' | 'sample'>(initialOrderType)
-
   // 배송 메모 관련 상태
   const [selectedMemoOption, setSelectedMemoOption] = useState('')
   const [customMemo, setCustomMemo] = useState('')
@@ -58,7 +66,6 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
 
   // 섹션 접기/펼치기 상태
   const [expandedSections, setExpandedSections] = useState({
-    orderType: true,
     orderInfo: true,
     shipping: true,
     products: true,
@@ -135,31 +142,21 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
     toggleUseSameAddress(useSame)
   }
 
-  // 주문 상품 정보 계산 (샘플 주문은 0원)
-  const orderItems: OrderItem[] = cartItems.map(item => {
-    let adjustedPrice = item.price
-    
-    // 샘플 주문은 촬영용으로 0원
-    if (orderType === 'sample') {
-      adjustedPrice = 0
-    }
-    
-    return {
-      productId: item.id,
-      productName: item.name,
-      productCode: item.code || '',
-      quantity: item.quantity,
-      unitPrice: adjustedPrice,
-      totalPrice: adjustedPrice * item.quantity,
-      color: item.color || '기본',
-      size: item.size || '기본',
-      options: item.options,
-      originalPrice: item.price // 원래 가격 보관
-    }
-  })
+  // 주문 상품 정보 계산
+  const orderItems: OrderItem[] = cartItems.map(item => ({
+    productId: item.id,
+    productName: item.name,
+    productCode: item.code || '',
+    quantity: item.quantity,
+    unitPrice: item.price,
+    totalPrice: item.price * item.quantity,
+    color: item.color || '기본',
+    size: item.size || '기본',
+    options: item.options
+  }))
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0)
-  const shippingFee = orderType === 'sample' ? 0 : 3000 // 샘플 주문은 무료배송
+  const shippingFee = 3000 // 기본 배송비
   const totalAmount = subtotal + shippingFee
 
   // 섹션 토글
@@ -195,115 +192,72 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
         return
       }
 
-      let createdOrder: any
+      // 일반 주문 API 호출
+      const orderData = {
+        userId: user.id,
+        orderType: 'normal' as const,
+        items: orderItems.map(item => ({
+          productId: item.productId,
+          productName: item.productName,
+          productCode: item.productCode,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          color: item.color,
+          size: item.size,
+          options: item.options
+        })),
+        shippingInfo: {
+          name: formData.shippingInfo.name,
+          phone: formData.shippingInfo.phone,
+          address: formData.shippingInfo.address,
+          postalCode: formData.shippingInfo.postalCode
+        },
+        totalAmount,
+        shippingFee,
+        notes: formData.orderNotes || undefined
+      }
 
-      if (orderType === 'sample') {
-        // 샘플 주문 API 호출
-        const sampleOrderData = {
-          user_id: user.id, // 사용자 ID 직접 전달
-          product_id: orderItems[0].productId, // 샘플은 단일 상품만
-          quantity: orderItems[0].quantity,
-          sample_type: 'photography', // 촬영용 샘플
-          delivery_address: `${formData.shippingInfo.address} (${formData.shippingInfo.postalCode})`,
-          notes: formData.orderNotes || '', // 요청사항만 저장
-          product_options: `색상: ${orderItems[0].color}, 사이즈: ${orderItems[0].size}` // 상품 옵션 정보
-        }
-
-        const response = await fetch('/api/orders/sample', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(sampleOrderData),
-        })
-
-        const result = await response.json()
-
-        if (!result.success) {
-          throw new Error(result.error || '샘플 주문에 실패했습니다.')
-        }
-
-        createdOrder = {
-          order_number: result.data.sample_number,
-          id: result.data.id
-        }
-      } else {
-        // 일반 주문 API 호출
-        const orderData = {
-          userId: user.id,
-          orderType,
-          items: orderItems.map(item => ({
-            productId: item.productId,
-            productName: item.productName,
-            productCode: item.productCode,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            color: item.color,
-            size: item.size,
-            options: item.options
-          })),
-          shippingInfo: {
-            name: formData.shippingInfo.name,
-            phone: formData.shippingInfo.phone,
-            address: formData.shippingInfo.address,
-            postalCode: formData.shippingInfo.postalCode
-          },
-          totalAmount,
-          shippingFee,
-          notes: formData.orderNotes || undefined
-        }
-
-        createdOrder = await createOrder(orderData)
+      const createdOrder = await createOrder(orderData)
+      
+      // 영수증 데이터 준비
+      const receiptData: ReceiptData = {
+        orderNumber: createdOrder.order_number,
+        orderDate: formatDate(new Date()),
+        customerName: (user as any)?.company_name || formData.orderInfo.name,
+        customerPhone: formData.orderInfo.phone,
+        customerEmail: formData.orderInfo.email,
+        shippingName: formData.shippingInfo.name,
+        shippingPhone: formData.shippingInfo.phone,
+        shippingAddress: formData.shippingInfo.address,
+        shippingPostalCode: formData.shippingInfo.postalCode,
+        items: orderItems.map(item => ({
+          productName: item.productName,
+          productCode: item.productCode,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          color: item.color,
+          size: item.size,
+          options: item.options
+        })),
+        subtotal,
+        shippingFee,
+        totalAmount,
+        notes: formData.orderNotes
       }
       
-      // 영수증 다운로드 (샘플 주문이 아닌 경우에만)
-      if (orderType !== 'sample') {
-        // 영수증 데이터 준비
-        const receiptData: ReceiptData = {
-          orderNumber: createdOrder.order_number,
-          orderDate: formatDate(new Date()),
-          customerName: (user as any)?.company_name || formData.orderInfo.name,
-          customerPhone: formData.orderInfo.phone,
-          customerEmail: formData.orderInfo.email,
-          shippingName: formData.shippingInfo.name,
-          shippingPhone: formData.shippingInfo.phone,
-          shippingAddress: formData.shippingInfo.address,
-          shippingPostalCode: formData.shippingInfo.postalCode,
-          items: orderItems.map(item => ({
-            productName: item.productName,
-            productCode: item.productCode,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            color: item.color,
-            size: item.size,
-            options: item.options
-          })),
-          subtotal,
-          shippingFee,
-          totalAmount,
-          notes: formData.orderNotes
-        }
-        
-        // 영수증 다운로드
-        const receiptGenerated = await generateReceipt(receiptData)
-        
-        if (receiptGenerated) {
-          showSuccess('주문이 완료되었습니다. 영수증이 다운로드됩니다.')
-        } else {
-          showInfo('주문은 완료되었으나 영수증 다운로드에 실패했습니다.')
-        }
+      // 영수증 다운로드
+      const receiptGenerated = await generateReceipt(receiptData)
+      
+      if (receiptGenerated) {
+        showSuccess('주문이 완료되었습니다. 영수증이 다운로드됩니다.')
       } else {
-        showSuccess('샘플 주문이 완료되었습니다.')
+        showInfo('주문은 완료되었으나 영수증 다운로드에 실패했습니다.')
       }
       
       // 주문 완료 페이지로 이동
-      if (orderType === 'sample') {
-        router.push('/mypage/sample-orders')
-      } else {
-        router.push(`/order/complete?orderNumber=${createdOrder.order_number}`)
-      }
+      router.push(`/order/complete?orderNumber=${createdOrder.order_number}`)
       
     } catch (error) {
       console.error('주문 생성 실패:', error)
@@ -338,9 +292,7 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
               <ArrowLeft className="h-5 w-5 mr-2" />
               뒤로가기
             </button>
-            <h1 className="text-3xl font-bold text-gray-900">
-              {orderType === 'sample' ? '샘플 주문/결제' : '주문/결제'}
-            </h1>
+            <h1 className="text-3xl font-bold text-gray-900">주문/결제</h1>
           </div>
 
           {isFormLoading ? (
@@ -349,42 +301,6 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
             </div>
           ) : (
             <div className="space-y-6">
-              {/* 주문 타입 선택 */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                <button
-                  onClick={() => toggleSection('orderType')}
-                  className="w-full bg-gray-50 p-4 flex items-center justify-between text-left rounded-t-lg"
-                >
-                  <span className="font-medium text-lg">주문 타입</span>
-                  {expandedSections.orderType ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                </button>
-                
-                {expandedSections.orderType && (
-                  <div className="p-6 space-y-4">
-                    <div className="flex items-center space-x-6">
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          checked={orderType === 'normal'}
-                          onChange={() => setOrderType('normal')}
-                          className="mr-3"
-                        />
-                        <span className="text-lg">일반 주문</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          checked={orderType === 'sample'}
-                          onChange={() => setOrderType('sample')}
-                          className="mr-3"
-                        />
-                        <span className="text-lg">샘플 주문</span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* 주문 정보 */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <button
@@ -504,14 +420,14 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2">받는사람 *</label>
+                        <label className="block text-sm font-medium mb-2">받는 사람 *</label>
                         <input
                           type="text"
                           value={formData.shippingInfo.name}
                           onChange={(e) => updateShippingInfo('name', e.target.value)}
                           disabled={formData.useSameAddress}
                           className="w-full border border-gray-300 rounded-lg px-4 py-3 disabled:bg-gray-100"
-                          placeholder="받는 분 이름"
+                          placeholder="이름을 입력하세요"
                         />
                       </div>
                       <div>
@@ -588,27 +504,13 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
                       )}
                     </div>
 
-                    <div className="text-sm text-gray-600 bg-blue-50 p-4 rounded-lg">
-                      {orderType === 'sample' ? (
-                        <>
-                          <p className="font-medium text-blue-800 mb-2">📸 촬영용 샘플 주문 안내</p>
-                          <ul className="space-y-1 text-sm">
-                            <li>• 촬영용 샘플은 무료로 제공됩니다.</li>
-                            <li>• 출고일 기준 <strong>21일 내</strong> 반납해주세요.</li>
-                            <li>• 21일 초과 시 자동으로 상품 가격이 청구됩니다.</li>
-                            <li>• 샘플 주문은 무료배송으로 제공됩니다.</li>
-                          </ul>
-                        </>
-                      ) : (
-                        <div className="text-sm text-gray-600">
-                          <p className="font-medium text-gray-800 mb-2">🚚 배송 안내</p>
-                          <ul className="space-y-1">
-                            <li>• 모든 주문에 배송비 3,000원이 적용됩니다.</li>
-                            <li>• 주문 확인 후 1-2일 내 배송 준비가 완료됩니다.</li>
-                            <li>• 배송 시작 시 문자로 송장번호를 안내드립니다.</li>
-                          </ul>
-                        </div>
-                      )}
+                    <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg">
+                      <p className="font-medium text-gray-800 mb-2">🚚 배송 안내</p>
+                      <ul className="space-y-1">
+                        <li>• 모든 주문에 배송비 3,000원이 적용됩니다.</li>
+                        <li>• 주문 확인 후 1-2일 내 배송 준비가 완료됩니다.</li>
+                        <li>• 배송 시작 시 문자로 송장번호를 안내드립니다.</li>
+                      </ul>
                     </div>
                   </div>
                 )}
@@ -646,11 +548,6 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
                         <div className="text-right">
                           <p className="font-medium text-lg">{formatCurrency(item.totalPrice)}</p>
                           <p className="text-sm text-gray-600">개당 {formatCurrency(item.unitPrice)}</p>
-                          {orderType === 'sample' && item.originalPrice && item.unitPrice !== item.originalPrice && (
-                            <p className="text-xs text-gray-400 line-through">
-                              원가: {formatCurrency(item.originalPrice)}
-                            </p>
-                          )}
                         </div>
                       </div>
                     ))}
@@ -675,7 +572,7 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
                       <span>{formatCurrency(subtotal)}</span>
                     </div>
                     <div className="flex justify-between text-lg">
-                      <span>배송비 {orderType === 'sample' ? '(샘플 무료배송)' : '(기본 배송 중량)'}</span>
+                      <span>배송비</span>
                       <span>{formatCurrency(shippingFee)}</span>
                     </div>
                     <div className="flex justify-between text-lg">
@@ -715,11 +612,7 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
                 disabled={isOrderLoading || isFormLoading}
                 className="flex-1 h-12 bg-black text-white hover:bg-gray-800 text-lg font-semibold"
               >
-                {isOrderLoading ? '주문 처리중...' : 
-                  orderType === 'sample' ? 
-                    `${formatCurrency(totalAmount)} 샘플 주문하기` : 
-                    `${formatCurrency(totalAmount)} 주문하기`
-                }
+                {isOrderLoading ? '주문 처리중...' : `${formatCurrency(totalAmount)} 주문하기`}
               </Button>
             </div>
           </div>

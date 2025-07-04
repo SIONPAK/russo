@@ -158,7 +158,7 @@ export function ProductsPage() {
 
   return (
     <MainLayout>
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-white py-12">
         {/* 헤더 */}
         <div className="bg-white border-b border-gray-100">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -276,8 +276,8 @@ export function ProductsPage() {
           ) : (
             <>
               {viewMode === 'grid' ? (
-                /* 그리드 뷰 */
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                /* 그리드 뷰 - 3x3 */
+                <div className="grid grid-cols-3 gap-8">
                   {products.map((product) => (
                     <div key={product.id} className="group">
                       <div className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
@@ -311,6 +311,23 @@ export function ProductsPage() {
                               <span className="bg-blue-500 text-white text-xs px-2 py-1 font-medium rounded-full">
                                 HOT
                               </span>
+                            )}
+                          </div>
+
+                          {/* 호버 시 상품명과 해시태그 표시 */}
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-4">
+                            <h3 className="text-base font-semibold text-white text-center mb-3 line-clamp-2">
+                              {product.name}
+                            </h3>
+                            {/* 해시태그 */}
+                            {product.tags && typeof product.tags === 'string' && (
+                              <div className="flex flex-wrap gap-1 justify-center">
+                                {parseHashtags(product.tags).slice(0, 3).map((tag, index) => (
+                                  <span key={index} className="text-xs text-white bg-white/20 px-2 py-1 rounded-full">
+                                    #{tag}
+                                  </span>
+                                ))}
+                              </div>
                             )}
                           </div>
 
@@ -348,48 +365,6 @@ export function ProductsPage() {
                               <ShoppingCart className="h-4 w-4 text-gray-600" />
                             </button>
                           </div>
-                        </div>
-
-                        {/* 상품 정보 */}
-                        <div className="p-6">
-                          <Link href={`/products/${product.id}`}>
-                            <h3 className="font-semibold text-gray-900 mb-2 hover:text-blue-600 transition-colors line-clamp-2">
-                              {product.name}
-                            </h3>
-                          </Link>
-                          
-                          {/* 가격 */}
-                          <div className="flex items-baseline space-x-2 mb-3">
-                            {isAuthenticated ? (
-                              product.is_on_sale && product.sale_price ? (
-                                <>
-                                  <span className="text-lg font-bold text-red-600">
-                                    {formatCurrency(product.sale_price)}
-                                  </span>
-                                  <span className="text-sm text-gray-400 line-through">
-                                    {formatCurrency(product.price)}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-lg font-bold text-gray-900">
-                                  {formatCurrency(product.price)}
-                                </span>
-                              )
-                            ) : (
-                              <div className="h-6"></div>
-                            )}
-                          </div>
-                          
-                          {/* 해시태그 */}
-                          {product.tags && typeof product.tags === 'string' && (
-                            <div className="flex flex-wrap gap-1">
-                              {parseHashtags(product.tags).slice(0, 3).map((tag, index) => (
-                                <span key={index} className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                                  #{tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -440,7 +415,7 @@ export function ProductsPage() {
                           <div className="flex justify-between items-start">
                             <div className="flex-1">
                               <Link href={`/products/${product.id}`}>
-                                <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 transition-colors">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">
                                   {product.name}
                                 </h3>
                               </Link>
@@ -462,26 +437,9 @@ export function ProductsPage() {
                             </div>
 
                             <div className="text-right ml-6">
-                              {/* 가격 */}
+                              {/* 가격 표시 완전 숨김 */}
                               <div className="mb-4">
-                                {isAuthenticated ? (
-                                  product.is_on_sale && product.sale_price ? (
-                                    <div className="space-y-1">
-                                      <div className="text-2xl font-bold text-red-600">
-                                        {formatCurrency(product.sale_price)}
-                                      </div>
-                                      <div className="text-lg text-gray-400 line-through">
-                                        {formatCurrency(product.price)}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="text-2xl font-bold text-gray-900">
-                                      {formatCurrency(product.price)}
-                                    </div>
-                                  )
-                                ) : (
-                                  <div className="h-8"></div>
-                                )}
+                                {/* 가격 대신 빈 공간 */}
                               </div>
 
                               {/* 액션 버튼들 */}

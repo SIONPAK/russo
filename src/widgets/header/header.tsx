@@ -58,7 +58,7 @@ export default function Header() {
   }
 
   const handleCategoryClick = (categoryKey: string) => {
-    router.push(`/?category=${categoryKey}`)
+    router.push(`/products?category=${categoryKey}`)
     setIsMobileMenuOpen(false)
   }
 
@@ -120,7 +120,7 @@ export default function Header() {
       icon: FileText,
       label: '서류 관리',
       path: '/mypage/documents',
-      description: '사업자등록증 등'
+      description:'거래명세서, 세금계산서 등'
     }
   ]
 
@@ -181,36 +181,46 @@ export default function Header() {
 
       {/* 메인 헤더 */}
       <header className="bg-white shadow-lg sticky top-0 z-40 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" style={{ minWidth: '1024px' }}>
           <div className="flex items-center justify-between h-16">
             {/* 로고 */}
-            <Link href="/" className="text-2xl font-bold text-black">
-              LUSSO
-            </Link>
+            <div className="flex-shrink-0 min-w-[120px]">
+              <Link href="/" className="text-2xl font-paperlogy-extrabold text-black">
+                LUSSO
+              </Link>
+            </div>
 
             {/* 메인 네비게이션 */}
-            <nav className="hidden lg:flex items-center space-x-8">
-              {categories.map((category) => (
-                <Link 
-                  key={category.id}
-                  href={`/?category=${category.key}`}
-                  className="text-sm font-medium text-gray-900 hover:text-black transition-colors relative"
-                >
-                  {category.badge && (
-                    <span className="bg-black text-white px-1.5 py-0.5 rounded text-xs mr-1">
-                      {category.badge}
-                    </span>
-                  )}
-                  {category.name.toUpperCase()}
-                  {category.key === 'new' || category.key === 'womans' ? (
-                    <span className="text-black text-xs absolute -top-1 -right-2">*</span>
-                  ) : null}
-                </Link>
-              ))}
-            </nav>
+            <div className="flex-1 flex justify-center">
+              <nav className="hidden lg:flex items-center space-x-8 min-w-[200px] justify-center">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => {
+                      if (!isAuthenticated) {
+                        router.push('/auth/login')
+                        return
+                      }
+                      handleCategoryClick(category.key)
+                    }}
+                    className="text-base font-medium text-gray-900 hover:text-black transition-colors relative whitespace-nowrap hover:cursor-pointer"
+                  >
+                    {category.badge && (
+                      <span className="bg-black text-white px-1.5 py-0.5 rounded text-xs mr-1">
+                        {category.badge}
+                      </span>
+                    )}
+                    {category.name.toUpperCase()}
+                    {category.key === 'new' || category.key === 'womans' ? (
+                      <span className="text-black text-xs absolute -top-1 -right-2">*</span>
+                    ) : null}
+                  </button>
+                ))}
+              </nav>
+            </div>
 
             {/* 우측 액션 버튼들 */}
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 flex-shrink-0 min-w-[120px] justify-end">
               {/* 장바구니 */}
               <button 
                 onClick={() => router.push('/cart')}
@@ -309,21 +319,26 @@ export default function Header() {
             <div className="lg:hidden border-t border-gray-200 py-4">
               <nav className="grid grid-cols-2 gap-4">
                 {categories.map((category) => (
-                  <Link 
+                  <button
                     key={category.id}
-                    href={`/?category=${category.key}`}
+                    onClick={() => {
+                      if (!isAuthenticated) {
+                        router.push('/auth/login')
+                        return
+                      }
+                      handleCategoryClick(category.key)
+                    }}
                     className={`text-sm font-medium transition-colors ${
                       category.is_special 
                         ? 'text-red-600 hover:text-red-700' 
                         : 'text-gray-900 hover:text-blue-600'
                     } ${category.key === 'sale' ? 'col-span-2' : ''}`}
                     style={category.text_color ? { color: category.text_color } : {}}
-                    onClick={() => setIsMobileMenuOpen(false)}
                   >
                     {category.badge && `${category.badge} `}
                     {category.name.toUpperCase()}
                     {(category.key === 'new' || category.key === 'womans') && ' *'}
-                  </Link>
+                  </button>
                 ))}
               </nav>
               

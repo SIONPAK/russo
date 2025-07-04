@@ -11,7 +11,6 @@ import { User as UserType } from '@/shared/types'
 import { 
   Package, 
   Search, 
-  Download,
   Truck,
   CheckCircle,
   Clock,
@@ -22,11 +21,10 @@ import {
   User,
   ChevronDown,
   ChevronUp,
-  Eye,
-  RotateCcw,
-  AlertTriangle,
+  Calendar,
   RefreshCw,
-  Ban
+  RotateCcw,
+  AlertTriangle
 } from 'lucide-react'
 
 interface OrderItem {
@@ -65,6 +63,7 @@ interface Order {
   created_at: string
   updated_at: string
   order_items: OrderItem[]
+  order_type: string
 }
 
 interface SampleOrder {
@@ -141,7 +140,6 @@ export function OrdersPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
-  const [downloadingReceipts, setDownloadingReceipts] = useState<Set<string>>(new Set())
 
   // 샘플 주문 관련 상태
   const [sampleOrders, setSampleOrders] = useState<SampleOrder[]>([])
@@ -155,9 +153,6 @@ export function OrdersPage() {
   const [sampleDateRange, setSampleDateRange] = useState<'today' | '1month' | '3month' | '6month' | 'all'>('all')
   const [sampleStartDate, setSampleStartDate] = useState('')
   const [sampleEndDate, setSampleEndDate] = useState('')
-
-  // 액션 처리 상태
-  const [processingActions, setProcessingActions] = useState<Set<string>>(new Set())
 
   // 날짜 범위 설정 (일반 주문용)
   const setDateRangeFilter = (range: 'today' | '1month' | '3month' | '6month' | 'all') => {
@@ -252,60 +247,6 @@ export function OrdersPage() {
       fetchSampleOrders(1)
     }
   }, [sampleStatusFilter, user?.id, activeTab])
-
-  // 주문 액션 처리 (취소/교환/반품)
-  const handleOrderAction = async (orderId: string, action: 'cancel' | 'exchange' | 'return', reason?: string) => {
-    setProcessingActions(prev => new Set(prev).add(orderId))
-    
-    try {
-      const response = await fetch(`/api/orders/${orderId}/actions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action, reason }),
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        showSuccess(
-          action === 'cancel' ? '주문이 취소되었습니다.' :
-          action === 'exchange' ? '교환 신청이 접수되었습니다.' :
-          '반품 신청이 접수되었습니다.'
-        )
-        fetchOrders(currentPage) // 목록 새로고침
-      } else {
-        showError(result.error || '처리 중 오류가 발생했습니다.')
-      }
-    } catch (error) {
-      console.error('주문 액션 처리 오류:', error)
-      showError('처리 중 오류가 발생했습니다.')
-    } finally {
-      setProcessingActions(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(orderId)
-        return newSet
-      })
-    }
-  }
-
-  // 주문 상태별 액션 버튼 표시 여부
-  const getAvailableActions = (order: Order) => {
-    const actions = []
-    
-    // 취소 가능: 배송 준비 전 (pending, confirmed)
-    if (['pending', 'confirmed'].includes(order.status)) {
-      actions.push('cancel')
-    }
-    
-    // 교환/반품 가능: 배송 완료 후 (delivered)
-    if (order.status === 'delivered') {
-      actions.push('exchange', 'return')
-    }
-    
-    return actions
-  }
 
   // 일반 주문 목록 조회
   const fetchOrders = async (page = 1) => {
@@ -479,56 +420,48 @@ export function OrdersPage() {
     }
   }
 
-  // 영수증 다운로드
-  const handleDownloadReceipt = async (order: Order) => {
-    if (!user) return
-
-    setDownloadingReceipts(prev => new Set(prev).add(order.id))
-    
+  // 거래명세서 조회 함수
+  const handleViewStatement = async (orderId: string) => {
     try {
-      const isUser = (user: any): user is UserType => {
-        return 'company_name' in user
-      }
+      const response = await fetch(`/api/documents/${orderId}/statement`)
+      const result = await response.json()
 
-      const userData = isUser(user) ? user : null
-      
-      const receiptData: ReceiptData = {
-        orderNumber: order.order_number,
-        orderDate: new Date(order.created_at).toLocaleDateString('ko-KR'),
-        customerName: userData?.company_name || userData?.representative_name || '고객',
-        customerPhone: userData?.phone || '',
-        customerEmail: user.email || '',
-        shippingName: order.shipping_name,
-        shippingPhone: order.shipping_phone,
-        shippingAddress: order.shipping_address,
-        shippingPostalCode: order.shipping_postal_code,
-        items: order.order_items.map(item => ({
-          productName: item.product_name,
-          productCode: item.product_id,
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          totalPrice: item.total_price,
-          color: item.color,
-          size: item.size,
-          options: item.options
-        })),
-        subtotal: order.total_amount - order.shipping_fee,
-        shippingFee: order.shipping_fee,
-        totalAmount: order.total_amount,
-        notes: order.notes
+      if (result.success && result.data) {
+        // 거래명세서 PDF 다운로드
+        const link = document.createElement('a')
+        link.href = result.data.file_url
+        link.download = `거래명세서_${result.data.order_number}.pdf`
+        link.click()
+      } else {
+        showInfo('거래명세서가 아직 생성되지 않았습니다.')
       }
-
-      await generateReceipt(receiptData)
-      showSuccess('영수증이 다운로드되었습니다.')
     } catch (error) {
-      console.error('영수증 다운로드 오류:', error)
-      showError('영수증 다운로드에 실패했습니다.')
-    } finally {
-      setDownloadingReceipts(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(order.id)
-        return newSet
-      })
+      console.error('거래명세서 조회 실패:', error)
+      showError('거래명세서 조회에 실패했습니다.')
+    }
+  }
+
+  // 세금계산서 조회
+  const handleViewInvoice = async (orderId: string, orderNumber: string) => {
+    try {
+      const response = await fetch(`/api/documents?userId=${user?.id}&type=invoice&search=${orderNumber}`)
+      const result = await response.json()
+
+      if (result.success && result.data.length > 0) {
+        const invoice = result.data[0]
+        // 세금계산서 파일 다운로드
+        const link = document.createElement('a')
+        link.href = invoice.file_url
+        link.download = `세금계산서_${orderNumber}.xlsx`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      } else {
+        showError('해당 주문의 세금계산서를 찾을 수 없습니다.')
+      }
+    } catch (error) {
+      console.error('세금계산서 조회 오류:', error)
+      showError('세금계산서 조회 중 오류가 발생했습니다.')
     }
   }
 
@@ -612,12 +545,6 @@ export function OrdersPage() {
       {/* 헤더 */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">주문 내역</h1>
-        <p className="text-gray-600">
-          {activeTab === 'normal' 
-            ? `총 ${totalCount}건의 주문이 있습니다.`
-            : `총 ${sampleTotal}건의 샘플 주문이 있습니다.`
-          }
-        </p>
       </div>
 
       {/* 탭 메뉴 */}
@@ -632,7 +559,7 @@ export function OrdersPage() {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              일반 주문 ({totalCount})
+              일반 주문
             </button>
             <button
               onClick={() => setActiveTab('sample')}
@@ -642,7 +569,7 @@ export function OrdersPage() {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              샘플 주문 ({sampleTotal})
+              샘플 주문
             </button>
           </nav>
         </div>
@@ -813,9 +740,6 @@ export function OrdersPage() {
                 const statusInfo = statusMap[order.status as keyof typeof statusMap] || statusMap.pending
                 const StatusIcon = statusInfo.icon
                 const isExpanded = expandedOrders.has(order.id)
-                const isDownloading = downloadingReceipts.has(order.id)
-                const isProcessing = processingActions.has(order.id)
-                const availableActions = getAvailableActions(order)
 
                 return (
                   <div
@@ -873,73 +797,17 @@ export function OrdersPage() {
                         </div>
                       </div>
 
-                      {/* 액션 버튼 */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          {availableActions.includes('cancel') && (
-                            <Button
-                              onClick={() => {
-                                if (confirm('정말로 주문을 취소하시겠습니까?')) {
-                                  handleOrderAction(order.id, 'cancel')
-                                }
-                              }}
-                              disabled={isProcessing}
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
-                            >
-                              <Ban className="h-3 w-3 mr-1" />
-                              취소하기
-                            </Button>
-                          )}
-                          {availableActions.includes('exchange') && (
-                            <Button
-                              onClick={() => {
-                                const reason = prompt('교환 사유를 입력해주세요:')
-                                if (reason) {
-                                  handleOrderAction(order.id, 'exchange', reason)
-                                }
-                              }}
-                              disabled={isProcessing}
-                              variant="outline"
-                              size="sm"
-                              className="text-blue-600 border-blue-200 hover:bg-blue-50 text-xs"
-                            >
-                              <RefreshCw className="h-3 w-3 mr-1" />
-                              교환하기
-                            </Button>
-                          )}
-                          {availableActions.includes('return') && (
-                            <Button
-                              onClick={() => {
-                                const reason = prompt('반품 사유를 입력해주세요:')
-                                if (reason) {
-                                  handleOrderAction(order.id, 'return', reason)
-                                }
-                              }}
-                              disabled={isProcessing}
-                              variant="outline"
-                              size="sm"
-                              className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs"
-                            >
-                              <RotateCcw className="h-3 w-3 mr-1" />
-                              반품하기
-                            </Button>
-                          )}
-                        </div>
+                      {/* 주문 액션 버튼 */}
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {/* 거래명세서 조회 */}
                         <Button
-                          onClick={() => handleDownloadReceipt(order)}
-                          disabled={isDownloading}
                           variant="outline"
                           size="sm"
-                          className="text-gray-600 border-gray-200 hover:bg-gray-50 text-xs"
+                          onClick={() => handleViewStatement(order.id)}
+                          className="text-purple-600 hover:text-purple-700"
                         >
-                          {isDownloading ? (
-                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
-                          ) : (
-                            <Download className="h-3 w-3" />
-                          )}
-                          <span className="ml-1">영수증</span>
+                          <FileText className="w-4 h-4 mr-1" />
+                          거래명세서
                         </Button>
                       </div>
                     </div>

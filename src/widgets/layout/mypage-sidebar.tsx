@@ -35,7 +35,7 @@ export function MypageSidebar() {
       icon: FileText,
       label: '서류 관리',
       path: '/mypage/documents',
-      description: '사업자등록증 등'
+      description: '거래명세서, 세금계산서 등'
     }
   ]
 
@@ -50,7 +50,7 @@ export function MypageSidebar() {
       </div>
       
       {/* 메뉴 */}
-      <nav className="py-2">
+      <nav className="">
         <ul>
           {menuItems.map((item, index) => {
             const Icon = item.icon
@@ -71,7 +71,7 @@ export function MypageSidebar() {
                 >
                   <Icon className={`h-5 w-5 mr-4 flex-shrink-0 ${active ? 'text-white' : 'text-gray-500'}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{item.label}</div>
+                    <div className={`font-medium truncate ${active ? 'text-gray-300' : 'text-gray-500'}`}>{item.label}</div>
                     <div className={`text-xs mt-0.5 truncate ${active ? 'text-gray-300' : 'text-gray-500'}`}>{item.description}</div>
                   </div>
                 </Link>

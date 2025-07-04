@@ -1,14 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Minus, ShoppingCart, Package } from 'lucide-react'
+import { ArrowLeft, Package, ShoppingCart, Minus, Plus } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { useCart } from '@/features/cart/model/use-cart'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
-import { showSuccess, showError, showInfo } from '@/shared/lib/toast'
 import { formatCurrency } from '@/shared/lib/utils'
-
+import { showSuccess, showInfo } from '@/shared/lib/toast'
 
 interface ProductDetailViewProps {
   product: any
@@ -26,41 +25,44 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
   const [quantity, setQuantity] = useState(1)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
 
-  // 상품 이미지 처리
-  const productImages = product.images || []
-  const mainImage = productImages.find((img: any) => img.is_main) || productImages[0]
-  const allImages = mainImage ? [mainImage, ...productImages.filter((img: any) => !img.is_main)] : productImages
+  // 모든 이미지 배열 (메인 이미지 + 추가 이미지들)
+  const allImages = product.images || []
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      showInfo('로그인이 필요한 서비스입니다.')
+      router.push('/auth/login')
+    }
+  }, [isAuthenticated, router])
 
   // 재고 확인
   const getAvailableStock = () => {
     if (!product.inventory_options || !Array.isArray(product.inventory_options)) {
       return product.stock_quantity || 0
     }
-    
+
     if (!selectedOptions.color || !selectedOptions.size) {
       return 0
     }
-    
-    const option = product.inventory_options.find(
+
+    const matchingOption = product.inventory_options.find(
       (opt: any) => opt.color === selectedOptions.color && opt.size === selectedOptions.size
     )
-    
-    return option ? option.stock_quantity : 0
+
+    return matchingOption ? matchingOption.stock_quantity || 0 : 0
   }
 
   const availableStock = getAvailableStock()
 
-  // 옵션 선택 핸들러
   const handleOptionChange = (type: 'color' | 'size', value: string) => {
     setSelectedOptions(prev => ({
       ...prev,
       [type]: value
     }))
-    // 옵션 변경 시 수량을 1로 초기화
+    // 옵션 변경 시 수량 초기화
     setQuantity(1)
   }
 
-  // 수량 변경
   const handleQuantityChange = (delta: number) => {
     const newQuantity = quantity + delta
     if (newQuantity >= 1 && newQuantity <= availableStock) {
@@ -68,7 +70,6 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
     }
   }
 
-  // 장바구니 담기
   const handleAddToCart = () => {
     if (!isAuthenticated) {
       showInfo('로그인이 필요합니다.')
@@ -77,35 +78,35 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
     }
 
     if (product.inventory_options && (!selectedOptions.color || !selectedOptions.size)) {
-      showError('옵션을 선택해주세요.')
+      showInfo('색상과 사이즈를 선택해주세요.')
       return
     }
 
     if (availableStock < quantity) {
-      showError('재고가 부족합니다.')
+      showInfo('재고가 부족합니다.')
       return
     }
 
-    // 할인가가 있으면 할인가 사용, 없으면 정가 사용
-    const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
-
-    const cartItem = {
-      productId: product.id,
-      productName: product.name,
-      productImage: mainImage?.image_url || '',
-      color: selectedOptions.color || '기본',
-      size: selectedOptions.size || '기본',
-      quantity,
-      unitPrice,
-      options: selectedOptions
+    try {
+      const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
+      
+      addToCart({
+        productId: product.id,
+        productName: product.name,
+        productImage: allImages[0]?.image_url || '',
+        unitPrice,
+        quantity,
+        color: selectedOptions.color,
+        size: selectedOptions.size,
+      })
+      
+      showSuccess(`${product.name}이(가) 장바구니에 추가되었습니다.`)
+    } catch (error) {
+      showInfo('장바구니 추가 중 오류가 발생했습니다.')
     }
-
-    addToCart(cartItem)
-    showSuccess('장바구니에 추가되었습니다.')
   }
 
-  // 바로 주문하기
-  const handleDirectOrder = (orderType: 'normal' | 'sample' = 'normal') => {
+  const handleDirectOrder = () => {
     if (!isAuthenticated) {
       showInfo('로그인이 필요합니다.')
       router.push('/auth/login')
@@ -113,79 +114,44 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
     }
 
     if (product.inventory_options && (!selectedOptions.color || !selectedOptions.size)) {
-      showError('옵션을 선택해주세요.')
+      showInfo('색상과 사이즈를 선택해주세요.')
       return
     }
 
     if (availableStock < quantity) {
-      showError('재고가 부족합니다.')
+      showInfo('재고가 부족합니다.')
       return
     }
 
-    // 할인가가 있으면 할인가 사용, 없으면 정가 사용
-    const price = product.is_on_sale && product.sale_price ? product.sale_price : product.price
-
+    // 상품 정보를 URL 파라미터로 전달
     const orderItems = [{
       id: product.id,
       name: product.name,
       code: product.code || '',
-      price,
+      price: product.is_on_sale && product.sale_price ? product.sale_price : product.price,
       quantity,
-      color: selectedOptions.color || '기본',
-      size: selectedOptions.size || '기본',
-      options: selectedOptions
+      color: selectedOptions.color,
+      size: selectedOptions.size,
+      options: {
+        color: selectedOptions.color,
+        size: selectedOptions.size
+      }
     }]
 
-    // 주문 페이지로 이동하면서 상품 정보와 주문 타입 전달
-    const orderData = encodeURIComponent(JSON.stringify(orderItems))
-    const params = new URLSearchParams({
-      items: orderData,
-      orderType
-    })
-    
-    router.push(`/order?${params.toString()}`)
+    const encodedItems = encodeURIComponent(JSON.stringify(orderItems))
+    router.push(`/order?items=${encodedItems}`)
   }
 
-  // 샘플 주문하기
-  const handleSampleOrder = () => {
-    if (!isAuthenticated) {
-      showInfo('로그인이 필요합니다.')
-      router.push('/auth/login')
-      return
-    }
-
-    if (product.inventory_options && (!selectedOptions.color || !selectedOptions.size)) {
-      showError('옵션을 선택해주세요.')
-      return
-    }
-
-    if (availableStock < quantity) {
-      showError('재고가 부족합니다.')
-      return
-    }
-
-    // 샘플 주문으로 주문 페이지로 이동
-    handleDirectOrder('sample')
-  }
-
-  if (!product) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">상품 정보를 불러오는 중...</p>
-        </div>
-      </div>
-    )
+  if (!isAuthenticated) {
+    return null
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 뒤로가기 버튼 */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <button
           onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-black mb-6 transition-colors"
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-8"
         >
           <ArrowLeft className="h-5 w-5 mr-2" />
           뒤로가기
@@ -234,23 +200,32 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
           <div className="space-y-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">{product.name}</h1>
-              <div className="mt-2">
-                {product.is_on_sale && product.sale_price ? (
+              {/* 가격 표시 - 로그인한 회원에게만 */}
+              <div className="mt-4">
+                {isAuthenticated ? (
                   <div className="flex items-baseline space-x-3">
-                    <span className="text-3xl font-bold text-red-600">
-                      {formatCurrency(product.sale_price)}
-                    </span>
-                    <span className="text-xl text-gray-400 line-through">
-                      {formatCurrency(product.price)}
-                    </span>
-                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded-md text-sm font-medium">
-                      SALE
-                    </span>
+                    {product.is_on_sale && product.sale_price ? (
+                      <>
+                        <span className="text-3xl font-bold text-gray-900">
+                          {formatCurrency(product.sale_price)}
+                        </span>
+                        <span className="text-xl text-gray-500 line-through">
+                          {formatCurrency(product.price)}
+                        </span>
+                        <span className="text-sm bg-red-500 text-white px-2 py-1 rounded-full">
+                          SALE
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-3xl font-bold text-gray-900">
+                        {formatCurrency(product.price)}
+                      </span>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-3xl font-bold text-gray-900">
-                    {formatCurrency(product.price)}
-                  </p>
+                  <div className="text-lg text-gray-500">
+                    로그인 후 가격 확인
+                  </div>
                 )}
               </div>
             </div>
@@ -356,24 +331,11 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
                   장바구니
                 </Button>
                 <Button
-                  onClick={() => handleDirectOrder('normal')}
+                  onClick={handleDirectOrder}
                   className="flex-1 h-12 bg-black text-white hover:bg-gray-800 text-lg font-semibold"
                   disabled={availableStock < quantity}
                 >
                   바로 주문
-                </Button>
-              </div>
-              
-              {/* 샘플 주문 버튼 */}
-              <div className="space-y-2">
-                <Button
-                  onClick={handleSampleOrder}
-                  variant="outline"
-                  className="w-full h-12 text-lg border-blue-500 text-blue-600 hover:bg-blue-50"
-                  disabled={availableStock < quantity}
-                >
-                  <Package className="h-5 w-5 mr-2" />
-                  촬영용 샘플 주문 (무료, 21일 반납)
                 </Button>
               </div>
             </div>

@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+@theme {
+  --color-background: #ffffff;
+  --color-foreground: #000000;
+  --color-primary: #000000;
+  --color-secondary: #f5f5f5;
+  --color-accent: #e5e5e5;
+  --color-muted: #9ca3af;
+  --color-border: #d1d5db;
+  
+  --font-family-paperlogy-thin: "Paperlogy-1Thin", sans-serif;
+  --font-family-paperlogy-extralight: "Paperlogy-2ExtraLight", sans-serif;
+  --font-family-paperlogy-light: "Paperlogy-3Light", sans-serif;
+  --font-family-paperlogy-regular: "Paperlogy-4Regular", sans-serif;
+  --font-family-paperlogy-medium: "Paperlogy-5Medium", sans-serif;
+  --font-family-paperlogy-semibold: "Paperlogy-6SemiBold", sans-serif;
+  --font-family-paperlogy-bold: "Paperlogy-7Bold", sans-serif;
+  --font-family-paperlogy-extrabold: "Paperlogy-8ExtraBold", sans-serif;
+  --font-family-paperlogy-black: "Paperlogy-9Black", sans-serif;
+  
+  --font-size-base: 16px;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #000000;
@@ -10,18 +32,6 @@
   --border: #d1d5db;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-primary: var(--primary);
-  --color-secondary: var(--secondary);
-  --color-accent: var(--accent);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #ffffff;
@@ -29,11 +39,124 @@
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+/* 페이퍼로지 폰트 임포트 */
+@font-face {
+  font-family: 'Paperlogy-1Thin';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-1Thin.woff2') format('woff2');
+  font-weight: 100;
+  font-style: normal;
 }
+
+@font-face {
+  font-family: 'Paperlogy-2ExtraLight';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-2ExtraLight.woff2') format('woff2');
+  font-weight: 200;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Paperlogy-3Light';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-3Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Paperlogy-4Regular';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-4Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Paperlogy-5Medium';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-5Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Paperlogy-6SemiBold';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-6SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Paperlogy-7Bold';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-7Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Paperlogy-8ExtraBold';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-8ExtraBold.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Paperlogy-9Black';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-9Black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+}
+
+/* 기본 스타일 */
+html {
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: #ffffff;
+  color: #000000;
+  font-family: 'Paperlogy-4Regular', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* 기본 텍스트 크기 설정 */
+* {
+  font-family: 'Paperlogy-4Regular', 'Paperlogy-5Medium', 'Paperlogy-6SemiBold', 'Paperlogy-7Bold', 'Paperlogy-8ExtraBold', 'Paperlogy-9Black', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* 모든 텍스트 요소 기본 크기 설정 */
+p, div, span, a, button, input, textarea, select, label {
+  font-size: 16px;
+}
+
+/* 헤딩 요소들 */
+h1 { font-size: 2.25rem; }
+h2 { font-size: 1.875rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.25rem; }
+h5 { font-size: 1.125rem; }
+h6 { font-size: 1rem; }
+
+/* 텍스트 크기 유틸리티 클래스 */
+.text-xs { font-size: 12px !important; }
+.text-sm { font-size: 14px !important; }
+.text-base { font-size: 16px !important; }
+.text-lg { font-size: 18px !important; }
+.text-xl { font-size: 20px !important; }
+.text-2xl { font-size: 24px !important; }
+.text-3xl { font-size: 30px !important; }
+.text-4xl { font-size: 36px !important; }
+
+/* 페이퍼로지 폰트를 전체 사이트에 적용 */
+.font-paperlogy-thin { font-family: 'Paperlogy-1Thin', sans-serif; font-weight: 100; }
+.font-paperlogy-extralight { font-family: 'Paperlogy-2ExtraLight', sans-serif; font-weight: 200; }
+.font-paperlogy-light { font-family: 'Paperlogy-3Light', sans-serif; font-weight: 300; }
+.font-paperlogy-regular { font-family: 'Paperlogy-4Regular', sans-serif; font-weight: 400; }
+.font-paperlogy-medium { font-family: 'Paperlogy-5Medium', sans-serif; font-weight: 500; }
+.font-paperlogy-semibold { font-family: 'Paperlogy-6SemiBold', sans-serif; font-weight: 600; }
+.font-paperlogy-bold { font-family: 'Paperlogy-7Bold', sans-serif; font-weight: 700; }
+.font-paperlogy-extrabold { font-family: 'Paperlogy-8ExtraBold', sans-serif; font-weight: 800; }
+.font-paperlogy-black { font-family: 'Paperlogy-9Black', sans-serif; font-weight: 900; }
 
 /* Text clamping utilities */
 .line-clamp-1 {
@@ -48,6 +171,13 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 /* Quill Editor Customization */
@@ -67,4 +197,50 @@ body {
   border-left: 1px solid #d1d5db;
   border-right: 1px solid #d1d5db;
   border-radius: 0 0 0.5rem 0.5rem;
+}
+
+/* 스크롤바 스타일링 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* 텍스트 선택 스타일 */
+::selection {
+  background-color: #000000;
+  color: #ffffff;
+}
+
+/* 링크 기본 스타일 */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 버튼 기본 스타일 */
+button {
+  font-family: inherit;
+}
+
+/* 입력 필드 기본 스타일 */
+input, textarea, select {
+  font-family: inherit;
+}
+
+/* 반응형 이미지 */
+img {
+  max-width: 100%;
+  height: auto;
 }

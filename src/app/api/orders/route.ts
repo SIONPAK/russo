@@ -22,6 +22,38 @@ const supabaseAdmin = createClient(
   }
 )
 
+// 오후 3시 기준 날짜 범위 계산
+const getDateRangeFromCutoff = (startDate?: string, endDate?: string) => {
+  const now = new Date()
+  const currentHour = now.getHours()
+  
+  // 사용자가 날짜를 직접 지정한 경우 그대로 사용
+  if (startDate && endDate) {
+    const endDateTime = new Date(endDate)
+    endDateTime.setHours(23, 59, 59, 999)
+    return {
+      start: startDate,
+      end: endDateTime.toISOString()
+    }
+  }
+  
+  // 오후 3시 기준 자동 계산
+  let cutoffDate = new Date()
+  
+  if (currentHour < 15) {
+    // 오후 3시 이전: 전날 오후 3시부터
+    cutoffDate.setDate(cutoffDate.getDate() - 1)
+  }
+  
+  // 오후 3시로 설정
+  cutoffDate.setHours(15, 0, 0, 0)
+  
+  return {
+    start: cutoffDate.toISOString(),
+    end: now.toISOString()
+  }
+}
+
 // GET - 주문 목록 조회
 export async function GET(request: NextRequest) {
   try {
@@ -105,15 +137,10 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
-    // 날짜 범위 필터
-    if (startDate) {
-      query = query.gte('created_at', startDate)
-    }
-    if (endDate) {
-      const endDateTime = new Date(endDate)
-      endDateTime.setHours(23, 59, 59, 999)
-      query = query.lte('created_at', endDateTime.toISOString())
-    }
+    // 날짜 범위 필터 (오후 3시 기준)
+    const dateRange = getDateRangeFromCutoff(startDate, endDate)
+    query = query.gte('created_at', dateRange.start)
+    query = query.lte('created_at', dateRange.end)
 
     // 정렬 및 페이지네이션
     query = query
@@ -142,6 +169,11 @@ export async function GET(request: NextRequest) {
           totalCount: count || 0,
           hasNextPage: page < totalPages,
           hasPrevPage: page > 1
+        },
+        dateRange: {
+          start: dateRange.start,
+          end: dateRange.end,
+          cutoffInfo: `오후 3시 기준 조회 (${new Date(dateRange.start).toLocaleString('ko-KR')} ~ ${new Date(dateRange.end).toLocaleString('ko-KR')})`
         }
       }
     })

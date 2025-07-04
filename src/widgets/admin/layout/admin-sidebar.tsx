@@ -13,7 +13,14 @@ import {
   LogOut,
   Grid3X3,
   Megaphone,
-  Monitor
+  Monitor,
+  Star,
+  Bell,
+  Zap,
+  Archive,
+  BarChart3,
+  Settings,
+  FileText
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -71,7 +78,7 @@ const menuItems = [
   },
   {
     title: '팝업 관리',
-    icon: Monitor,
+    icon: Zap,
     href: '/admin/popups',
     children: []
   },
@@ -79,6 +86,18 @@ const menuItems = [
     title: '카테고리 메뉴 관리',
     icon: Grid3X3,
     href: '/admin/categories',
+    children: []
+  },
+  {
+    title: '배너 관리',
+    icon: Monitor,
+    href: '/admin/banners',
+    children: []
+  },
+  {
+    title: '문서 관리',
+    icon: FileText,
+    href: '/admin/documents',
     children: []
   }
 ];

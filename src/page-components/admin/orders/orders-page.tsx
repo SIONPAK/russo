@@ -6,6 +6,7 @@ import { Input } from '@/shared/ui/input'
 import { formatCurrency, formatDateTime } from '@/shared/lib/utils'
 import { useOrderManagement } from '@/features/admin/order-management/model/use-order-management'
 import { BulkTrackingModal } from '@/features/admin/order-management/ui/bulk-tracking-modal'
+import { ShippingQuantityModal } from '@/features/admin/order-management/ui/shipping-quantity-modal'
 import { 
   downloadOrdersExcel, 
   downloadOrderShippingExcel,
@@ -21,6 +22,7 @@ import {
   Eye,
   Truck,
   Package,
+  Package2,
   CheckCircle,
   XCircle,
   Download,
@@ -52,6 +54,8 @@ export function OrdersPage() {
   } = useOrderManagement()
 
   const [bulkTrackingModalOpen, setBulkTrackingModalOpen] = useState(false)
+  const [shippingQuantityModalOpen, setShippingQuantityModalOpen] = useState(false)
+  const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<any>(null)
   const [searchValue, setSearchValue] = useState(filters.search)
   const [statusFilter, setStatusFilter] = useState(filters.status)
   const [startDate, setStartDate] = useState(filters.startDate)
@@ -413,6 +417,35 @@ export function OrdersPage() {
     }
   }
 
+  // 출고 수량 관리 함수
+  const handleShippingQuantityUpdate = async (orderId: string, items: Array<{ id: string; shipped_quantity: number }>) => {
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/shipping-quantity`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ items })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('출고 수량이 업데이트되었습니다.')
+        // 주문 목록 새로고침
+        await updateFilters({})
+        return true
+      } else {
+        showError(result.error || '출고 수량 업데이트에 실패했습니다.')
+        return false
+      }
+    } catch (error) {
+      console.error('출고 수량 업데이트 실패:', error)
+      showError('출고 수량 업데이트에 실패했습니다.')
+      return false
+    }
+  }
+
   const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
 
   return (
@@ -735,14 +768,29 @@ export function OrdersPage() {
                         </Button>
                       )}
                       {order.status === 'confirmed' && (
-                        <Button 
-                          size="sm" 
-                          className="bg-purple-600 hover:bg-purple-700"
-                          onClick={() => setBulkTrackingModalOpen(true)}
-                          disabled={updating}
-                        >
-                          <Truck className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button 
+                            size="sm" 
+                            className="bg-purple-600 hover:bg-purple-700"
+                            onClick={() => setBulkTrackingModalOpen(true)}
+                            disabled={updating}
+                            title="배송 처리"
+                          >
+                            <Truck className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => {
+                              setSelectedOrderForShipping(order)
+                              setShippingQuantityModalOpen(true)
+                            }}
+                            disabled={updating}
+                            title="출고 수량 관리"
+                          >
+                            <Package2 className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
                       {(order.status === 'pending' || order.status === 'confirmed') && (
                         <Button 
@@ -815,6 +863,17 @@ export function OrdersPage() {
         onClose={() => setBulkTrackingModalOpen(false)}
         selectedOrders={selectedOrdersData}
         onUpdate={updateOrdersStatus}
+      />
+
+      {/* 출고 수량 관리 모달 */}
+      <ShippingQuantityModal
+        isOpen={shippingQuantityModalOpen}
+        onClose={() => {
+          setShippingQuantityModalOpen(false)
+          setSelectedOrderForShipping(null)
+        }}
+        order={selectedOrderForShipping}
+        onUpdate={handleShippingQuantityUpdate}
       />
     </div>
   )
