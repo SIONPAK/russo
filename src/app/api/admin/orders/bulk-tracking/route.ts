@@ -8,6 +8,17 @@ interface TrackingUpdateItem {
   notes?: string
 }
 
+interface SuccessResult {
+  orderNumber: string
+  trackingNumber: string
+  courier?: string
+}
+
+interface FailedResult {
+  orderNumber: string
+  error: string
+}
+
 // POST /api/admin/orders/bulk-tracking - 운송장 번호 일괄 업데이트
 export async function POST(request: NextRequest) {
   try {
@@ -20,7 +31,10 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const results = {
+    const results: {
+      success: SuccessResult[]
+      failed: FailedResult[]
+    } = {
       success: [],
       failed: []
     }

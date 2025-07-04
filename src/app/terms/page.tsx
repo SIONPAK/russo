@@ -1,4 +1,4 @@
-import { TermsPage } from '@/pages/terms/terms-page'
+import { TermsPage } from '@/page-components/terms/terms-page'
 
 export default function Terms() {
   return <TermsPage />

@@ -201,155 +201,84 @@ async function processReturnMileageCompensation(supabase: any, compensationData:
     }
 
   } catch (error) {
-    console.error('Return mileage compensation process error:', error)
+    console.error('Return mileage compensation error:', error)
   }
 }
 
-// 엑셀 반품 명세서 생성
+// 반품 명세서 Excel 파일 생성
 async function generateReturnStatementExcel(returnData: any): Promise<string> {
-  const wb = XLSX.utils.book_new()
-  
-  // 반품 명세서 시트 생성
-  const wsData = [
-    ['반품 명세서'],
-    [''],
-    ['반품번호:', returnData.returnNumber],
-    ['발행일:', returnData.issueDate],
-    ['원주문번호:', returnData.orderNumber],
-    ['반품유형:', getReturnTypeText(returnData.returnType)],
-    ['반품사유:', returnData.returnReason],
-    [''],
-    ['고객 정보'],
-    ['업체명:', returnData.customer.companyName],
-    ['대표자명:', returnData.customer.representativeName],
-    ['사업자번호:', returnData.customer.businessNumber],
-    ['연락처:', returnData.customer.phone],
-    ['주소:', returnData.customer.address],
-    [''],
-    ['반품 상품 정보'],
-    ['번호', '상품명', '색상', '사이즈', '수량', '단가', '금액', '반품사유'],
-  ]
-
-  // 반품 상품 목록 추가
-  returnData.returnItems.forEach((item: any, index: number) => {
-    wsData.push([
-      index + 1,
-      item.productName,
-      item.color || '',
-      item.size || '',
-      item.quantity,
-      item.unitPrice,
-      item.totalPrice,
-      item.reason || returnData.returnReason
-    ])
-  })
-
-  // 금액 정보 추가
-  wsData.push(
-    [''],
-    ['', '', '', '', '', '', '반품금액:', returnData.amounts.totalReturnAmount],
-    ['', '', '', '', '', '', '마일리지보상:', returnData.amounts.mileageCompensation],
-    ['', '', '', '', '', '', '총보상금액:', returnData.amounts.finalAmount],
-    [''],
-    ['비고:', returnData.notes || '']
-  )
-
-  const ws = XLSX.utils.aoa_to_sheet(wsData)
-  
-  // 열 너비 설정
-  ws['!cols'] = [
-    { wch: 6 },  // 번호
-    { wch: 30 }, // 상품명
-    { wch: 10 }, // 색상
-    { wch: 10 }, // 사이즈
-    { wch: 8 },  // 수량
-    { wch: 12 }, // 단가
-    { wch: 12 }, // 금액
-    { wch: 20 }, // 반품사유
-  ]
-
-  XLSX.utils.book_append_sheet(wb, ws, '반품명세서')
-  
-  // 파일 저장 (실제로는 클라우드 스토리지에 저장)
-  const fileName = `return-statement-${returnData.returnNumber}.xlsx`
-  
-  return `/documents/return-statements/${fileName}`
-}
-
-// 반품 유형 텍스트 변환
-function getReturnTypeText(type: string): string {
-  const typeMap: { [key: string]: string } = {
-    exchange: '교환',
-    refund: '환불',
-    defect: '불량품',
-    mistake: '오배송'
-  }
-  return typeMap[type] || type
-}
-
-// GET - 반품 명세서 템플릿 다운로드
-export async function GET(request: NextRequest) {
   try {
     const wb = XLSX.utils.book_new()
     
-    const wsData = [
-      ['반품 명세서 템플릿'],
+    // 헤더 정보
+    const headerData = [
+      ['반품 명세서'],
       [''],
-      ['주문번호', '고객ID', '상품명', '색상', '사이즈', '수량', '단가', '반품사유', '반품유형', '마일리지보상', '비고'],
-      ['예시) ORD-20240101-001', '1', '상품A', '블랙', 'L', '2', '50000', '사이즈 불만족', 'exchange', '10000', '교환 요청'],
+      ['반품번호', returnData.returnNumber],
+      ['원주문번호', returnData.orderNumber],
+      ['발행일', returnData.issueDate],
+      ['반품유형', getReturnTypeText(returnData.returnType)],
+      ['반품사유', returnData.returnReason],
+      [''],
+      ['고객정보'],
+      ['회사명', returnData.customer.companyName],
+      ['대표자명', returnData.customer.representativeName],
+      ['사업자번호', returnData.customer.businessNumber],
+      ['연락처', returnData.customer.phone],
+      ['주소', returnData.customer.address],
+      [''],
+      ['반품상품 목록'],
+      ['상품명', '수량', '단가', '금액', '반품사유']
     ]
 
-    const ws = XLSX.utils.aoa_to_sheet(wsData)
-    
-    // 열 너비 설정
-    ws['!cols'] = [
-      { wch: 20 }, // 주문번호
-      { wch: 10 }, // 고객ID
-      { wch: 30 }, // 상품명
-      { wch: 10 }, // 색상
-      { wch: 10 }, // 사이즈
-      { wch: 8 },  // 수량
-      { wch: 12 }, // 단가
-      { wch: 20 }, // 반품사유
-      { wch: 12 }, // 반품유형
-      { wch: 12 }, // 마일리지보상
-      { wch: 20 }, // 비고
-    ]
-
-    XLSX.utils.book_append_sheet(wb, ws, '반품템플릿')
-    
-    return NextResponse.json({
-      success: true,
-      data: {
-        templateUrl: '/templates/return-statement-template.xlsx',
-        columns: [
-          '주문번호',
-          '고객ID',
-          '상품명',
-          '색상',
-          '사이즈',
-          '수량',
-          '단가',
-          '반품사유',
-          '반품유형',
-          '마일리지보상',
-          '비고'
-        ]
-      },
-      message: '반품 명세서 템플릿이 생성되었습니다.'
+    // 상품 데이터 추가
+    returnData.returnItems.forEach((item: any) => {
+      headerData.push([
+        item.productName,
+        item.quantity,
+        item.unitPrice.toLocaleString(),
+        item.totalPrice.toLocaleString(),
+        item.reason
+      ])
     })
 
+    // 합계 정보
+    headerData.push([''])
+    headerData.push(['반품 총액', returnData.amounts.totalReturnAmount.toLocaleString()])
+    headerData.push(['마일리지 보상', returnData.amounts.mileageCompensation.toLocaleString()])
+    headerData.push(['최종 금액', returnData.amounts.finalAmount.toLocaleString()])
+    
+    if (returnData.notes) {
+      headerData.push([''])
+      headerData.push(['비고', returnData.notes])
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(headerData)
+    XLSX.utils.book_append_sheet(wb, ws, '반품명세서')
+
+    // 파일 저장 (실제로는 스토리지에 저장해야 함)
+    const fileName = `return-statement-${returnData.returnNumber}.xlsx`
+    const fileUrl = `/files/return-statements/${fileName}`
+    
+    return fileUrl
+
   } catch (error) {
-    console.error('Return statement template error:', error)
-    return NextResponse.json({
-      success: false,
-      error: '반품 명세서 템플릿 생성 중 오류가 발생했습니다.'
-    }, { status: 500 })
+    console.error('Return statement Excel generation error:', error)
+    throw error
+  }
+}
+
+function getReturnTypeText(type: string): string {
+  switch (type) {
+    case 'exchange': return '교환'
+    case 'refund': return '환불'
+    case 'defect': return '불량'
+    default: return type
   }
 }
 
 // GET - 반품 명세서 목록 조회
-export async function GET_LIST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)

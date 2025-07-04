@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/shared/lib/supabase'
+import { supabase } from '@/shared/lib/supabase'
 
 // GET - 문서 미리보기
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createClient()
-    const { id } = params
+    const { id } = await params
 
     // 문서 정보 조회
     const { data: document, error } = await supabase
@@ -18,10 +17,10 @@ export async function GET(
       .single()
 
     if (error || !document) {
-      return NextResponse.json({
-        success: false,
-        error: '문서를 찾을 수 없습니다.'
-      }, { status: 404 })
+      return NextResponse.json(
+        { success: false, error: '문서를 찾을 수 없습니다.' },
+        { status: 404 }
+      )
     }
 
     // 파일 URL이 있는 경우 미리보기 페이지로 리다이렉트

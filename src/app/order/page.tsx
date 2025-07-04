@@ -1,19 +1,19 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { OrderPage } from '@/pages/order/order-page'
+import { OrderPage } from '@/page-components/order/order-page'
 import { useCart } from '@/features/cart/model/use-cart'
 
-export default function Order() {
+function OrderContent() {
   const searchParams = useSearchParams()
   const { cartItems } = useCart()
   const [mounted, setMounted] = useState(false)
 
   // URL 파라미터에서 주문 정보 추출
-  const itemsParam = searchParams.get('items')
-  const orderType = searchParams.get('orderType') as 'normal' | 'sample' || 'normal'
-  const sampleType = searchParams.get('sampleType') as 'photography' | 'sales' || 'photography'
+  const itemsParam = searchParams?.get('items')
+  const orderType = searchParams?.get('orderType') as 'normal' | 'sample' || 'normal'
+  const sampleType = searchParams?.get('sampleType') as 'photography' | 'sales' || 'photography'
 
   // URL에서 전달된 상품 정보가 있으면 사용, 없으면 장바구니 데이터 사용
   let orderItems = cartItems
@@ -42,7 +42,7 @@ export default function Order() {
   }
 
   // 장바구니 데이터를 주문 페이지에 전달할 형태로 변환
-  const finalOrderItems = orderItems.map(item => ({
+  const finalOrderItems = orderItems.map((item: any) => ({
     id: item.productId || item.id,
     name: item.productName || item.name,
     code: item.productCode || item.code || '',
@@ -68,7 +68,14 @@ export default function Order() {
     <OrderPage 
       cartItems={finalOrderItems}
       orderType={orderType}
-      sampleType={sampleType}
     />
+  )
+}
+
+export default function Order() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <OrderContent />
+    </Suspense>
   )
 } 

@@ -4,11 +4,11 @@ import { supabase } from '@/shared/lib/supabase'
 // GET - 특정 사용자 조회
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
-
+    const { id } = await params
+    
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
@@ -23,9 +23,12 @@ export async function GET(
       )
     }
 
+    // 민감한 정보 제외
+    const { password_hash, ...userResponse } = user
+
     return NextResponse.json({
       success: true,
-      data: user
+      data: userResponse
     })
 
   } catch (error) {
@@ -40,10 +43,10 @@ export async function GET(
 // PUT - 사용자 정보 수정
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     const {
@@ -59,6 +62,40 @@ export async function PUT(
       approval_status,
       is_active
     } = body
+
+    // 이메일 중복 검사 (자신 제외)
+    if (email) {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', email)
+        .neq('id', id)
+        .single()
+
+      if (existingUser) {
+        return NextResponse.json(
+          { success: false, error: '이미 사용 중인 이메일입니다.' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // 사업자번호 중복 검사 (자신 제외)
+    if (business_number) {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('business_number', business_number)
+        .neq('id', id)
+        .single()
+
+      if (existingUser) {
+        return NextResponse.json(
+          { success: false, error: '이미 등록된 사업자번호입니다.' },
+          { status: 400 }
+        )
+      }
+    }
 
     const { data: user, error } = await supabase
       .from('users')
@@ -82,32 +119,18 @@ export async function PUT(
 
     if (error) {
       console.error('User update error:', error)
-      
-      // 중복 에러 처리
-      if (error.code === '23505') {
-        if (error.message.includes('email')) {
-          return NextResponse.json(
-            { success: false, error: '이미 등록된 이메일입니다.' },
-            { status: 400 }
-          )
-        }
-        if (error.message.includes('business_number')) {
-          return NextResponse.json(
-            { success: false, error: '이미 등록된 사업자번호입니다.' },
-            { status: 400 }
-          )
-        }
-      }
-
       return NextResponse.json(
         { success: false, error: '사용자 정보 수정에 실패했습니다.' },
         { status: 500 }
       )
     }
 
+    // 민감한 정보 제외
+    const { password_hash, ...userResponse } = user
+
     return NextResponse.json({
       success: true,
-      data: user,
+      data: userResponse,
       message: '사용자 정보가 성공적으로 수정되었습니다.'
     })
 
@@ -123,34 +146,43 @@ export async function PUT(
 // DELETE - 사용자 삭제
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
 
-    // 사용자의 주문이 있는지 확인
-    const { data: orders, error: ordersError } = await supabase
+    // 주문이 있는 사용자인지 확인 (있다면 삭제 대신 비활성화)
+    const { data: orders } = await supabase
       .from('orders')
       .select('id')
       .eq('user_id', id)
       .limit(1)
 
-    if (ordersError) {
-      console.error('Orders check error:', ordersError)
-      return NextResponse.json(
-        { success: false, error: '사용자 삭제 검증에 실패했습니다.' },
-        { status: 500 }
-      )
-    }
-
-    // 주문이 있는 경우 삭제 불가
     if (orders && orders.length > 0) {
-      return NextResponse.json(
-        { success: false, error: '주문 내역이 있는 사용자는 삭제할 수 없습니다. 비활성화를 사용해주세요.' },
-        { status: 400 }
-      )
+      // 주문이 있으면 비활성화만 수행
+      const { error } = await supabase
+        .from('users')
+        .update({
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+
+      if (error) {
+        console.error('User deactivation error:', error)
+        return NextResponse.json(
+          { success: false, error: '사용자 비활성화에 실패했습니다.' },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: '주문 이력이 있어 사용자가 비활성화되었습니다.'
+      })
     }
 
+    // 주문이 없으면 완전 삭제
     const { error } = await supabase
       .from('users')
       .delete()

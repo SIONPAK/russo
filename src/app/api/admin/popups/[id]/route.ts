@@ -3,33 +3,37 @@ import { supabase } from '@/shared/lib/supabase'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { title, image_url, width, height, start_date, end_date, is_active } = await request.json()
+    const { id } = await params
+    const body = await request.json()
 
-    const { data, error } = await supabase
+    const { data: popup, error } = await supabase
       .from('popups')
-      .update({
-        title,
-        image_url,
-        width,
-        height,
-        start_date,
-        end_date,
-        is_active
-      })
-      .eq('id', params.id)
+      .update(body)
+      .eq('id', id)
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('Popup update error:', error)
+      return NextResponse.json(
+        { success: false, error: '팝업 수정에 실패했습니다.' },
+        { status: 500 }
+      )
+    }
 
-    return NextResponse.json(data)
+    return NextResponse.json({
+      success: true,
+      data: popup,
+      message: '팝업이 성공적으로 수정되었습니다.'
+    })
+
   } catch (error) {
-    console.error('팝업 수정 실패:', error)
+    console.error('Popup update API error:', error)
     return NextResponse.json(
-      { error: '팝업 수정에 실패했습니다.' },
+      { success: false, error: '서버 오류가 발생했습니다.' },
       { status: 500 }
     )
   }
@@ -37,21 +41,33 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
+
     const { error } = await supabase
       .from('popups')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
 
-    if (error) throw error
+    if (error) {
+      console.error('Popup delete error:', error)
+      return NextResponse.json(
+        { success: false, error: '팝업 삭제에 실패했습니다.' },
+        { status: 500 }
+      )
+    }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({
+      success: true,
+      message: '팝업이 성공적으로 삭제되었습니다.'
+    })
+
   } catch (error) {
-    console.error('팝업 삭제 실패:', error)
+    console.error('Popup delete API error:', error)
     return NextResponse.json(
-      { error: '팝업 삭제에 실패했습니다.' },
+      { success: false, error: '서버 오류가 발생했습니다.' },
       { status: 500 }
     )
   }

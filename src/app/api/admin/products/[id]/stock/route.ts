@@ -11,10 +11,10 @@ interface StockAdjustmentRequest {
 // PATCH /api/admin/products/[id]/stock - 재고 조정
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const productId = params.id
+    const { id: productId } = await params
     const body: StockAdjustmentRequest = await request.json()
     
     const { adjustment, color, size, reason } = body

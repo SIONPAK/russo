@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
           quantity,
           allocated_quantity
         ),
-        users (
+        users!orders_user_id_fkey (
           id,
           company_name,
           user_type,
@@ -82,8 +82,11 @@ export async function POST(request: NextRequest) {
       // 우선순위 기반 할당 (메인 대형 업체 우선)
       const sortedOrders = pendingOrders.sort((a: any, b: any) => {
         // 1. 우선순위 레벨 (낮은 숫자가 높은 우선순위)
-        const aPriority = a.users?.priority_level || 999
-        const bPriority = b.users?.priority_level || 999
+        const aUser = Array.isArray(a.users) ? a.users[0] : a.users
+        const bUser = Array.isArray(b.users) ? b.users[0] : b.users
+        
+        const aPriority = aUser?.priority_level || 999
+        const bPriority = bUser?.priority_level || 999
         
         if (aPriority !== bPriority) {
           return aPriority - bPriority
@@ -91,8 +94,8 @@ export async function POST(request: NextRequest) {
         
         // 2. 사용자 타입 (main_distributor > distributor > retailer)
         const typeOrder: { [key: string]: number } = { 'main_distributor': 1, 'distributor': 2, 'retailer': 3 }
-        const aTypeOrder = typeOrder[a.users?.user_type || ''] || 4
-        const bTypeOrder = typeOrder[b.users?.user_type || ''] || 4
+        const aTypeOrder = typeOrder[aUser?.user_type || ''] || 4
+        const bTypeOrder = typeOrder[bUser?.user_type || ''] || 4
         
         if (aTypeOrder !== bTypeOrder) {
           return aTypeOrder - bTypeOrder
@@ -121,11 +124,12 @@ export async function POST(request: NextRequest) {
             .eq('id', orderItem.id)
 
           if (!updateError) {
+            const user = Array.isArray(order.users) ? order.users[0] : order.users
             allocatedOrders.push({
               order_id: order.id,
-              company_name: order.users?.company_name,
-              user_type: order.users?.user_type,
-              priority_level: order.users?.priority_level,
+              company_name: user?.company_name || '',
+              user_type: user?.user_type || '',
+              priority_level: user?.priority_level || 999,
               allocated_quantity: allocateQuantity,
               needed_quantity: neededQuantity,
               is_fully_allocated: allocateQuantity === neededQuantity
@@ -166,10 +170,12 @@ export async function POST(request: NextRequest) {
             .eq('id', orderItem.id)
 
           if (!updateError) {
+            const user = Array.isArray(order.users) ? order.users[0] : order.users
             allocatedOrders.push({
               order_id: order.id,
-              company_name: order.users?.company_name,
-              user_type: order.users?.user_type,
+              company_name: user?.company_name || '',
+              user_type: user?.user_type || '',
+              priority_level: user?.priority_level || 999,
               allocated_quantity: allocateQuantity,
               needed_quantity: neededQuantity,
               is_fully_allocated: allocateQuantity === neededQuantity

@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: false,
       error: '서버 오류',
-      debug: { error: error.message }
+      debug: { error: error instanceof Error ? error.message : String(error) }
     }, { status: 500 })
   }
 } 

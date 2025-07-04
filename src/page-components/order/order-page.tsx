@@ -257,40 +257,45 @@ export function OrderPage({ cartItems = [], orderType: initialOrderType = 'norma
         createdOrder = await createOrder(orderData)
       }
       
-      // 영수증 데이터 준비
-      const receiptData: ReceiptData = {
-        orderNumber: createdOrder.order_number,
-        orderDate: formatDate(new Date()),
-        customerName: (user as any)?.company_name || formData.orderInfo.name,
-        customerPhone: formData.orderInfo.phone,
-        customerEmail: formData.orderInfo.email,
-        shippingName: formData.shippingInfo.name,
-        shippingPhone: formData.shippingInfo.phone,
-        shippingAddress: formData.shippingInfo.address,
-        shippingPostalCode: formData.shippingInfo.postalCode,
-        items: orderItems.map(item => ({
-          productName: item.productName,
-          productCode: item.productCode,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: item.totalPrice,
-          color: item.color,
-          size: item.size,
-          options: item.options
-        })),
-        subtotal,
-        shippingFee,
-        totalAmount,
-        notes: formData.orderNotes
-      }
-      
-      // 영수증 다운로드
-      const receiptGenerated = await generateReceipt(receiptData)
-      
-      if (receiptGenerated) {
-        showSuccess(`${orderType === 'sample' ? '샘플 주문' : '주문'}이 완료되었습니다. 영수증이 다운로드됩니다.`)
+      // 영수증 다운로드 (샘플 주문이 아닌 경우에만)
+      if (orderType !== 'sample') {
+        // 영수증 데이터 준비
+        const receiptData: ReceiptData = {
+          orderNumber: createdOrder.order_number,
+          orderDate: formatDate(new Date()),
+          customerName: (user as any)?.company_name || formData.orderInfo.name,
+          customerPhone: formData.orderInfo.phone,
+          customerEmail: formData.orderInfo.email,
+          shippingName: formData.shippingInfo.name,
+          shippingPhone: formData.shippingInfo.phone,
+          shippingAddress: formData.shippingInfo.address,
+          shippingPostalCode: formData.shippingInfo.postalCode,
+          items: orderItems.map(item => ({
+            productName: item.productName,
+            productCode: item.productCode,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            color: item.color,
+            size: item.size,
+            options: item.options
+          })),
+          subtotal,
+          shippingFee,
+          totalAmount,
+          notes: formData.orderNotes
+        }
+        
+        // 영수증 다운로드
+        const receiptGenerated = await generateReceipt(receiptData)
+        
+        if (receiptGenerated) {
+          showSuccess('주문이 완료되었습니다. 영수증이 다운로드됩니다.')
+        } else {
+          showInfo('주문은 완료되었으나 영수증 다운로드에 실패했습니다.')
+        }
       } else {
-        showInfo(`${orderType === 'sample' ? '샘플 주문' : '주문'}은 완료되었으나 영수증 다운로드에 실패했습니다.`)
+        showSuccess('샘플 주문이 완료되었습니다.')
       }
       
       // 주문 완료 페이지로 이동

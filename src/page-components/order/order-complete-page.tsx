@@ -169,13 +169,16 @@ export function OrderCompletePage() {
 
               {/* 액션 버튼들 */}
               <div className="space-y-4">
-                <button
-                  onClick={handleDownloadReceipt}
-                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center"
-                >
-                  <Download className="h-5 w-5 mr-2" />
-                  영수증 다운로드
-                </button>
+                {/* 샘플 주문이 아닌 경우에만 영수증 다운로드 버튼 표시 */}
+                {orderData?.order_type !== 'sample' && (
+                  <button
+                    onClick={handleDownloadReceipt}
+                    className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center"
+                  >
+                    <Download className="h-5 w-5 mr-2" />
+                    영수증 다운로드
+                  </button>
+                )}
                 
                 <div className="flex space-x-4">
                   <Link href="/mypage/orders">

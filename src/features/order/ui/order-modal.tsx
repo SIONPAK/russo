@@ -52,7 +52,8 @@ export const OrderModal = ({ isOpen, onClose, cartItems, userId }: OrderModalPro
     quantity: item.quantity,
     unitPrice: item.price,
     totalPrice: item.price * item.quantity,
-    options: item.options
+    color: item.color || "",
+    size: item.size || "",    options: item.options
   }))
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0)

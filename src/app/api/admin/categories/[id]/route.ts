@@ -4,11 +4,11 @@ import { createClient } from '@/shared/lib/supabase'
 // PUT - 카테고리 메뉴 수정
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createClient()
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     const {
@@ -117,11 +117,11 @@ export async function PUT(
 // DELETE - 카테고리 메뉴 삭제
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = createClient()
-    const { id } = params
+    const { id } = await params
 
     // 먼저 해당 카테고리를 사용하는 상품이 있는지 확인
     const { data: products, error: productError } = await supabase

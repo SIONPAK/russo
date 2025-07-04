@@ -4,26 +4,29 @@ import { supabase } from '@/shared/lib/supabase'
 // POST - 사용자 승인/반려
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
-    const body = await request.json()
-    const { action, reason } = body // action: 'approve' | 'reject'
+    const { id } = await params
+    const { action, reason } = await request.json()
 
     if (!action || !['approve', 'reject'].includes(action)) {
       return NextResponse.json(
-        { success: false, error: '유효하지 않은 액션입니다.' },
+        { success: false, error: '올바른 액션을 지정해주세요.' },
         { status: 400 }
       )
     }
 
     const approval_status = action === 'approve' ? 'approved' : 'rejected'
+    const is_active = action === 'approve'
 
     const { data: user, error } = await supabase
       .from('users')
       .update({
         approval_status,
+        is_active,
+        rejection_reason: action === 'reject' ? reason : null,
+        approved_at: action === 'approve' ? new Date().toISOString() : null,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
@@ -33,14 +36,14 @@ export async function POST(
     if (error) {
       console.error('User approval error:', error)
       return NextResponse.json(
-        { success: false, error: '사용자 승인 처리에 실패했습니다.' },
+        { success: false, error: '사용자 승인/반려 처리에 실패했습니다.' },
         { status: 500 }
       )
     }
 
-    const message = action === 'approve' 
-      ? '사용자가 승인되었습니다.' 
-      : '사용자가 반려되었습니다.'
+    const message = action === 'approve' ? 
+      '사용자가 성공적으로 승인되었습니다.' : 
+      '사용자가 반려되었습니다.'
 
     return NextResponse.json({
       success: true,
