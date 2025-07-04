@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { MainLayout } from '@/widgets/layout/main-layout'
 import { Button } from '@/shared/ui/button'
@@ -24,7 +25,8 @@ import {
 } from 'lucide-react'
 
 export function ProductsPage() {
-  const { isAuthenticated } = useAuthStore()
+  const router = useRouter()
+  const { user, isAuthenticated } = useAuthStore()
   const { addToCart } = useCart()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showFilters, setShowFilters] = useState(false)
@@ -40,6 +42,37 @@ export function ProductsPage() {
     setPage,
     setSortBy
   } = useProducts()
+
+  useEffect(() => {
+    console.log('Products Page - Auth State:', { user, isAuthenticated })
+    
+    if (!isAuthenticated || !user) {
+      console.log('Products Page - Not authenticated, redirecting to login')
+      alert('로그인이 필요한 서비스입니다.')
+      router.push('/auth/login')
+      return
+    }
+  }, [isAuthenticated, user, router])
+
+  // 로그인하지 않은 경우 로그인 페이지로 리다이렉트
+  if (!isAuthenticated || !user) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">로그인이 필요합니다</h2>
+            <p className="text-gray-600 mb-4">상품을 보시려면 로그인해주세요.</p>
+            <button 
+              onClick={() => router.push('/auth/login')}
+              className="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              로그인하기
+            </button>
+          </div>
+        </div>
+      </MainLayout>
+    )
+  }
 
   // 해시태그 파싱
   const parseHashtags = (tags: string) => {

@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Heart, ShoppingCart, X, Package } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { MainLayout } from '@/widgets/layout/main-layout'
+import { useAuthStore } from '@/entities/auth/model/auth-store'
 
 interface WishlistItem {
   id: string
@@ -50,7 +52,40 @@ const mockWishlistItems: WishlistItem[] = [
 ]
 
 export function WishlistPage() {
+  const router = useRouter()
+  const { user, isAuthenticated } = useAuthStore()
   const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>(mockWishlistItems)
+
+  useEffect(() => {
+    console.log('Wishlist Page - Auth State:', { user, isAuthenticated })
+    
+    if (!isAuthenticated || !user) {
+      console.log('Wishlist Page - Not authenticated, redirecting to login')
+      alert('로그인이 필요한 서비스입니다.')
+      router.push('/auth/login')
+      return
+    }
+  }, [isAuthenticated, user, router])
+
+  // 로그인하지 않은 경우 로그인 페이지로 리다이렉트
+  if (!isAuthenticated || !user) {
+    return (
+      <MainLayout>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">로그인이 필요합니다</h2>
+            <p className="text-gray-600 mb-4">관심상품을 보시려면 로그인해주세요.</p>
+            <button 
+              onClick={() => router.push('/auth/login')}
+              className="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              로그인하기
+            </button>
+          </div>
+        </div>
+      </MainLayout>
+    )
+  }
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('ko-KR').format(price)
