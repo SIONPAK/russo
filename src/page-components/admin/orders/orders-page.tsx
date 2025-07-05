@@ -234,6 +234,51 @@ export function OrdersPage() {
     await allocateInventory(selectedOrders)
   }
 
+  // 최종 명세서 확정 처리
+  const handleFinalizeStatements = async () => {
+    if (selectedOrders.length === 0) {
+      showInfo('최종 명세서를 확정할 주문을 선택해주세요.')
+      return
+    }
+
+    if (!confirm(`선택된 ${selectedOrders.length}건의 주문에 대해 최종 명세서를 확정하시겠습니까?\n\n⚠️ 확정 시 다음 작업이 수행됩니다:\n• 거래명세서 자동 생성\n• 마일리지 차감 처리\n• 주문 상태 변경\n\n이 작업은 되돌릴 수 없습니다.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/orders/finalize-statements', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderIds: selectedOrders
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        showSuccess(data.message)
+        
+        // 결과 상세 정보 표시
+        if (data.data.failed > 0) {
+          const failedOrders = data.data.results.filter((r: any) => !r.success)
+          const failedInfo = failedOrders.map((r: any) => `${r.orderNumber}: ${r.error}`).join('\n')
+          showError(`일부 주문 처리 실패:\n${failedInfo}`)
+        }
+        
+        // 주문 목록 새로고침
+        fetchTodayOrders()
+      } else {
+        showError(data.error || '최종 명세서 확정에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('최종 명세서 확정 오류:', error)
+      showError('최종 명세서 확정 중 오류가 발생했습니다.')
+    }
+  }
+
   // 날짜 변경 시 오후 3시 기준 조회
   const handleDateChange = (date: string) => {
     setSelectedDate(date)
@@ -393,6 +438,14 @@ export function OrdersPage() {
             >
               <Package className="w-4 h-4 mr-2" />
               재고 할당 ({selectedOrders.length})
+            </Button>
+            <Button
+              onClick={handleFinalizeStatements}
+              disabled={selectedOrders.length === 0 || updating}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              최종 명세서 확정 ({selectedOrders.length})
             </Button>
             <Button
               onClick={handleDownloadExcel}
@@ -563,14 +616,6 @@ export function OrdersPage() {
                                     <span className={`text-xs px-2 py-1 rounded ${getStockStatusColor(item)}`}>
                                       현재고: {item.available_stock || 0}개
                                     </span>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="text-sm text-gray-900">
-                                    {formatCurrency(item.unit_price)}
-                                  </div>
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {formatCurrency(item.total_price)}
                                   </div>
                                 </div>
                               </div>

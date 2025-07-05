@@ -4,11 +4,12 @@ import { generateShippingStatement } from '@/shared/lib/receipt-utils'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
-    const statementId = params.id
+    const statementId = id
 
     // 권한 확인 제거 - 일반 클라이언트 사용
 

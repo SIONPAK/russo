@@ -3,9 +3,10 @@ import { createClient } from '@/shared/lib/supabase'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = createClient()
     
     // 관리자 인증 확인 (생략 - 일반적으로 미들웨어에서 처리)
@@ -20,7 +21,7 @@ export async function PUT(
       return NextResponse.json({ error: '필수 정보가 누락되었습니다' }, { status: 400 })
     }
 
-    const mileageId = params.id
+    const mileageId = id
 
     // 마일리지 수정 (수동 입력한 것만 수정 가능)
     const { data: mileageData, error: fetchError } = await supabase
@@ -58,9 +59,10 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = createClient()
     
     // 관리자 인증 확인 (생략 - 일반적으로 미들웨어에서 처리)
@@ -69,7 +71,7 @@ export async function DELETE(
     //   return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 })
     // }
 
-    const mileageId = params.id
+    const mileageId = id
 
     // 마일리지 삭제 (수동 입력한 것만 삭제 가능)
     const { data: mileageData, error: fetchError } = await supabase
