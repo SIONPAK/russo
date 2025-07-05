@@ -169,10 +169,17 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // 실제 출고 금액 계산
+        // 실제 출고 수량 및 금액 계산
+        const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => 
+          sum + item.shipped_quantity, 0
+        )
         const shippedAmount = shippedItems.reduce((sum: number, item: any) => 
           sum + (item.unit_price * item.shipped_quantity), 0
         )
+
+        // 배송비 계산 (20장 미만일 때 3,000원)
+        const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+        const totalAmount = shippedAmount + shippingFee
 
         // 1. 거래명세서 생성
         const statementNumber = `TXN-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${order.order_number}`
@@ -184,9 +191,9 @@ export async function POST(request: NextRequest) {
             statement_type: 'transaction',
             user_id: order.user_id,
             order_id: order.id,
-            total_amount: shippedAmount,
+            total_amount: totalAmount,
             reason: '최종 명세서 확정',
-            notes: `실제 출고 금액: ${shippedAmount.toLocaleString()}원`,
+            notes: `실제 출고 금액: ${shippedAmount.toLocaleString()}원${shippingFee > 0 ? ` + 배송비: ${shippingFee.toLocaleString()}원` : ''}`,
             status: 'issued',
             created_at: new Date().toISOString()
           })
@@ -214,9 +221,9 @@ export async function POST(request: NextRequest) {
             statement_type: 'shipping',
             user_id: order.user_id,
             order_id: order.id,
-            total_amount: shippedAmount,
+            total_amount: totalAmount,
             reason: '출고 확정',
-            notes: `출고 수량: ${shippedItems.reduce((sum: number, item: any) => sum + item.shipped_quantity, 0)}개`,
+            notes: `출고 수량: ${totalShippedQuantity}개${shippingFee > 0 ? ` (배송비: ${shippingFee.toLocaleString()}원)` : ''}`,
             status: 'issued',
             created_at: new Date().toISOString()
           })
@@ -235,15 +242,30 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. 거래명세서 아이템들 생성
-        const statementItems = shippedItems.map((item: any) => ({
-          statement_id: statement.id,
-          product_name: item.product_name,
-          color: item.color,
-          size: item.size,
-          quantity: item.shipped_quantity,
-          unit_price: item.unit_price,
-          total_amount: item.unit_price * item.shipped_quantity
-        }))
+        const statementItems = [
+          ...shippedItems.map((item: any) => ({
+            statement_id: statement.id,
+            product_name: item.product_name,
+            color: item.color,
+            size: item.size,
+            quantity: item.shipped_quantity,
+            unit_price: item.unit_price,
+            total_amount: item.unit_price * item.shipped_quantity
+          }))
+        ]
+
+        // 배송비가 있는 경우 아이템에 추가
+        if (shippingFee > 0) {
+          statementItems.push({
+            statement_id: statement.id,
+            product_name: '배송비',
+            color: '-',
+            size: '-',
+            quantity: 1,
+            unit_price: shippingFee,
+            total_amount: shippingFee
+          })
+        }
 
         const { error: itemsError } = await supabase
           .from('statement_items')
@@ -261,15 +283,30 @@ export async function POST(request: NextRequest) {
         }
 
         // 2-1. 출고명세서 아이템들도 생성
-        const shippingStatementItems = shippedItems.map((item: any) => ({
-          statement_id: shippingStatement.id,
-          product_name: item.product_name,
-          color: item.color,
-          size: item.size,
-          quantity: item.shipped_quantity,
-          unit_price: item.unit_price,
-          total_amount: item.unit_price * item.shipped_quantity
-        }))
+        const shippingStatementItems = [
+          ...shippedItems.map((item: any) => ({
+            statement_id: shippingStatement.id,
+            product_name: item.product_name,
+            color: item.color,
+            size: item.size,
+            quantity: item.shipped_quantity,
+            unit_price: item.unit_price,
+            total_amount: item.unit_price * item.shipped_quantity
+          }))
+        ]
+
+        // 배송비가 있는 경우 아이템에 추가
+        if (shippingFee > 0) {
+          shippingStatementItems.push({
+            statement_id: shippingStatement.id,
+            product_name: '배송비',
+            color: '-',
+            size: '-',
+            quantity: 1,
+            unit_price: shippingFee,
+            total_amount: shippingFee
+          })
+        }
 
         const { error: shippingItemsError } = await supabase
           .from('statement_items')
@@ -288,17 +325,17 @@ export async function POST(request: NextRequest) {
 
         // 3. 마일리지 차감 처리
         const currentMileage = order.users.mileage_balance || 0
-        const newMileage = Math.max(0, currentMileage - shippedAmount)
+        const newMileage = Math.max(0, currentMileage - totalAmount)  // 배송비 포함된 총액으로 차감
         
         // 3-1. 먼저 마일리지 테이블에 차감 기록
         const { data: mileageRecord, error: mileageRecordError } = await supabase
           .from('mileage')
           .insert({
             user_id: order.user_id,
-            amount: shippedAmount,
+            amount: totalAmount,  // 배송비 포함된 총액으로 차감
             type: 'spend',
             source: 'order',
-            description: `최종 명세서 확정: ${order.order_number}`,
+            description: `최종 명세서 확정: ${order.order_number}${shippingFee > 0 ? ' (배송비 포함)' : ''}`,
             status: 'completed',
             order_id: order.id
           })
@@ -356,7 +393,7 @@ export async function POST(request: NextRequest) {
           statementNumber: statementNumber,
           shippingStatementNumber: shippingStatementNumber,
           shippedAmount: shippedAmount,
-          mileageDeducted: shippedAmount,
+          mileageDeducted: totalAmount,
           newMileage: newMileage
         })
 
@@ -365,7 +402,7 @@ export async function POST(request: NextRequest) {
           statementNumber,
           shippingStatementNumber,
           shippedAmount,
-          mileageDeducted: shippedAmount,
+          mileageDeducted: totalAmount,
           newMileage
         })
 
