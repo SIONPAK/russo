@@ -14,20 +14,24 @@ interface EmailOptions {
 }
 
 interface EmailConfig {
-  service: string
+  host: string
+  port: number
+  secure: boolean
   auth: {
     user: string
     pass: string
   }
 }
 
-// Gmail 이메일 설정 (환경변수에서 가져오기)
+// 네이버 이메일 설정
 const getEmailConfig = (): EmailConfig => {
   return {
-    service: 'gmail',
+    host: 'smtp.naver.com',
+    port: 465,
+    secure: true,
     auth: {
-      user: process.env.EMAIL_USER || '', // Gmail 주소
-      pass: process.env.EMAIL_PASS || ''  // Gmail 앱 비밀번호
+      user: 'lusso112',  // 네이버 아이디
+      pass: process.env.EMAIL_PASS || ''  // 애플리케이션 비밀번호
     }
   }
 }
@@ -42,9 +46,11 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
       throw new Error('이메일 설정이 없습니다. 환경변수를 확인해주세요.')
     }
 
-    // transporter 생성 (Gmail 서비스 사용)
+    // transporter 생성 (네이버 SMTP 사용)
     const transporter = nodemailer.createTransport({
-      service: config.service,
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
       auth: config.auth
     })
 
@@ -53,7 +59,7 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
 
     // 메일 옵션 설정
     const mailOptions = {
-      from: `"루소 (LUSSO)" <${config.auth.user}>`,
+      from: `"루소 (LUSSO)" <${config.auth.user}@naver.com>`,
       to: options.to,
       subject: options.subject,
       html: options.html,
@@ -170,7 +176,7 @@ export async function sendShippingStatementEmail(
 
   return await sendEmail({
     to: recipientEmail,
-    subject: `[루소] 거래명세서 - ${orderData.order_number}`,
+    subject: `[루소](으)로부터 [거래명세서](이)가 도착했습니다 - ${orderData.order_number}`,
     html: emailHtml,
     attachments
   })
@@ -186,7 +192,9 @@ export async function testEmailConnection(): Promise<{ success: boolean; error?:
     }
 
     const transporter = nodemailer.createTransport({
-      service: config.service,
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
       auth: config.auth
     })
 

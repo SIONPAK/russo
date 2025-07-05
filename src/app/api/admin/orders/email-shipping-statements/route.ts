@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
               order_id: order.id,
               recipient_email: order.users?.email,
               email_type: 'shipping_statement',
-              subject: `[루소] 거래명세서 - ${order.order_number}`,
+              subject: `[루소](으)로부터 [거래명세서](이)가 도착했습니다. - ${order.order_number}`,
               status: 'sent',
               message_id: emailResult.messageId,
               sent_at: new Date().toISOString()
