@@ -26,6 +26,7 @@ interface ShippingStatement {
   customer_grade: string
   created_at: string
   shipped_at: string
+  status: string
   email_sent: boolean
   email_sent_at: string | null
   total_amount: number
@@ -226,6 +227,19 @@ export default function ShippingStatementsPage() {
     }
   }
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+        return <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">확정됨</span>
+      case 'preparing':
+        return <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">배송준비중</span>
+      case 'shipped':
+        return <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">배송완료</span>
+      default:
+        return <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">{status}</span>
+    }
+  }
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -343,8 +357,9 @@ export default function ShippingStatementsPage() {
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">주문번호</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">업체명</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">출고일시</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">출고금액</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">주문일시</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">주문금액</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">주문상태</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">이메일 발송</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작업</th>
               </tr>
@@ -385,12 +400,17 @@ export default function ShippingStatementsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm text-gray-900">
-                        {format(new Date(statement.shipped_at), 'yyyy-MM-dd HH:mm', { locale: ko })}
+                        {format(new Date(statement.created_at), 'yyyy-MM-dd HH:mm', { locale: ko })}
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm font-medium text-gray-900">
                         {statement.total_amount.toLocaleString()}원
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center">
+                        {getStatusBadge(statement.status)}
                       </div>
                     </td>
                     <td className="px-4 py-3">

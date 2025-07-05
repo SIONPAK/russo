@@ -211,36 +211,6 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // 1-1. 출고명세서도 함께 생성
-        const shippingStatementNumber = `SHP-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${order.order_number}`
-        
-        const { data: shippingStatement, error: shippingStatementError } = await supabase
-          .from('statements')
-          .insert({
-            statement_number: shippingStatementNumber,
-            statement_type: 'shipping',
-            user_id: order.user_id,
-            order_id: order.id,
-            total_amount: totalAmount,
-            reason: '출고 확정',
-            notes: `출고 수량: ${totalShippedQuantity}개${shippingFee > 0 ? ` (배송비: ${shippingFee.toLocaleString()}원)` : ''}`,
-            status: 'issued',
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single()
-
-        if (shippingStatementError) {
-          console.error('출고명세서 생성 오류:', shippingStatementError)
-          results.push({
-            orderId: order.id,
-            orderNumber: order.order_number,
-            success: false,
-            error: '출고명세서 생성 실패'
-          })
-          continue
-        }
-
         // 2. 거래명세서 아이템들 생성
         const statementItems = [
           ...shippedItems.map((item: any) => ({
@@ -278,47 +248,6 @@ export async function POST(request: NextRequest) {
             orderNumber: order.order_number,
             success: false,
             error: '거래명세서 아이템 생성 실패'
-          })
-          continue
-        }
-
-        // 2-1. 출고명세서 아이템들도 생성
-        const shippingStatementItems = [
-          ...shippedItems.map((item: any) => ({
-            statement_id: shippingStatement.id,
-            product_name: item.product_name,
-            color: item.color,
-            size: item.size,
-            quantity: item.shipped_quantity,
-            unit_price: item.unit_price,
-            total_amount: item.unit_price * item.shipped_quantity
-          }))
-        ]
-
-        // 배송비가 있는 경우 아이템에 추가
-        if (shippingFee > 0) {
-          shippingStatementItems.push({
-            statement_id: shippingStatement.id,
-            product_name: '배송비',
-            color: '-',
-            size: '-',
-            quantity: 1,
-            unit_price: shippingFee,
-            total_amount: shippingFee
-          })
-        }
-
-        const { error: shippingItemsError } = await supabase
-          .from('statement_items')
-          .insert(shippingStatementItems)
-
-        if (shippingItemsError) {
-          console.error('출고명세서 아이템 생성 오류:', shippingItemsError)
-          results.push({
-            orderId: order.id,
-            orderNumber: order.order_number,
-            success: false,
-            error: '출고명세서 아이템 생성 실패'
           })
           continue
         }
@@ -391,7 +320,6 @@ export async function POST(request: NextRequest) {
           orderNumber: order.order_number,
           success: true,
           statementNumber: statementNumber,
-          shippingStatementNumber: shippingStatementNumber,
           shippedAmount: shippedAmount,
           mileageDeducted: totalAmount,
           newMileage: newMileage
@@ -400,7 +328,6 @@ export async function POST(request: NextRequest) {
         console.log('최종 명세서 확정 완료:', {
           orderNumber: order.order_number,
           statementNumber,
-          shippingStatementNumber,
           shippedAmount,
           mileageDeducted: totalAmount,
           newMileage

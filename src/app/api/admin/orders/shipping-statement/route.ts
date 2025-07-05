@@ -91,13 +91,14 @@ export async function GET(request: NextRequest) {
     const companyName = searchParams.get('companyName')
     const emailSent = searchParams.get('emailSent')
 
-    // 출고 명세서 조회 (실제 출고가 완료된 주문들)
+    // 출고 명세서 조회 (confirmed 이후 상태의 주문들)
     let query = supabase
       .from('orders')
       .select(`
         id,
         order_number,
         total_amount,
+        status,
         shipped_at,
         created_at,
         users!inner(
@@ -114,14 +115,13 @@ export async function GET(request: NextRequest) {
           unit_price
         )
       `)
-      .not('shipped_at', 'is', null)
-      .gt('order_items.shipped_quantity', 0)
+      .in('status', ['confirmed', 'preparing', 'shipped'])  // confirmed 이후 상태의 주문 조회
 
     // 날짜 필터
     if (startDate && endDate) {
       query = query
-        .gte('shipped_at', `${startDate}T00:00:00`)
-        .lte('shipped_at', `${endDate}T23:59:59`)
+        .gte('created_at', `${startDate}T00:00:00`)
+        .lte('created_at', `${endDate}T23:59:59`)
     }
 
     // 업체명 필터
