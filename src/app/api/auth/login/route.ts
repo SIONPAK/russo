@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { supabase } from '@/shared/lib/supabase'
+import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 일반 사용자의 경우 승인 상태 확인
+    // 일반 사용자의 경우 승인 상태 확인 및 로그인 시간 업데이트
     if (userType === 'customer') {
       if (user.approval_status !== 'approved') {
         const statusMessage = {
@@ -85,11 +86,66 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      if (!user.is_active) {
+      if (!user.is_active && !user.is_dormant) {
         return NextResponse.json(
           { success: false, message: '비활성화된 계정입니다. 관리자에게 문의해주세요.' },
           { status: 403 }
         )
+      }
+
+      // 휴면 계정 확인 및 해제
+      if (user.is_dormant) {
+        // 휴면 계정 자동 해제 (로그인 시)
+        const currentKoreanTime = getCurrentKoreanDateTime()
+        const { error: reactivateError } = await supabase
+          .from('users')
+          .update({
+            is_dormant: false,
+            dormant_at: null,
+            is_active: true,
+            last_login_at: currentKoreanTime,
+            updated_at: currentKoreanTime
+          })
+          .eq('id', user.id)
+
+        if (reactivateError) {
+          console.error('휴면 계정 해제 오류:', reactivateError)
+        } else {
+          console.log('휴면 계정 자동 해제됨:', user.user_id)
+          // 상태 변경 이력 로깅
+          await supabase
+            .from('user_status_logs')
+            .insert({
+              user_id: user.id,
+              previous_status: 'dormant',
+              new_status: 'active',
+              action_type: 'activate',
+              reason: '로그인에 의한 자동 휴면 해제',
+              changed_by: null
+            })
+          
+          // user 객체도 업데이트
+          user.is_dormant = false
+          user.dormant_at = null
+          user.is_active = true
+          user.last_login_at = currentKoreanTime
+        }
+      } else {
+        // 일반 사용자의 경우 마지막 로그인 시간 업데이트
+        const currentKoreanTime = getCurrentKoreanDateTime()
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            last_login_at: currentKoreanTime,
+            updated_at: currentKoreanTime
+          })
+          .eq('id', user.id)
+
+        if (updateError) {
+          console.error('마지막 로그인 시간 업데이트 오류:', updateError)
+        } else {
+          user.last_login_at = currentKoreanTime
+        }
       }
     }
 
@@ -118,6 +174,9 @@ export async function POST(request: NextRequest) {
         recipient_phone: user.recipient_phone,
         approval_status: user.approval_status,
         is_active: user.is_active,
+        is_dormant: user.is_dormant,
+        customer_grade: user.customer_grade,
+        last_login_at: user.last_login_at,
         userType: 'customer'
       }
     }
@@ -125,7 +184,7 @@ export async function POST(request: NextRequest) {
     // 로그인 성공 시 쿠키 설정
     const response = NextResponse.json({
       success: true,
-      message: '로그인에 성공했습니다.',
+      message: user.is_dormant ? '휴면 계정이 해제되어 로그인되었습니다.' : '로그인에 성공했습니다.',
       data: userResponse
     }, { status: 200 })
 

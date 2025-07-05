@@ -393,6 +393,12 @@ export interface TrackingUploadData {
   trackingNumber: string
   courier?: string
   notes?: string
+  receiverName?: string
+  receiverPhone?: string
+  receiverAddress?: string
+  companyName?: string
+  itemName?: string
+  itemQuantity?: string
 }
 
 // 주문 내역을 엑셀로 다운로드
@@ -587,24 +593,32 @@ export function parseTrackingExcel(file: File): Promise<TrackingUploadData[]> {
         const trackingData: TrackingUploadData[] = []
         
         jsonData.forEach((row: any, index) => {
-          const orderNumber = row['주문번호']?.toString().trim()
+          // 새로운 형식의 엑셀 파싱 (받는분 성명, 받는분 전화번호, 받는분 주소, 품목명, 내품명, 내품수량, 배송메세지, 운송장번호, 회사명)
+          const receiverName = row['받는분 성명']?.toString().trim()
+          const receiverPhone = row['받는분 전화번호']?.toString().trim()
+          const receiverAddress = row['받는분 주소']?.toString().trim()
           const trackingNumber = row['운송장번호']?.toString().trim()
+          const companyName = row['회사명']?.toString().trim()
+          const itemName = row['내품명']?.toString().trim() // 상품명 (색상/사이즈) 형식
+          const itemQuantity = row['내품수량']?.toString().trim()
           
-          if (!orderNumber || !trackingNumber) {
-            console.warn(`행 ${index + 2}: 주문번호 또는 운송장번호가 비어있습니다.`)
+          if (!receiverName || !receiverPhone || !trackingNumber) {
+            console.warn(`행 ${index + 2}: 필수 정보가 누락되었습니다.`)
             return
           }
           
-          // 예시 데이터는 제외
-          if (orderNumber.includes('예)')) {
-            return
-          }
-          
+          // 배송 정보를 기반으로 주문 찾기 (받는분 성명, 전화번호로 매칭)
           trackingData.push({
-            orderNumber,
+            orderNumber: '', // 주문번호는 서버에서 매칭
             trackingNumber,
-            courier: row['택배사']?.toString().trim() || '',
-            notes: row['비고']?.toString().trim() || ''
+            courier: '', // 택배사는 별도 입력
+            notes: row['배송메세지']?.toString().trim() || '',
+            receiverName,
+            receiverPhone,
+            receiverAddress,
+            companyName,
+            itemName, // 내품명 정보 추가
+            itemQuantity // 내품수량 정보 추가
           })
         })
         
@@ -866,7 +880,13 @@ export function downloadOrderShippingExcel(orders: AdminOrderItem[], filename?: 
   
   // 파일 다운로드
   const fileName = filename || `주문배송정보_${formatDate(new Date()).replace(/\./g, '')}.xlsx`
-  XLSX.writeFile(wb, fileName)
+  
+  // 엑셀 파일 생성
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  
+  // 파일 다운로드
+  saveAs(blob, fileName)
 }
 
 // 샘플 배송 정보 엑셀 다운로드 (사용자 요청 형식)

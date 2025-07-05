@@ -36,6 +36,7 @@ interface OrderItem {
   quantity: number
   unit_price: number
   total_price: number
+  shipped_quantity?: number
   options?: any
   products?: {
     name: string
@@ -126,9 +127,9 @@ const statusMap = {
 
 export function OrdersPage() {
   const { isAuthenticated, user } = useAuthStore()
-  const [activeTab, setActiveTab] = useState<'normal' | 'sample'>('normal')
+  const [activeTab, setActiveTab] = useState<'purchase' | 'sample'>('purchase')
   
-  // 일반 주문 관련 상태
+  // 발주 주문 관련 상태 (기존 일반 주문 상태를 발주용으로 변경)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -222,7 +223,7 @@ export function OrdersPage() {
   useEffect(() => {
     if (user?.id) {
       // 현재 활성 탭에 따라 해당 데이터만 로드
-      if (activeTab === 'normal') {
+      if (activeTab === 'purchase') {
         fetchOrders()
       } else {
         fetchSampleOrders()
@@ -233,7 +234,7 @@ export function OrdersPage() {
   // 탭 변경 시 해당 탭 데이터만 로드
   useEffect(() => {
     if (user?.id && activeTab) {
-      if (activeTab === 'normal') {
+      if (activeTab === 'purchase') {
         fetchOrders(1)
       } else if (activeTab === 'sample') {
         fetchSampleOrders(1)
@@ -248,87 +249,88 @@ export function OrdersPage() {
     }
   }, [sampleStatusFilter, user?.id, activeTab])
 
-  // 일반 주문 목록 조회
+  // 발주 주문 데이터 가져오기 (기존 fetchOrders 수정)
   const fetchOrders = async (page = 1) => {
-    if (!user?.id) return
-
+    if (!isAuthenticated || !user) return
+    
     setLoading(true)
     try {
       const params = new URLSearchParams({
-        userId: user.id,
         page: page.toString(),
-        limit: '10'
+        limit: '10',
+        userId: user.id,
+        ...(searchTerm && { search: searchTerm }),
+        ...(statusFilter && { status: statusFilter }),
+        ...(startDate && { startDate }),
+        ...(endDate && { endDate })
       })
 
-      if (statusFilter) {
-        params.append('status', statusFilter)
+      // 발주 주문만 가져오도록 type 필터 추가
+      params.append('type', 'purchase')
+
+      const response = await fetch(`/api/orders?${params}`, {
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch orders')
       }
 
-      if (startDate) {
-        params.append('startDate', startDate)
-      }
-
-      if (endDate) {
-        params.append('endDate', endDate)
-      }
-
-      const response = await fetch(`/api/orders?${params}`)
       const result = await response.json()
-
+      
       if (result.success) {
-        setOrders(result.data.orders)
-        setCurrentPage(result.data.pagination.currentPage)
-        setTotalPages(result.data.pagination.totalPages)
-        setTotalCount(result.data.pagination.totalCount)
+        setOrders(result.data || [])
+        setTotalPages(result.pagination?.totalPages || 1)
+        setTotalCount(result.pagination?.totalCount || 0)
       } else {
-        showError(result.error || '주문 목록을 불러오는데 실패했습니다.')
+        showError('발주 내역을 불러오는데 실패했습니다.')
       }
     } catch (error) {
-      console.error('주문 목록 조회 오류:', error)
-      showError('주문 목록을 불러오는데 실패했습니다.')
+      console.error('Fetch orders error:', error)
+      showError('발주 내역을 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
   }
 
-  // 일반 주문 목록 조회 (날짜 파라미터 직접 전달)
   const fetchOrdersWithParams = async (page = 1, startDateParam?: string, endDateParam?: string) => {
-    if (!user?.id) return
-
+    if (!isAuthenticated || !user) return
+    
     setLoading(true)
     try {
       const params = new URLSearchParams({
-        userId: user.id,
         page: page.toString(),
-        limit: '10'
+        limit: '10',
+        userId: user.id,
+        ...(searchTerm && { search: searchTerm }),
+        ...(statusFilter && { status: statusFilter }),
+        ...(startDateParam && { startDate: startDateParam }),
+        ...(endDateParam && { endDate: endDateParam })
       })
 
-      if (statusFilter) {
-        params.append('status', statusFilter)
+      // 발주 주문만 가져오도록 type 필터 추가
+      params.append('type', 'purchase')
+
+      const response = await fetch(`/api/orders?${params}`, {
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch orders')
       }
 
-      if (startDateParam) {
-        params.append('startDate', startDateParam)
-      }
-
-      if (endDateParam) {
-        params.append('endDate', endDateParam)
-      }
-
-      const response = await fetch(`/api/orders?${params}`)
       const result = await response.json()
-
+      
       if (result.success) {
-        setOrders(result.data.orders)
-        setCurrentPage(result.data.pagination.currentPage)
-        setTotalPages(result.data.pagination.totalPages)
-        setTotalCount(result.data.pagination.totalCount)
+        setOrders(result.data || [])
+        setTotalPages(result.pagination?.totalPages || 1)
+        setTotalCount(result.pagination?.totalCount || 0)
       } else {
-        showError(result.error || '주문 목록을 불러오는데 실패했습니다.')
+        showError('발주 내역을 불러오는데 실패했습니다.')
       }
     } catch (error) {
-      console.error('주문 목록 조회 오류:', error)
-      showError('주문 목록을 불러오는데 실패했습니다.')
+      console.error('Fetch orders error:', error)
+      showError('발주 내역을 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
@@ -420,24 +422,61 @@ export function OrdersPage() {
     }
   }
 
-  // 거래명세서 조회 함수
+  // 거래명세서 발급 함수 (영수증 폼 사용, 실제 출고 수량만 포함)
   const handleViewStatement = async (orderId: string) => {
     try {
-      const response = await fetch(`/api/documents/${orderId}/statement`)
-      const result = await response.json()
+      // 주문 상세 정보 가져오기
+      const order = orders.find(o => o.id === orderId)
+      if (!order) {
+        showError('주문 정보를 찾을 수 없습니다.')
+        return
+      }
 
-      if (result.success && result.data) {
-        // 거래명세서 PDF 다운로드
-        const link = document.createElement('a')
-        link.href = result.data.file_url
-        link.download = `거래명세서_${result.data.order_number}.pdf`
-        link.click()
+      // 실제 출고된 아이템만 필터링
+      const shippedItems = order.order_items.filter(item => item.shipped_quantity && item.shipped_quantity > 0)
+      
+      if (shippedItems.length === 0) {
+        showInfo('아직 출고된 상품이 없습니다.')
+        return
+      }
+
+      // 20장 이상 무료배송 확인
+      const totalShippedQuantity = shippedItems.reduce((sum, item) => sum + (item.shipped_quantity || 0), 0)
+      const actualShippingFee = totalShippedQuantity >= 20 ? 0 : (order.shipping_fee || 0)
+
+      // 영수증 데이터 구성 (실제 출고 수량 기준)
+      const receiptData: ReceiptData = {
+        orderNumber: order.order_number,
+        orderDate: formatDate(order.created_at),
+        customerName: (user as any)?.company_name || order.shipping_name,
+        customerPhone: order.shipping_phone,
+        shippingName: order.shipping_name,
+        shippingPhone: order.shipping_phone,
+        shippingAddress: order.shipping_address,
+        shippingPostalCode: order.shipping_postal_code,
+        items: shippedItems.map((item: any) => ({
+          productName: item.product_name,
+          productCode: item.product_code || item.product_id,
+          quantity: item.shipped_quantity || 0, // 실제 출고 수량 사용
+          unitPrice: item.unit_price,
+          totalPrice: item.unit_price * (item.shipped_quantity || 0), // 출고 수량 기준 총액
+          options: `${item.color || ''} ${item.size || ''}`.trim()
+        })),
+        subtotal: shippedItems.reduce((sum, item) => sum + (item.unit_price * (item.shipped_quantity || 0)), 0),
+        shippingFee: actualShippingFee,
+        totalAmount: shippedItems.reduce((sum, item) => sum + (item.unit_price * (item.shipped_quantity || 0)), 0) + actualShippingFee,
+        notes: order.notes
+      }
+
+      const success = await generateReceipt(receiptData)
+      if (success) {
+        showSuccess('거래명세서가 다운로드되었습니다.')
       } else {
-        showInfo('거래명세서가 아직 생성되지 않았습니다.')
+        showError('거래명세서 다운로드에 실패했습니다.')
       }
     } catch (error) {
-      console.error('거래명세서 조회 실패:', error)
-      showError('거래명세서 조회에 실패했습니다.')
+      console.error('거래명세서 발급 실패:', error)
+      showError('거래명세서 발급에 실패했습니다.')
     }
   }
 
@@ -552,14 +591,14 @@ export function OrdersPage() {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             <button
-              onClick={() => setActiveTab('normal')}
+              onClick={() => setActiveTab('purchase')}
               className={`py-3 px-1 border-b-2 font-semibold text-sm ${
-                activeTab === 'normal'
+                activeTab === 'purchase'
                   ? 'border-black text-black'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              일반 주문
+              발주 내역
             </button>
             <button
               onClick={() => setActiveTab('sample')}
@@ -576,7 +615,7 @@ export function OrdersPage() {
       </div>
 
       {/* 일반 주문 탭 */}
-      {activeTab === 'normal' && (
+      {activeTab === 'purchase' && (
         <>
           {/* 검색 및 필터 */}
           <div className="mb-8 space-y-6">
@@ -799,16 +838,30 @@ export function OrdersPage() {
 
                       {/* 주문 액션 버튼 */}
                       <div className="flex flex-wrap gap-2 mt-4">
-                        {/* 거래명세서 조회 */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewStatement(order.id)}
-                          className="text-purple-600 hover:text-purple-700"
-                        >
-                          <FileText className="w-4 h-4 mr-1" />
-                          거래명세서
-                        </Button>
+                        {/* 거래명세서 조회 - 배송중 또는 배송완료 상태일 때만 표시 */}
+                        {(order.status === 'shipped' || order.status === 'delivered') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewStatement(order.id)}
+                            className="text-purple-600 hover:text-purple-700"
+                          >
+                            <FileText className="w-4 h-4 mr-1" />
+                            거래명세서
+                          </Button>
+                        )}
+                        
+                        {/* 상태별 안내 메시지 */}
+                        {order.status === 'pending' && (
+                          <div className="text-xs text-gray-500 italic">
+                            거래명세서는 상품 출고 후 다운로드 가능합니다.
+                          </div>
+                        )}
+                        {order.status === 'confirmed' && (
+                          <div className="text-xs text-gray-500 italic">
+                            상품 준비 중입니다. 출고 후 거래명세서를 다운로드하실 수 있습니다.
+                          </div>
+                        )}
                       </div>
                     </div>
 

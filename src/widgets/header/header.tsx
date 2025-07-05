@@ -5,11 +5,9 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
 import { useCategoryMenu } from '@/features/category-menu/model/use-category-menu'
-import { useCart } from '@/features/cart/model/use-cart'
 import { Button } from '@/shared/ui/button'
 import { 
   User, 
-  ShoppingCart, 
   Search,
   Menu,
   X,
@@ -19,13 +17,16 @@ import {
   CreditCard,
   FileText,
   MapPin,
-  Award
+  Award,
+  Settings,
+  LogOut,
+  Bell,
+  ClipboardList
 } from 'lucide-react'
 
 export default function Header() {
   const { user, isAuthenticated, logout, userType } = useAuthStore()
   const { categories } = useCategoryMenu()
-  const { getCartSummary } = useCart()
   const router = useRouter()
   const pathname = usePathname()
   const [mounted, setMounted] = useState(false)
@@ -51,8 +52,8 @@ export default function Header() {
     }
   }, [])
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     setIsUserMenuOpen(false)
     router.push('/')
   }
@@ -77,9 +78,6 @@ export default function Header() {
     router.push(path)
     setIsUserMenuOpen(false)
   }
-
-  // 장바구니 정보 가져오기
-  const cartSummary = mounted ? getCartSummary() : { totalItems: 0 }
 
   // 사용자 표시명 가져오기
   const getUserDisplayName = () => {
@@ -221,26 +219,17 @@ export default function Header() {
 
             {/* 우측 액션 버튼들 */}
             <div className="flex items-center space-x-3 flex-shrink-0 min-w-[120px] justify-end">
-              {/* 장바구니 */}
-              <button 
-                onClick={() => router.push('/cart')}
-                className="relative p-2 text-gray-700 hover:text-black transition-colors"
-              >
-                <ShoppingCart className="h-5 w-5" />
-                {cartSummary.totalItems > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-black text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
-                    {cartSummary.totalItems > 9 ? '9+' : cartSummary.totalItems}
-                  </span>
-                )}
-              </button>
-
               {/* 사용자 메뉴 */}
               <div className="relative" ref={userMenuRef}>
                 <button 
                   onClick={handleUserMenuClick}
                   className="flex items-center p-2 text-gray-700 hover:text-black transition-colors"
                 >
-                  <User className="h-5 w-5" />
+                  {userType === 'admin' ? (
+                    <Settings className="h-5 w-5" />
+                  ) : (
+                    <User className="h-5 w-5" />
+                  )}
                   {isAuthenticated && userType === 'customer' && (
                     <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                   )}
@@ -311,6 +300,17 @@ export default function Header() {
               >
                 {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
+
+              {/* B2B 발주관리 메뉴 (관리자가 아닐 때만) */}
+              {isAuthenticated && userType === 'customer' && (
+                <Link
+                  href="/order-management"
+                  className="flex items-center space-x-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                >
+                  <ClipboardList className="h-4 w-4" color='white'/>
+                  <span className='text-white'>발주관리</span>
+                </Link>
+              )}
             </div>
           </div>
 
@@ -375,12 +375,24 @@ export default function Header() {
                             </Link>
                           )
                         })}
+                        
+                        {/* B2B 발주관리 메뉴 (관리자가 아닐 때만) */}
+                        {userType === 'customer' && (
+                          <Link
+                            href="/order-management"
+                            className="flex items-center text-sm text-gray-600 hover:text-black transition-colors"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                          >
+                            <ClipboardList className="h-4 w-4 mr-2" />
+                            발주관리
+                          </Link>
+                        )}
                       </div>
                     )}
                     
                     <button
-                      onClick={() => {
-                        handleLogout()
+                      onClick={async () => {
+                        await handleLogout()
                         setIsMobileMenuOpen(false)
                       }}
                       className="text-sm text-red-600 hover:text-red-700 transition-colors"

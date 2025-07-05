@@ -158,10 +158,10 @@ export function OrderCompletePage() {
                   <div className="text-sm text-blue-800">
                     <p className="font-medium mb-2">주문 처리 안내</p>
                     <ul className="space-y-1 text-blue-700">
-                      <li>• 주문 확인 후 1-2일 내에 상품을 준비합니다.</li>
-                      <li>• 배송은 주문 확인 후 2-3일 소요됩니다.</li>
-                      <li>• 배송 시작 시 문자로 송장번호를 안내드립니다.</li>
-                      <li>• 주문 관련 문의는 고객센터로 연락해 주세요.</li>
+                      <li>• <strong>월~금 15:00 이전 주문 시, 당일 출고</strong></li>
+                      <li>• 택배비 3,000원 / 20장 이상 무료배송</li>
+                      <li>• <strong>거래명세서는 실제 출고 후 마이페이지에서 다운로드 가능합니다.</strong></li>
+                      <li>• 주문 전용 카카오톡: <strong>010-2131-7540</strong></li>
                     </ul>
                   </div>
                 </div>
@@ -169,17 +169,6 @@ export function OrderCompletePage() {
 
               {/* 액션 버튼들 */}
               <div className="space-y-4">
-                {/* 샘플 주문이 아닌 경우에만 영수증 다운로드 버튼 표시 */}
-                {orderData?.order_type !== 'sample' && (
-                  <button
-                    onClick={handleDownloadReceipt}
-                    className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center"
-                  >
-                    <Download className="h-5 w-5 mr-2" />
-                    영수증 다운로드
-                  </button>
-                )}
-                
                 <div className="flex space-x-4">
                   <Link href="/mypage/orders">
                     <Button className="w-full bg-black text-white hover:bg-gray-800 h-12 text-lg font-semibold">
@@ -206,7 +195,7 @@ export function OrderCompletePage() {
               <div className="text-center text-sm text-gray-600">
                 <p className="mb-1">주문 관련 문의</p>
                 <p className="font-medium text-gray-900">
-                  고객센터: 1588-0000 (평일 09:00-18:00)
+                  주문 전용 카카오톡: 010-2131-7540
                 </p>
               </div>
             </div>

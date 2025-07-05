@@ -7,10 +7,15 @@ export interface OrderItem {
   color: string
   size: string
   quantity: number
+  shipped_quantity?: number
   unit_price: number
   total_price: number
+  available_stock?: number
+  allocated_quantity?: number
+  allocation_status?: 'pending' | 'allocated' | 'insufficient'
   products?: {
     name: string
+    code: string
     images: Array<{
       image_url: string
       is_main: boolean
@@ -35,6 +40,8 @@ export interface Order {
   updated_at: string
   shipped_at?: string
   delivered_at?: string
+  allocation_status?: 'pending' | 'allocated' | 'partial' | 'insufficient'
+  allocation_priority?: number
   users?: {
     company_name: string
     representative_name: string
@@ -51,6 +58,8 @@ export interface OrderStats {
   delivered: number
   cancelled: number
   total: number
+  allocated: number
+  insufficient_stock: number
 }
 
 export interface OrderFilters {
@@ -60,6 +69,26 @@ export interface OrderFilters {
   endDate: string
   page: number
   limit: number
+  is_3pm_based?: boolean
+  allocation_status?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
+}
+
+export function get3PMBasedDateRange(targetDate: string) {
+  const target = new Date(targetDate)
+  
+  const startDate = new Date(target)
+  startDate.setDate(startDate.getDate() - 1)
+  startDate.setHours(15, 0, 0, 0)
+  
+  const endDate = new Date(target)
+  endDate.setHours(14, 59, 59, 999)
+  
+  return {
+    startDate: startDate.toISOString(),
+    endDate: endDate.toISOString()
+  }
 }
 
 export function useOrderManagement() {
@@ -70,7 +99,9 @@ export function useOrderManagement() {
     shipped: 0,
     delivered: 0,
     cancelled: 0,
-    total: 0
+    total: 0,
+    allocated: 0,
+    insufficient_stock: 0
   })
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
@@ -89,14 +120,23 @@ export function useOrderManagement() {
     startDate: '',
     endDate: '',
     page: 1,
-    limit: 20
+    limit: 20,
+    is_3pm_based: true,
+    allocation_status: 'all',
+    sort_by: 'company_name',
+    sort_order: 'desc'
   })
 
-  // 주문 목록 조회
   const fetchOrders = async (newFilters?: Partial<OrderFilters>) => {
     try {
       setLoading(true)
       const currentFilters = { ...filters, ...newFilters }
+      
+      if (currentFilters.is_3pm_based && currentFilters.startDate) {
+        const dateRange = get3PMBasedDateRange(currentFilters.startDate)
+        currentFilters.startDate = dateRange.startDate
+        currentFilters.endDate = dateRange.endDate
+      }
       
       const params = new URLSearchParams()
       Object.entries(currentFilters).forEach(([key, value]) => {
@@ -107,7 +147,23 @@ export function useOrderManagement() {
       const result = await response.json()
 
       if (result.success) {
-        setOrders(result.data.orders)
+        let ordersData = result.data.orders
+        
+        // 클라이언트 사이드에서 업체명 정렬 처리
+        if (currentFilters.sort_by === 'company_name') {
+          ordersData = ordersData.sort((a: Order, b: Order) => {
+            const companyA = a.users?.company_name || ''
+            const companyB = b.users?.company_name || ''
+            
+            if (currentFilters.sort_order === 'asc') {
+              return companyA.localeCompare(companyB)
+            } else {
+              return companyB.localeCompare(companyA)
+            }
+          })
+        }
+        
+        setOrders(ordersData)
         setStats(result.data.stats)
         setPagination(result.data.pagination)
         if (newFilters) {
@@ -124,7 +180,45 @@ export function useOrderManagement() {
     }
   }
 
-  // 주문 상태 일괄 업데이트
+  const allocateInventory = async (orderIds: string[]) => {
+    try {
+      setUpdating(true)
+      
+      const response = await fetch('/api/admin/orders/allocate-inventory', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ orderIds })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess(`${result.data.allocated}건의 주문에 재고가 할당되었습니다.`)
+        await fetchOrders()
+        return true
+      } else {
+        showError(result.error || '재고 할당에 실패했습니다.')
+        return false
+      }
+    } catch (error) {
+      console.error('재고 할당 실패:', error)
+      showError('재고 할당에 실패했습니다.')
+      return false
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const fetchTodayOrders = () => {
+    const today = new Date().toISOString().split('T')[0]
+    updateFilters({ 
+      startDate: today,
+      is_3pm_based: true
+    })
+  }
+
   const updateOrdersStatus = async (
     orderIds: string[], 
     status: Order['status'], 
@@ -148,9 +242,9 @@ export function useOrderManagement() {
       const result = await response.json()
 
       if (result.success) {
-        showSuccess(result.message)
-        await fetchOrders() // 목록 새로고침
-        setSelectedOrders([]) // 선택 해제
+        showSuccess(`${result.data.updatedOrders}건의 주문이 업데이트되었습니다.`)
+        await fetchOrders()
+        setSelectedOrders([])
         return true
       } else {
         showError(result.error || '주문 상태 업데이트에 실패했습니다.')
@@ -165,7 +259,6 @@ export function useOrderManagement() {
     }
   }
 
-  // 단일 주문 상태 업데이트
   const updateSingleOrder = async (
     orderId: string, 
     status: Order['status'], 
@@ -174,7 +267,6 @@ export function useOrderManagement() {
     return updateOrdersStatus([orderId], status, trackingNumber ? [trackingNumber] : undefined)
   }
 
-  // 주문 선택/해제
   const toggleOrderSelection = (orderId: string) => {
     setSelectedOrders(prev => 
       prev.includes(orderId) 
@@ -183,7 +275,6 @@ export function useOrderManagement() {
     )
   }
 
-  // 전체 선택/해제
   const toggleAllSelection = () => {
     if (selectedOrders.length === orders.length) {
       setSelectedOrders([])
@@ -192,18 +283,15 @@ export function useOrderManagement() {
     }
   }
 
-  // 필터 업데이트
   const updateFilters = (newFilters: Partial<OrderFilters>) => {
     const updatedFilters = { ...filters, ...newFilters, page: 1 }
     fetchOrders(updatedFilters)
   }
 
-  // 페이지 변경
   const changePage = (page: number) => {
     fetchOrders({ page })
   }
 
-  // 필터 초기화
   const resetFilters = () => {
     const resetFilters = {
       search: '',
@@ -211,19 +299,19 @@ export function useOrderManagement() {
       startDate: '',
       endDate: '',
       page: 1,
-      limit: 20
+      limit: 20,
+      is_3pm_based: true,
+      allocation_status: 'all',
+      sort_by: 'company_name',
+      sort_order: 'desc' as const
     }
     setFilters(resetFilters)
     fetchOrders(resetFilters)
   }
 
-  // 초기 데이터 로드
-  useEffect(() => {
-    fetchOrders()
-  }, [])
+  // 초기 로딩은 페이지 컴포넌트에서 처리
 
   return {
-    // 상태
     orders,
     stats,
     loading,
@@ -232,8 +320,9 @@ export function useOrderManagement() {
     pagination,
     filters,
     
-    // 액션
     fetchOrders,
+    fetchTodayOrders,
+    allocateInventory,
     updateOrdersStatus,
     updateSingleOrder,
     toggleOrderSelection,

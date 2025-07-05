@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { X, Upload, Download, FileText } from 'lucide-react'
 import { Order } from '../model/use-order-management'
+import * as XLSX from 'xlsx'
 
 interface BulkTrackingModalProps {
   isOpen: boolean
@@ -57,8 +58,49 @@ export function BulkTrackingModal({
     const file = event.target.files?.[0]
     if (!file) return
 
-    // TODO: 엑셀 파일 파싱 로직 구현
-    console.log('엑셀 파일 업로드:', file.name)
+    // 엑셀 파일 파싱 로직 구현
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+
+        // 헤더 행 제거하고 데이터 파싱
+        const rows = jsonData.slice(1) as any[]
+        const parsedTrackingNumbers: { [orderId: string]: string } = {}
+
+        rows.forEach((row: any[]) => {
+          const orderNumber = row[0]?.toString().trim()
+          const trackingNumber = row[1]?.toString().trim()
+          
+          if (orderNumber && trackingNumber) {
+            // 주문번호로 주문 ID 찾기
+            const order = selectedOrders.find(o => o.order_number === orderNumber)
+            if (order) {
+              parsedTrackingNumbers[order.id] = trackingNumber
+            }
+          }
+        })
+
+        // 파싱된 데이터를 상태에 반영
+        setTrackingNumbers(parsedTrackingNumbers)
+        
+        // 성공 메시지
+        const parsedCount = Object.keys(parsedTrackingNumbers).length
+        alert(`${parsedCount}개의 운송장 번호가 업로드되었습니다.`)
+        
+      } catch (error) {
+        console.error('엑셀 파일 파싱 실패:', error)
+        alert('엑셀 파일 형식이 올바르지 않습니다. 템플릿을 다운로드하여 확인해주세요.')
+      }
+    }
+    
+    reader.readAsArrayBuffer(file)
+    // 파일 입력 초기화
+    event.target.value = ''
   }
 
   const downloadTemplate = () => {

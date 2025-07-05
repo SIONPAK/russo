@@ -26,7 +26,7 @@ import {
 
 export function ProductsPage() {
   const router = useRouter()
-  const { user, isAuthenticated } = useAuthStore()
+  const { user, isAuthenticated, userType } = useAuthStore()
   const { addToCart } = useCart()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showFilters, setShowFilters] = useState(false)
@@ -333,37 +333,40 @@ export function ProductsPage() {
 
                           {/* 액션 버튼들 */}
                           <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                            <button 
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                if (!isAuthenticated) {
-                                  showInfo('로그인이 필요합니다.')
-                                  return
-                                }
-                                
-                                try {
-                                  const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
+                            {/* 장바구니 버튼 - 어드민이 아닐 때만 표시 */}
+                            {userType !== 'admin' && (
+                              <button 
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  if (!isAuthenticated) {
+                                    showInfo('로그인이 필요합니다.')
+                                    return
+                                  }
                                   
-                                  addToCart({
-                                    productId: product.id,
-                                    productName: product.name,
-                                    productImage: getMainImage(product),
-                                    unitPrice,
-                                    quantity: 1,
-                                    color: '',
-                                    size: '',
-                                  })
-                                  
-                                  showSuccess(`${product.name}이(가) 장바구니에 추가되었습니다.`)
-                                } catch (error) {
-                                  showInfo('장바구니 추가 중 오류가 발생했습니다.')
-                                }
-                              }}
-                              className="w-8 h-8 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md transition-colors pointer-events-auto"
-                            >
-                              <ShoppingCart className="h-4 w-4 text-gray-600" />
-                            </button>
+                                  try {
+                                    const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
+                                    
+                                    addToCart({
+                                      productId: product.id,
+                                      productName: product.name,
+                                      productImage: getMainImage(product),
+                                      unitPrice,
+                                      quantity: 1,
+                                      color: '',
+                                      size: '',
+                                    })
+                                    
+                                    showSuccess(`${product.name}이(가) 장바구니에 추가되었습니다.`)
+                                  } catch (error) {
+                                    showInfo('장바구니 추가 중 오류가 발생했습니다.')
+                                  }
+                                }}
+                                className="w-8 h-8 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md transition-colors pointer-events-auto"
+                              >
+                                <ShoppingCart className="h-4 w-4 text-gray-600" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -444,37 +447,40 @@ export function ProductsPage() {
 
                               {/* 액션 버튼들 */}
                               <div className="flex justify-end">
-                                <button 
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    if (!isAuthenticated) {
-                                      showInfo('로그인이 필요합니다.')
-                                      return
-                                    }
-                                    
-                                    try {
-                                      const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
+                                {/* 장바구니 버튼 - 어드민이 아닐 때만 표시 */}
+                                {userType !== 'admin' && (
+                                  <button 
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      if (!isAuthenticated) {
+                                        showInfo('로그인이 필요합니다.')
+                                        return
+                                      }
                                       
-                                      addToCart({
-                                        productId: product.id,
-                                        productName: product.name,
-                                        productImage: getMainImage(product),
-                                        unitPrice,
-                                        quantity: 1,
-                                        color: '',
-                                        size: '',
-                                      })
-                                      
-                                      showSuccess(`${product.name}이(가) 장바구니에 추가되었습니다.`)
-                                    } catch (error) {
-                                      showInfo('장바구니 추가 중 오류가 발생했습니다.')
-                                    }
-                                  }}
-                                  className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-                                >
-                                  <ShoppingCart className="h-5 w-5 text-gray-600" />
-                                </button>
+                                      try {
+                                        const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
+                                        
+                                        addToCart({
+                                          productId: product.id,
+                                          productName: product.name,
+                                          productImage: getMainImage(product),
+                                          unitPrice,
+                                          quantity: 1,
+                                          color: '',
+                                          size: '',
+                                        })
+                                        
+                                        showSuccess(`${product.name}이(가) 장바구니에 추가되었습니다.`)
+                                      } catch (error) {
+                                        showInfo('장바구니 추가 중 오류가 발생했습니다.')
+                                      }
+                                    }}
+                                    className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                                  >
+                                    <ShoppingCart className="h-5 w-5 text-gray-600" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>

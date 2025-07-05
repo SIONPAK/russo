@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         product_options: product_options || `색상: 기본, 사이즈: 기본`,
         quantity,
         sample_type,
-        charge_amount: sample_type === 'photography' ? 0 : product.price * quantity,
+        charge_amount: 0, // 샘플 주문은 항상 0원 고정
         status: 'pending', // 관리자 승인 대기
         outgoing_date: null, // 배송 시에만 설정
         delivery_address: delivery_address, // 배송 주소

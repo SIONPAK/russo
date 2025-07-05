@@ -11,7 +11,7 @@ import { useOrder } from '@/features/order/model/use-order'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
 import { OrderFormData } from '@/features/order/model/use-order-form'
 import { formatCurrency } from '@/shared/lib/utils'
-import { showInfo, showSuccess } from '@/shared/lib/toast'
+import { showInfo, showSuccess, showError } from '@/shared/lib/toast'
 import { generateReceipt, formatDate, ReceiptData } from '@/shared/lib/receipt-utils'
 
 interface OrderItem {
@@ -54,6 +54,9 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
   // 배송 메모 관련 상태
   const [selectedMemoOption, setSelectedMemoOption] = useState('')
   const [customMemo, setCustomMemo] = useState('')
+  const [userMileage, setUserMileage] = useState(0) // 사용자 마일리지 잔액
+  const [useMileage, setUseMileage] = useState(0) // 사용할 마일리지
+  const [paymentMethod, setPaymentMethod] = useState<'mileage' | 'bank'>('mileage') // 결제 방법
 
   // 배송 메모 옵션들
   const memoOptions = [
@@ -104,6 +107,28 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
       setCustomMemo('')
     }
   }, [selectedMemoOption, customMemo, updateOrderNotes])
+
+  // 사용자 마일리지 잔액 조회
+  useEffect(() => {
+    const fetchUserMileage = async () => {
+      if (!user?.id) return
+      
+      try {
+        const response = await fetch(`/api/mileage?userId=${user.id}&limit=1`)
+        const result = await response.json()
+        
+        if (result.success && result.data.summary) {
+          setUserMileage(result.data.summary.currentBalance || 0)
+        }
+      } catch (error) {
+        console.error('마일리지 조회 실패:', error)
+      }
+    }
+    
+    if (user?.id) {
+      fetchUserMileage()
+    }
+  }, [user?.id])
 
   // 주문자 정보 업데이트 (배송지 동기화 포함)
   const handleOrderInfoUpdate = (field: keyof OrderFormData['orderInfo'], value: string) => {
@@ -157,8 +182,23 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
   }))
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0)
-  const shippingFee = 3000 // 기본 배송비
-  const totalAmount = subtotal + shippingFee
+  const totalQuantity = orderItems.reduce((sum, item) => sum + item.quantity, 0)
+  const shippingFee = totalQuantity >= 20 ? 0 : 3000 // 20장 이상 무료배송
+  const mileageDiscount = Math.min(useMileage, subtotal) // 마일리지는 상품금액까지만 사용 가능
+  const finalAmount = subtotal + shippingFee - mileageDiscount
+
+  // 마일리지 사용 금액 변경 처리
+  const handleMileageChange = (value: string) => {
+    const amount = parseInt(value) || 0
+    const maxUsable = Math.min(userMileage, subtotal) // 보유 마일리지와 상품금액 중 작은 값
+    setUseMileage(Math.min(amount, maxUsable))
+  }
+
+  // 전액 마일리지 사용
+  const useAllMileage = () => {
+    const maxUsable = Math.min(userMileage, subtotal)
+    setUseMileage(maxUsable)
+  }
 
   // 섹션 토글
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -214,12 +254,42 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
           address: formData.shippingInfo.address,
           postalCode: formData.shippingInfo.postalCode
         },
-        totalAmount,
+        totalAmount: finalAmount,
         shippingFee,
         notes: formData.orderNotes || undefined
       }
 
       const createdOrder = await createOrder(orderData)
+      
+      // 마일리지 사용 시 차감 처리
+      if (useMileage > 0) {
+        try {
+          const mileageResponse = await fetch('/api/mileage', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userId: user.id,
+              amount: useMileage,
+              type: 'spend',
+              description: `주문 결제: ${createdOrder.order_number}`,
+              source: 'order'
+            })
+          })
+          
+          const mileageResult = await mileageResponse.json()
+          
+          if (!mileageResult.success) {
+            console.error('마일리지 차감 실패:', mileageResult.error)
+            // 주문은 생성되었지만 마일리지 차감 실패 시 알림
+            showError('주문은 완료되었으나 마일리지 차감에 실패했습니다. 고객센터에 문의해주세요.')
+          }
+        } catch (error) {
+          console.error('마일리지 차감 오류:', error)
+          showError('주문은 완료되었으나 마일리지 차감에 실패했습니다. 고객센터에 문의해주세요.')
+        }
+      }
       
       // 영수증 데이터 준비
       const receiptData: ReceiptData = {
@@ -244,7 +314,7 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
         })),
         subtotal,
         shippingFee,
-        totalAmount,
+        totalAmount: finalAmount,
         notes: formData.orderNotes
       }
       
@@ -508,7 +578,8 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
                     <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg">
                       <p className="font-medium text-gray-800 mb-2">🚚 배송 안내</p>
                       <ul className="space-y-1">
-                        <li>• 모든 주문에 배송비 3,000원이 적용됩니다.</li>
+                        <li>• 배송비 3,000원 (20장 이상 무료배송)</li>
+                        <li>• 현재 주문 수량: <strong>{totalQuantity}장</strong> {totalQuantity >= 20 && <span className="text-green-600 font-bold">- 무료배송!</span>}</li>
                         <li>• 주문 확인 후 1-2일 내 배송 준비가 완료됩니다.</li>
                         <li>• 배송 시작 시 문자로 송장번호를 안내드립니다.</li>
                       </ul>
@@ -578,12 +649,12 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
                     </div>
                     <div className="flex justify-between text-lg">
                       <span>할인/부가결제</span>
-                      <span>₩0</span>
+                      <span>₩{formatCurrency(mileageDiscount)}</span>
                     </div>
                     <hr className="my-4" />
                     <div className="flex justify-between font-bold text-xl">
                       <span>최종 결제 금액</span>
-                      <span className="text-red-600">{formatCurrency(totalAmount)}</span>
+                      <span className="text-red-600">{formatCurrency(finalAmount)}</span>
                     </div>
                     
                     <div className="text-sm text-gray-500 bg-gray-50 p-4 rounded-lg mt-4">
@@ -613,7 +684,7 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
                 disabled={isOrderLoading || isFormLoading}
                 className="flex-1 h-12 bg-black text-white hover:bg-gray-800 text-lg font-semibold"
               >
-                {isOrderLoading ? '주문 처리중...' : `${formatCurrency(totalAmount)} 주문하기`}
+                {isOrderLoading ? '주문 처리중...' : `${formatCurrency(finalAmount)} 주문하기`}
               </Button>
             </div>
           </div>

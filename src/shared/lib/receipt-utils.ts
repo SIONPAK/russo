@@ -56,6 +56,28 @@ export interface TradeStatementData {
   notes?: string
 }
 
+// 출고 명세서 데이터 인터페이스
+export interface ShippingStatementData {
+  orderNumber: string
+  companyName: string
+  businessLicenseNumber?: string
+  email: string
+  phone: string
+  address: string
+  postalCode: string
+  customerGrade: string
+  shippedAt: string
+  items: Array<{
+    productName: string
+    color: string
+    size: string
+    quantity: number
+    unitPrice: number
+    totalPrice: number
+  }>
+  totalAmount: number
+}
+
 // 숫자를 한글로 변환하는 함수
 const numberToKorean = (num: number): string => {
   const units = ['', '만', '억', '조']
@@ -267,9 +289,17 @@ export const generateReceipt = async (receiptData: ReceiptData) => {
     // 수신/회사명 (C4) - 회사명으로 변경
     worksheet['C4'] = { t: 's', v: receiptData.customerName }
     
-    // 합계금액 (D9 - 십일만구천칠백원정, I9 - ₩128,370) - 중앙정렬
-    const totalAmountKorean = numberToKorean(receiptData.totalAmount)
-    const totalAmountFormatted = receiptData.totalAmount.toLocaleString()
+    // 합계금액 (공급가액 + 세액) - 중앙정렬
+    const totalSupplyAmount = groupedItems.reduce((sum, item) => sum + item.supplyAmount, 0)
+    const totalTaxAmount = groupedItems.reduce((sum, item) => sum + item.taxAmount, 0)
+    
+    // 20장 이상 무료배송 확인 (실제 출고 수량 기준)
+    const totalQuantity = receiptData.items.reduce((sum, item) => sum + item.quantity, 0)
+    const actualShippingFee = totalQuantity >= 20 ? 0 : (receiptData.shippingFee || 0)
+    const finalTotalAmount = totalSupplyAmount + totalTaxAmount + actualShippingFee
+    
+    const totalAmountKorean = numberToKorean(finalTotalAmount)
+    const totalAmountFormatted = finalTotalAmount.toLocaleString()
     worksheet['D9'] = {
       t: 's',
       v: totalAmountKorean,
@@ -365,10 +395,6 @@ export const generateReceipt = async (receiptData: ReceiptData) => {
         worksheet[`I${row}`] = { t: 's', v: '' }
       }
     }
-    
-    // 합계 계산
-    const totalSupplyAmount = groupedItems.reduce((sum, item) => sum + item.supplyAmount, 0)
-    const totalTaxAmount = groupedItems.reduce((sum, item) => sum + item.taxAmount, 0)
     
     // 합계 행 위치 (22행 + 추가된 행 수)
     const summaryRow = 22 + extraRows
@@ -614,5 +640,162 @@ export async function generateTradeStatement(data: TradeStatementData, fileName:
   } catch (error) {
     console.error('거래명세서 생성 오류:', error)
     throw new Error('거래명세서 생성에 실패했습니다.')
+  }
+}
+
+// 출고 명세서 생성 함수
+export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
+  try {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('출고명세서')
+
+    // 컬럼 너비 설정
+    worksheet.columns = [
+      { width: 3 },   // A
+      { width: 12 },  // B
+      { width: 15 },  // C
+      { width: 12 },  // D
+      { width: 8 },   // E
+      { width: 8 },   // F
+      { width: 12 },  // G
+      { width: 15 },  // H
+      { width: 12 }   // I
+    ]
+
+    // 회사 로고 및 제목
+    worksheet.mergeCells('A1:I3')
+    const titleCell = worksheet.getCell('A1')
+    titleCell.value = '출고 명세서'
+    titleCell.font = { size: 24, bold: true }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleCell.border = {
+      top: { style: 'thick' },
+      left: { style: 'thick' },
+      bottom: { style: 'thick' },
+      right: { style: 'thick' }
+    }
+
+    // 회사 정보
+    let row = 5
+    worksheet.mergeCells(`A${row}:C${row}`)
+    worksheet.getCell(`A${row}`).value = '공급자 정보'
+    worksheet.getCell(`A${row}`).font = { bold: true, size: 12 }
+    worksheet.getCell(`A${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } }
+
+    row++
+    worksheet.getCell(`A${row}`).value = '상호명:'
+    worksheet.getCell(`B${row}`).value = '루소'
+    worksheet.getCell(`A${row + 1}`).value = '사업자번호:'
+    worksheet.getCell(`B${row + 1}`).value = '123-45-67890'
+    worksheet.getCell(`A${row + 2}`).value = '연락처:'
+    worksheet.getCell(`B${row + 2}`).value = '010-2131-7540'
+
+    // 고객 정보
+    worksheet.mergeCells(`E${row - 1}:G${row - 1}`)
+    worksheet.getCell(`E${row - 1}`).value = '공급받는자 정보'
+    worksheet.getCell(`E${row - 1}`).font = { bold: true, size: 12 }
+    worksheet.getCell(`E${row - 1}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } }
+
+    worksheet.getCell(`E${row}`).value = '상호명:'
+    worksheet.getCell(`F${row}`).value = data.companyName
+    worksheet.getCell(`E${row + 1}`).value = '사업자번호:'
+    worksheet.getCell(`F${row + 1}`).value = data.businessLicenseNumber || '-'
+    worksheet.getCell(`E${row + 2}`).value = '연락처:'
+    worksheet.getCell(`F${row + 2}`).value = data.phone
+
+    row += 4
+
+    // 주문 정보
+    worksheet.mergeCells(`A${row}:I${row}`)
+    worksheet.getCell(`A${row}`).value = '출고 정보'
+    worksheet.getCell(`A${row}`).font = { bold: true, size: 12 }
+    worksheet.getCell(`A${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } }
+
+    row++
+    worksheet.getCell(`A${row}`).value = '주문번호:'
+    worksheet.getCell(`B${row}`).value = data.orderNumber
+    worksheet.getCell(`D${row}`).value = '출고일자:'
+    worksheet.getCell(`E${row}`).value = new Date(data.shippedAt).toLocaleDateString('ko-KR')
+
+    row++
+    worksheet.getCell(`A${row}`).value = '배송지:'
+    worksheet.mergeCells(`B${row}:I${row}`)
+    worksheet.getCell(`B${row}`).value = `${data.address} (${data.postalCode})`
+
+    row += 2
+
+    // 상품 목록 헤더
+    const headers = ['번호', '상품명', '색상', '사이즈', '출고수량', '단가', '금액']
+    headers.forEach((header, index) => {
+      const cell = worksheet.getCell(row, index + 1)
+      cell.value = header
+      cell.font = { bold: true }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } }
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    })
+
+    row++
+
+    // 상품 목록
+    data.items.forEach((item, index) => {
+      const cells = [
+        index + 1,
+        item.productName,
+        item.color,
+        item.size,
+        item.quantity,
+        item.unitPrice.toLocaleString(),
+        item.totalPrice.toLocaleString()
+      ]
+
+      cells.forEach((value, cellIndex) => {
+        const cell = worksheet.getCell(row, cellIndex + 1)
+        cell.value = value
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        }
+        cell.alignment = { 
+          horizontal: cellIndex === 1 ? 'left' : 'center', 
+          vertical: 'middle' 
+        }
+      })
+      row++
+    })
+
+    // 합계
+    row++
+    worksheet.getCell(`E${row}`).value = '총 출고금액:'
+    worksheet.getCell(`E${row}`).font = { bold: true }
+    worksheet.getCell(`F${row}`).value = data.totalAmount.toLocaleString()
+    worksheet.getCell(`F${row}`).font = { bold: true }
+    worksheet.getCell(`F${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+
+    // 고객 등급 표시
+    if (data.customerGrade === 'premium') {
+      row += 2
+      worksheet.getCell(`A${row}`).value = '⭐ 우수업체'
+      worksheet.getCell(`A${row}`).font = { bold: true, color: { argb: 'FF800080' } }
+    } else if (data.customerGrade === 'vip') {
+      row += 2
+      worksheet.getCell(`A${row}`).value = '👑 VIP 고객'
+      worksheet.getCell(`A${row}`).font = { bold: true, color: { argb: 'FFFFA500' } }
+    }
+
+    // 파일 생성
+    const buffer = await workbook.xlsx.writeBuffer()
+    return Buffer.from(buffer)
+
+  } catch (error) {
+    console.error('출고 명세서 생성 오류:', error)
+    throw new Error('출고 명세서 생성에 실패했습니다.')
   }
 } 

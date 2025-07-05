@@ -7,13 +7,28 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     
     // 뱅크다 관련 설정 조회
-    const { data: settings } = await supabase
+    const { data: settings, error } = await supabase
       .from('lusso_system_settings')
       .select('*')
       .in('key', ['bankda_auto_sync_enabled', 'bankda_api_token', 'bankda_account_number']);
     
+    if (error) {
+      console.error('뱅크다 설정 조회 오류:', error);
+      return NextResponse.json({ 
+        success: false,
+        error: '뱅크다 설정 조회 중 오류가 발생했습니다.' 
+      }, { status: 500 });
+    }
+    
     if (!settings) {
-      return NextResponse.json({ settings: {} });
+      return NextResponse.json({ 
+        success: true,
+        data: {
+          auto_sync: false,
+          last_sync: null,
+          sync_interval: 24
+        }
+      });
     }
     
     // 설정을 객체로 변환
@@ -22,12 +37,27 @@ export async function GET(request: NextRequest) {
       return acc;
     }, {} as Record<string, string>);
     
-    return NextResponse.json({ settings: settingsObj });
+    // 프론트엔드에서 기대하는 형태로 변환
+    const responseData = {
+      auto_sync: settingsObj.bankda_auto_sync_enabled === 'true',
+      last_sync: null, // 필요시 추가
+      sync_interval: 24,
+      api_token: settingsObj.bankda_api_token || '',
+      account_number: settingsObj.bankda_account_number || ''
+    };
+    
+    return NextResponse.json({ 
+      success: true,
+      data: responseData
+    });
     
   } catch (error) {
     console.error('뱅크다 설정 조회 중 오류:', error);
     return NextResponse.json(
-      { error: '뱅크다 설정 조회 중 오류가 발생했습니다.' },
+      { 
+        success: false,
+        error: '뱅크다 설정 조회 중 오류가 발생했습니다.' 
+      },
       { status: 500 }
     );
   }

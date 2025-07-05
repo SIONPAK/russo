@@ -57,7 +57,8 @@ export const OrderModal = ({ isOpen, onClose, cartItems, userId }: OrderModalPro
   }))
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0)
-  const shippingFee = 3000 // 기본 배송비
+  const totalQuantity = orderItems.reduce((sum, item) => sum + item.quantity, 0)
+  const shippingFee = totalQuantity >= 20 ? 0 : 3000 // 20장 이상 무료배송
   const totalAmount = subtotal + shippingFee
 
   // 주문자 정보와 배송지 동기화
@@ -304,8 +305,10 @@ export const OrderModal = ({ isOpen, onClose, cartItems, userId }: OrderModalPro
                   <span>{subtotal.toLocaleString()}원</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>배송비 (기본 배송 중량)</span>
-                  <span>{shippingFee.toLocaleString()}원</span>
+                  <span>배송비 {totalQuantity >= 20 ? '(20장 이상 무료)' : '(기본 배송)'}</span>
+                  <span className={totalQuantity >= 20 ? 'text-green-600 font-bold' : ''}>
+                    {shippingFee.toLocaleString()}원
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>할인/부가결제</span>

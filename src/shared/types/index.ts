@@ -2,6 +2,7 @@
 export interface User {
   id: string
   email: string
+  password_hash?: string
   company_name: string
   business_number: string
   representative_name: string
@@ -10,11 +11,25 @@ export interface User {
   postal_code: string
   recipient_name: string
   recipient_phone: string
-  business_license: string | null
+  business_license?: string
   approval_status: 'pending' | 'approved' | 'rejected'
   is_active: boolean
   created_at: string
   updated_at: string
+  user_id: string
+  priority_level?: number
+  user_type?: string
+  mileage_balance?: number
+  // 새로 추가된 필드들
+  last_login_at?: string
+  is_dormant: boolean
+  dormant_at?: string
+  customer_grade: 'premium' | 'general'
+  approval_notes?: string
+  rejected_reason?: string
+  rejected_at?: string
+  approved_at?: string
+  approved_by?: string
 }
 
 // 관리자 타입
@@ -156,9 +171,15 @@ export interface Order {
   user_id: string
   order_number: string
   total_amount: number
+  shipping_fee?: number
   status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'
+  shipping_name?: string
+  shipping_phone?: string
   shipping_address: string
+  shipping_postal_code?: string
+  notes?: string
   tracking_number: string | null
+  order_type?: string
   created_at: string
   updated_at: string
 }
@@ -173,6 +194,7 @@ export interface OrderItem {
   quantity: number
   unitPrice: number
   totalPrice: number
+  shipped_quantity?: number
 }
 
 // 마일리지 관련 타입
@@ -388,4 +410,16 @@ export interface ProductInventory {
   stock_quantity: number
   created_at: string
   updated_at: string
+}
+
+// 사용자 상태 변경 이력 타입
+export interface UserStatusLog {
+  id: string
+  user_id: string
+  previous_status: string
+  new_status: string
+  action_type: 'approve' | 'reject' | 'activate' | 'deactivate' | 'dormant'
+  reason?: string
+  changed_by: string
+  created_at: string
 } 

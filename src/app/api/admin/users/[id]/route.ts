@@ -60,7 +60,8 @@ export async function PUT(
       recipient_name,
       recipient_phone,
       approval_status,
-      is_active
+      is_active,
+      customer_grade
     } = body
 
     // 이메일 중복 검사 (자신 제외)
@@ -111,6 +112,7 @@ export async function PUT(
         recipient_phone,
         approval_status,
         is_active,
+        customer_grade,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)

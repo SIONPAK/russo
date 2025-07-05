@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import * as XLSX from 'xlsx'
+import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
 
 // 반품 명세서 생성 API
 export async function POST(request: NextRequest) {
@@ -277,108 +278,96 @@ function getReturnTypeText(type: string): string {
   }
 }
 
-// GET - 반품 명세서 목록 조회
+// 반품 명세서 목록 조회
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
     const { searchParams } = new URL(request.url)
-    
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
-    const customerName = searchParams.get('customerName')
-    const status = searchParams.get('status')
+    const search = searchParams.get('search') || ''
+    const status = searchParams.get('status') || 'all'
+    const type = searchParams.get('type') || 'all'
+    const startDate = searchParams.get('startDate') || ''
+    const endDate = searchParams.get('endDate') || ''
+
+    const supabase = await createClient()
     
+    // 기본 쿼리
     let query = supabase
       .from('return_statements')
       .select(`
         *,
         orders!return_statements_order_id_fkey (
           order_number,
-          total_amount
-        ),
-        users!return_statements_customer_id_fkey (
-          company_name,
-          representative_name
-        ),
-        return_statement_items!return_statement_items_return_statement_id_fkey (
-          id,
-          product_name,
-          quantity,
-          unit_price,
-          total_price,
-          return_reason
+          users!orders_user_id_fkey (
+            company_name
+          )
         )
       `)
 
-    // 필터 적용
-    if (startDate && endDate) {
-      query = query.gte('created_at', startDate).lte('created_at', endDate)
-    }
-    
-    if (customerName) {
-      query = query.ilike('customer_name', `%${customerName}%`)
+    // 검색 조건
+    if (search) {
+      query = query.or(`return_number.ilike.%${search}%,order_number.ilike.%${search}%,customer_name.ilike.%${search}%`)
     }
 
-    if (status) {
+    // 상태 필터
+    if (status !== 'all') {
       query = query.eq('status', status)
     }
 
-    // 페이지네이션
-    const offset = (page - 1) * limit
-    query = query.range(offset, offset + limit - 1).order('created_at', { ascending: false })
+    // 유형 필터
+    if (type !== 'all') {
+      query = query.eq('return_type', type)
+    }
 
+    // 날짜 필터
+    if (startDate) {
+      query = query.gte('created_at', startDate + 'T00:00:00.000Z')
+    }
+    if (endDate) {
+      query = query.lte('created_at', endDate + 'T23:59:59.999Z')
+    }
+
+    // 총 개수 조회
+    const { count } = await query
+
+    // 페이지네이션 적용
+    const offset = (page - 1) * limit
     const { data: statements, error } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
 
     if (error) {
-      throw error
+      console.error('Return statements list error:', error)
+      return NextResponse.json({
+        success: false,
+        error: '반품 명세서 목록을 조회할 수 없습니다.'
+      }, { status: 500 })
     }
-
-    // 전체 개수 조회
-    let countQuery = supabase
-      .from('return_statements')
-      .select('*', { count: 'exact', head: true })
-
-    if (startDate && endDate) {
-      countQuery = countQuery.gte('created_at', startDate).lte('created_at', endDate)
-    }
-    
-    if (customerName) {
-      countQuery = countQuery.ilike('customer_name', `%${customerName}%`)
-    }
-
-    if (status) {
-      countQuery = countQuery.eq('status', status)
-    }
-
-    const { count } = await countQuery
 
     return NextResponse.json({
       success: true,
       data: {
-        statements: statements || [],
+        statements,
         pagination: {
           currentPage: page,
           totalPages: Math.ceil((count || 0) / limit),
           totalItems: count || 0,
-          itemsPerPage: limit,
-          hasNextPage: page < Math.ceil((count || 0) / limit),
-          hasPrevPage: page > 1
+          itemsPerPage: limit
         }
       }
     })
 
   } catch (error) {
-    console.error('Return statements list error:', error)
+    console.error('Return statements API error:', error)
     return NextResponse.json({
       success: false,
-      error: '반품 명세서 목록 조회 중 오류가 발생했습니다.'
+      error: '반품 명세서 조회 중 오류가 발생했습니다.'
     }, { status: 500 })
   }
 }
 
-// PUT - 반품 명세서 상태 업데이트
+// 반품 상태 업데이트
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -393,14 +382,23 @@ export async function PUT(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // 반품 명세서 업데이트
+    const updateData: any = {
+      status,
+      updated_at: getCurrentKoreanDateTime()
+    }
+
+    if (status === 'completed' || status === 'rejected') {
+      updateData.processed_at = getCurrentKoreanDateTime()
+    }
+
+    if (processNotes) {
+      updateData.process_notes = processNotes
+    }
+
     const { data: statement, error } = await supabase
       .from('return_statements')
-      .update({
-        status,
-        process_notes: processNotes,
-        processed_at: status === 'completed' ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('return_number', returnNumber)
       .select()
       .single()
@@ -409,21 +407,21 @@ export async function PUT(request: NextRequest) {
       console.error('Return statement update error:', error)
       return NextResponse.json({
         success: false,
-        error: '반품 명세서 업데이트에 실패했습니다.'
+        error: '반품 상태 업데이트에 실패했습니다.'
       }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
       data: statement,
-      message: '반품 명세서가 업데이트되었습니다.'
+      message: '반품 상태가 업데이트되었습니다.'
     })
 
   } catch (error) {
-    console.error('Return statement update API error:', error)
+    console.error('Return statement update error:', error)
     return NextResponse.json({
       success: false,
-      error: '반품 명세서 업데이트 중 오류가 발생했습니다.'
+      error: '반품 상태 업데이트 중 오류가 발생했습니다.'
     }, { status: 500 })
   }
 } 

@@ -85,9 +85,7 @@ export const useOrder = () => {
         throw new Error(result.error || '주문 생성에 실패했습니다.')
       }
 
-      const successMessage = orderData.orderType === 'sample' 
-        ? '샘플 주문이 성공적으로 생성되었습니다.' 
-        : '주문이 성공적으로 생성되었습니다.'
+      const successMessage = '주문이 성공적으로 생성되었습니다.'
       
       showSuccess(result.message || successMessage)
       return result.data

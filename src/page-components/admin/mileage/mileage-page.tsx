@@ -13,13 +13,21 @@ export function MileagePage() {
     loading,
     selectedMileage,
     showAddModal,
+    showEditModal,
+    editingMileage,
+    pagination,
     approveMileage,
     rejectMileage,
     addMileage,
+    editMileage,
+    deleteMileage,
     selectMileage,
     closeMileageDetail,
     openAddModal,
-    closeAddModal
+    closeAddModal,
+    openEditModal,
+    closeEditModal,
+    fetchMileages
   } = useMileageManagement()
 
   const [bankdaSettings, setBankdaSettings] = useState({
@@ -89,6 +97,32 @@ export function MileagePage() {
     }
   }
 
+  // 뱅크다 테스트 동기화
+  const testBankdaSync = async () => {
+    if (!confirm('뱅크다 테스트 동기화를 실행하시겠습니까?')) return
+
+    try {
+      const response = await fetch('/api/admin/bankda/test-sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        alert(result.message)
+        // 마일리지 목록 새로고침
+        window.location.reload()
+      } else {
+        alert('테스트 동기화에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('뱅크다 테스트 동기화 오류:', error)
+      alert('테스트 동기화 중 오류가 발생했습니다.')
+    }
+  }
+
   useEffect(() => {
     fetchBankdaSettings()
   }, [])
@@ -124,7 +158,7 @@ export function MileagePage() {
           뱅크다 자동화 설정
         </h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
             <div>
               <h3 className="font-medium text-gray-900">자동 동기화</h3>
@@ -161,6 +195,21 @@ export function MileagePage() {
                 마지막 동기화: {new Date(bankdaSettings.last_sync).toLocaleString('ko-KR')}
               </p>
             )}
+          </div>
+
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-medium text-gray-900 mb-2">테스트</h3>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={testBankdaSync}
+              className="w-full"
+            >
+              테스트 동기화
+            </Button>
+            <p className="text-xs text-gray-500 mt-2">
+              테스트 데이터로 동기화 테스트
+            </p>
           </div>
         </div>
       </div>
@@ -239,6 +288,11 @@ export function MileagePage() {
         onApprove={approveMileage}
         onReject={rejectMileage}
         onAddMileage={openAddModal}
+        onEdit={openEditModal}
+        onDelete={deleteMileage}
+        pagination={pagination}
+        onPageChange={(page) => fetchMileages({ page })}
+        onFilterChange={(filters) => fetchMileages({ page: 1, ...filters })}
       />
 
       <AddMileageModal
@@ -246,6 +300,23 @@ export function MileagePage() {
         onClose={closeAddModal}
         onSubmit={addMileage}
       />
+
+      {/* 수정 모달 */}
+      {editingMileage && (
+        <AddMileageModal
+          isOpen={showEditModal}
+          onClose={closeEditModal}
+          onSubmit={(data) => editMileage(editingMileage.id, data)}
+          initialData={{
+            user_id: editingMileage.user_id,
+            type: editingMileage.type,
+            amount: Math.abs(editingMileage.amount),
+            description: editingMileage.description,
+            user: editingMileage.user
+          }}
+          title="마일리지 수정"
+        />
+      )}
     </div>
   )
 } 

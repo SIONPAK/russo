@@ -15,153 +15,154 @@ import {
   CreditCard
 } from 'lucide-react'
 
-interface Document {
+interface Statement {
   id: string
-  title: string
-  type: string
-  description?: string
-  filename: string
-  file_url: string
-  amount?: number
-  order_number?: string
+  statement_number: string
+  statement_type: 'transaction' | 'return' | 'deduction'
+  total_amount: number
+  reason?: string
+  notes?: string
+  status: 'draft' | 'issued' | 'sent'
   created_at: string
   orders?: {
     order_number: string
+    created_at: string
   }
+  statement_items: Array<{
+    id: string
+    product_name: string
+    product_code: string
+    color: string
+    size: string
+    quantity: number
+    unit_price: number
+    supply_amount: number
+    vat_amount: number
+  }>
+}
+
+interface Statistics {
+  transaction: { count: number; total: number }
+  return: { count: number; total: number }
+  deduction: { count: number; total: number }
 }
 
 export function DocumentsPage() {
   const { isAuthenticated, user } = useAuthStore()
-  const [activeTab, setActiveTab] = useState<'statement' | 'invoice'>('statement')
-  const [documents, setDocuments] = useState<Document[]>([])
+  const [statements, setStatements] = useState<Statement[]>([])
+  const [statistics, setStatistics] = useState<Statistics>({
+    transaction: { count: 0, total: 0 },
+    return: { count: 0, total: 0 },
+    deduction: { count: 0, total: 0 }
+  })
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedType, setSelectedType] = useState('all')
+  const [dateRange, setDateRange] = useState({ start: '', end: '' })
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [totalCount, setTotalCount] = useState(0)
 
-  // 문서 목록 조회
-  const fetchDocuments = async (params?: {
-    search?: string
-    type?: string
-    page?: number
-  }) => {
+  // 명세서 목록 조회
+  const fetchStatements = async () => {
     if (!user?.id) return
 
     setLoading(true)
     try {
-      const searchParams = new URLSearchParams({
+      const params = new URLSearchParams({
         userId: user.id,
-        page: (params?.page || currentPage).toString(),
-        limit: '10'
+        page: currentPage.toString(),
+        limit: '20',
+        type: selectedType,
+        startDate: dateRange.start,
+        endDate: dateRange.end
       })
 
-      if (params?.search) {
-        searchParams.append('search', params.search)
-      }
+      const response = await fetch(`/api/documents?${params}`)
+      const data = await response.json()
 
-      if (params?.type) {
-        searchParams.append('type', params.type)
-      }
-
-      const response = await fetch(`/api/documents?${searchParams}`)
-      const result = await response.json()
-
-      if (result.success) {
-        setDocuments(result.data)
-        setTotalPages(result.pagination.totalPages)
-        setTotalCount(result.pagination.total)
-        if (params?.page) {
-          setCurrentPage(params.page)
-        }
+      if (data.success) {
+        setStatements(data.data.statements)
+        setStatistics(data.data.statistics)
+        setTotalPages(data.data.pagination.totalPages)
       } else {
-        console.error('문서 조회 실패:', result.error)
+        console.error('명세서 조회 실패:', data.error)
       }
     } catch (error) {
-      console.error('문서 조회 오류:', error)
+      console.error('명세서 조회 오류:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  // 초기 데이터 로드
   useEffect(() => {
     if (user?.id) {
-      fetchDocuments({ 
-        type: activeTab,
-        page: 1
-      })
+      fetchStatements()
     }
-  }, [user?.id, activeTab])
+  }, [user?.id, currentPage, selectedType, dateRange])
 
-  // 탭 변경 시 데이터 다시 로드
-  const handleTabChange = (tab: 'statement' | 'invoice') => {
-    setActiveTab(tab)
-    setCurrentPage(1)
-    setSearchTerm('')
-    fetchDocuments({ 
-      type: tab,
-      page: 1
-    })
+  // 명세서 타입 텍스트 변환
+  const getStatementTypeText = (type: string) => {
+    switch (type) {
+      case 'transaction': return '거래명세서'
+      case 'return': return '반품명세서'
+      case 'deduction': return '차감명세서'
+      default: return type
+    }
   }
 
-  // 검색 실행
-  const handleSearch = () => {
-    setCurrentPage(1)
-    fetchDocuments({
-      search: searchTerm,
-      type: activeTab,
-      page: 1
-    })
+  // 명세서 타입 색상 클래스
+  const getStatementTypeClass = (type: string) => {
+    switch (type) {
+      case 'transaction': return 'bg-blue-100 text-blue-800'
+      case 'return': return 'bg-orange-100 text-orange-800'
+      case 'deduction': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
   }
 
-  // 페이지 변경
-  const handlePageChange = (page: number) => {
-    fetchDocuments({
-      search: searchTerm,
-      type: activeTab,
-      page: page
-    })
+  // 상태 텍스트 변환
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'draft': return '임시저장'
+      case 'issued': return '발행완료'
+      case 'sent': return '발송완료'
+      default: return status
+    }
   }
 
-  // 문서 다운로드
-  const handleDownload = async (documentId: string, filename: string) => {
+  // 상태 색상 클래스
+  const getStatusClass = (status: string) => {
+    switch (status) {
+      case 'draft': return 'bg-gray-100 text-gray-800'
+      case 'issued': return 'bg-green-100 text-green-800'
+      case 'sent': return 'bg-blue-100 text-blue-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  // 명세서 다운로드
+  const handleDownload = async (statement: Statement) => {
     try {
-      const response = await fetch(`/api/documents/${documentId}/download`)
+      const response = await fetch(`/api/documents/${statement.id}/download`, {
+        method: 'GET'
+      })
+
       if (response.ok) {
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = filename
+        a.download = `${getStatementTypeText(statement.statement_type)}_${statement.statement_number}.xlsx`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
       } else {
-        alert('파일 다운로드에 실패했습니다.')
+        const errorData = await response.json()
+        alert('다운로드에 실패했습니다: ' + errorData.error)
       }
     } catch (error) {
-      console.error('Download error:', error)
-      alert('파일 다운로드 중 오류가 발생했습니다.')
-    }
-  }
-
-  // 문서 미리보기
-  const handlePreview = async (documentId: string) => {
-    try {
-      const response = await fetch(`/api/documents/${documentId}/preview`)
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        window.open(url, '_blank')
-        window.URL.revokeObjectURL(url)
-      } else {
-        alert('미리보기에 실패했습니다.')
-      }
-    } catch (error) {
-      console.error('Preview error:', error)
-      alert('미리보기 중 오류가 발생했습니다.')
+      console.error('다운로드 오류:', error)
+      alert('다운로드 중 오류가 발생했습니다.')
     }
   }
 
@@ -177,175 +178,218 @@ export function DocumentsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      {/* 헤더 */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">문서 관리</h1>
-        <p className="text-gray-600">거래명세서와 세금계산서를 분리하여 관리하실 수 있습니다.</p>
-      </div>
-
-      {/* 탭 메뉴 */}
-      <div className="mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            <button
-              onClick={() => handleTabChange('statement')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'statement'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <FileText className="w-4 h-4 mr-2 inline" />
-              거래명세서
-            </button>
-            <button
-              onClick={() => handleTabChange('invoice')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'invoice'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Receipt className="w-4 h-4 mr-2 inline" />
-              세금계산서
-            </button>
-          </nav>
+    <div className="space-y-6">
+      {/* 페이지 헤더 */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">명세서 관리</h1>
+          <p className="text-gray-600">거래명세서, 반품명세서, 차감명세서를 확인할 수 있습니다.</p>
         </div>
       </div>
 
-      {/* 검색 */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                type="text"
-                placeholder="문서명, 주문번호로 검색..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+      {/* 통계 카드 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-lg border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">거래명세서</p>
+              <p className="text-2xl font-bold text-blue-600">{statistics.transaction.count}건</p>
+              <p className="text-sm text-gray-500">총 {statistics.transaction.total.toLocaleString()}원</p>
+            </div>
+            <div className="p-3 bg-blue-100 rounded-full">
+              <FileText className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">반품명세서</p>
+              <p className="text-2xl font-bold text-orange-600">{statistics.return.count}건</p>
+              <p className="text-sm text-gray-500">총 {statistics.return.total.toLocaleString()}원</p>
+            </div>
+            <div className="p-3 bg-orange-100 rounded-full">
+              <FileText className="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">차감명세서</p>
+              <p className="text-2xl font-bold text-red-600">{statistics.deduction.count}건</p>
+              <p className="text-sm text-gray-500">총 {statistics.deduction.total.toLocaleString()}원</p>
+            </div>
+            <div className="p-3 bg-red-100 rounded-full">
+              <FileText className="w-6 h-6 text-red-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 필터 */}
+      <div className="bg-white p-4 rounded-lg border">
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              명세서 타입
+            </label>
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">전체</option>
+              <option value="transaction">거래명세서</option>
+              <option value="return">반품명세서</option>
+              <option value="deduction">차감명세서</option>
+            </select>
+          </div>
+
+          <div className="flex items-end space-x-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                시작일
+              </label>
+              <input
+                type="date"
+                value={dateRange.start}
+                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                종료일
+              </label>
+              <input
+                type="date"
+                value={dateRange.end}
+                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
-          <Button onClick={handleSearch} className="w-full md:w-auto">
-            <Search className="w-4 h-4 mr-2" />
-            검색
-          </Button>
         </div>
       </div>
 
-      {/* 문서 목록 */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        {loading ? (
-          <div className="p-12 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">문서 목록을 불러오는 중...</p>
-          </div>
-        ) : documents.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-            <p>
-              {activeTab === 'statement' ? '거래명세서' : '세금계산서'}가 없습니다.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200">
-            {documents.map((document) => (
-              <div key={document.id} className="p-6 hover:bg-gray-50">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        activeTab === 'statement' 
-                          ? 'text-purple-600 bg-purple-100' 
-                          : 'text-green-600 bg-green-100'
-                      }`}>
-                        {activeTab === 'statement' ? '거래명세서' : '세금계산서'}
+      {/* 명세서 목록 */}
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                  명세서 번호
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                  타입
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                  주문번호
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                  금액
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                  상태
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                  발행일
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
+                  액션
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                    로딩 중...
+                  </td>
+                </tr>
+              ) : statements.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                    명세서가 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                statements.map((statement) => (
+                  <tr key={statement.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {statement.statement_number}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatementTypeClass(statement.statement_type)}`}>
+                        {getStatementTypeText(statement.statement_type)}
                       </span>
-                      <h3 className="text-lg font-medium text-gray-900">
-                        {document.title}
-                      </h3>
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 text-sm text-gray-600 mb-3">
-                      <div className="flex items-center space-x-1">
-                        <Calendar className="w-4 h-4" />
-                        <span>발행일: {formatDateTime(document.created_at)}</span>
-                      </div>
-                      {document.orders?.order_number && (
-                        <div>주문번호: {document.orders.order_number}</div>
-                      )}
-                      {document.amount && (
-                        <div>금액: {document.amount.toLocaleString()}원</div>
-                      )}
-                    </div>
-
-                    {document.description && (
-                      <p className="text-gray-600 text-sm mb-3">{document.description}</p>
-                    )}
-                  </div>
-                  
-                  <div className="flex space-x-2 ml-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePreview(document.id)}
-                      className="text-blue-600 hover:text-blue-700"
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      미리보기
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownload(document.id, document.filename)}
-                      className="text-green-600 hover:text-green-700"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      다운로드
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* 페이지네이션 */}
-        {totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-700">
-                총 {totalCount}개의 문서
-              </div>
-              <div className="flex space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                >
-                  이전
-                </Button>
-                <span className="px-3 py-1 text-sm text-gray-700">
-                  {currentPage} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                >
-                  다음
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {statement.orders?.order_number || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      <span className={statement.statement_type === 'deduction' ? 'text-red-600' : 'text-gray-900'}>
+                        {statement.total_amount.toLocaleString()}원
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusClass(statement.status)}`}>
+                        {getStatusText(statement.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {new Date(statement.created_at).toLocaleDateString('ko-KR')}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDownload(statement)}
+                      >
+                        <Download className="w-4 h-4 mr-1" />
+                        다운로드
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* 페이지네이션 */}
+      {totalPages > 1 && (
+        <div className="flex justify-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+          >
+            이전
+          </Button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+            <Button
+              key={page}
+              variant={currentPage === page ? 'default' : 'outline'}
+              onClick={() => setCurrentPage(page)}
+            >
+              {page}
+            </Button>
+          ))}
+          <Button
+            variant="outline"
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+          >
+            다음
+          </Button>
+        </div>
+      )}
     </div>
   )
 } 

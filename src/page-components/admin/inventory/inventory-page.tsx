@@ -113,6 +113,13 @@ export function InventoryPage() {
     productName: ''
   })
 
+  // 입고 등록 모달 상태
+  const [inboundModal, setInboundModal] = useState({
+    isOpen: false,
+    productId: '',
+    productName: ''
+  })
+
   // 상품 데이터 가져오기
   useEffect(() => {
     fetchProducts()
@@ -296,16 +303,168 @@ export function InventoryPage() {
   }
 
   // 엑셀 다운로드 함수들
-  const downloadInventoryExcel = () => {
-    showInfo('재고 현황 다운로드 기능을 준비 중입니다.')
+  const downloadInventoryExcel = async () => {
+    try {
+      setLoading(true)
+      
+      const response = await fetch('/api/admin/inventory/export')
+      if (!response.ok) {
+        throw new Error('재고 현황 다운로드에 실패했습니다.')
+      }
+      
+      const result = await response.json()
+      if (result.success) {
+        // Base64 데이터를 Blob으로 변환
+        const base64Data = result.data.fileData
+        const byteCharacters = atob(base64Data)
+        const byteNumbers = new Array(byteCharacters.length)
+        
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i)
+        }
+        
+        const byteArray = new Uint8Array(byteNumbers)
+        const blob = new Blob([byteArray], { 
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        })
+        
+        // 파일 다운로드
+        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        link.href = url
+        link.download = result.data.fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        
+        showSuccess('재고 현황이 다운로드되었습니다.')
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('재고 다운로드 실패:', error)
+      showError(error instanceof Error ? error.message : '재고 다운로드 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const downloadStockHistory = () => {
-    showInfo('재고 이력 다운로드 기능을 준비 중입니다.')
+  const downloadStockHistory = async () => {
+    try {
+      setLoading(true)
+      
+      const response = await fetch('/api/admin/inventory/history/export')
+      if (!response.ok) {
+        throw new Error('재고 이력 다운로드에 실패했습니다.')
+      }
+      
+      const result = await response.json()
+      if (result.success) {
+        // Base64 데이터를 Blob으로 변환하여 다운로드
+        const base64Data = result.data.fileData
+        const byteCharacters = atob(base64Data)
+        const byteNumbers = new Array(byteCharacters.length)
+        
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i)
+        }
+        
+        const byteArray = new Uint8Array(byteNumbers)
+        const blob = new Blob([byteArray], { 
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        })
+        
+        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        link.href = url
+        link.download = result.data.fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        
+        showSuccess('재고 이력이 다운로드되었습니다.')
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('재고 이력 다운로드 실패:', error)
+      showError(error instanceof Error ? error.message : '재고 이력 다운로드 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const uploadStockData = () => {
-    showInfo('재고 일괄 업로드 기능을 준비 중입니다.')
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xlsx,.xls'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      
+      try {
+        setLoading(true)
+        
+        const formData = new FormData()
+        formData.append('file', file)
+        
+        const response = await fetch('/api/admin/inventory/upload', {
+          method: 'POST',
+          body: formData
+        })
+        
+        const result = await response.json()
+        if (result.success) {
+          showSuccess(`${result.data.updatedCount}개의 재고가 업데이트되었습니다.`)
+          await fetchProducts() // 목록 새로고침
+        } else {
+          throw new Error(result.error)
+        }
+      } catch (error) {
+        console.error('재고 업로드 실패:', error)
+        showError(error instanceof Error ? error.message : '재고 업로드 중 오류가 발생했습니다.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    input.click()
+  }
+
+  const performStockAudit = async () => {
+    if (!confirm('재고 실사를 진행하시겠습니까? 현재 재고와 시스템 재고를 비교합니다.')) {
+      return
+    }
+    
+    try {
+      setLoading(true)
+      
+      const response = await fetch('/api/admin/inventory/audit', {
+        method: 'POST'
+      })
+      
+      const result = await response.json()
+      if (result.success) {
+        showSuccess(`재고 실사가 완료되었습니다. 차이: ${result.data.discrepancies}건`)
+        await fetchProducts() // 목록 새로고침
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('재고 실사 실패:', error)
+      showError(error instanceof Error ? error.message : '재고 실사 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const registerInbound = () => {
+    setInboundModal({
+      isOpen: true,
+      productId: '',
+      productName: ''
+    })
   }
 
   // 필터링된 상품 목록
@@ -462,7 +621,7 @@ export function InventoryPage() {
                   </Button>
                 </div>
                 <div className="flex space-x-2">
-                  <Button variant="outline" onClick={() => showInfo('재고 실사 기능을 준비 중입니다.')}>
+                  <Button variant="outline" onClick={performStockAudit}>
                     <ClipboardList className="h-4 w-4 mr-2" />
                     재고 실사
                   </Button>

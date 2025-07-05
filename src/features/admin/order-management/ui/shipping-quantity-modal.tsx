@@ -46,10 +46,10 @@ export function ShippingQuantityModal({
 
   useEffect(() => {
     if (order && isOpen) {
-      // 기존 출고 수량 또는 주문 수량으로 초기화
+      // 기존 출고 수량이 있으면 그 값으로, 없으면 0으로 초기화
       const initialQuantities: { [itemId: string]: number } = {}
       order.order_items.forEach(item => {
-        initialQuantities[item.id] = item.shipped_quantity || item.quantity
+        initialQuantities[item.id] = item.shipped_quantity || 0
       })
       setShippedQuantities(initialQuantities)
     }
@@ -97,7 +97,7 @@ export function ShippingQuantityModal({
   const hasChanges = () => {
     return order.order_items.some(item => {
       const currentShipped = shippedQuantities[item.id] || 0
-      const originalShipped = item.shipped_quantity || item.quantity
+      const originalShipped = item.shipped_quantity || 0
       return currentShipped !== originalShipped
     })
   }

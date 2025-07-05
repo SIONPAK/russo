@@ -7,12 +7,14 @@ import { Mileage } from '@/shared/types'
 import { formatCurrency, formatDateTime } from '@/shared/lib/utils'
 import { 
   Search, 
-  Filter, 
   Plus,
   Download,
   Eye,
   CheckCircle,
-  XCircle
+  XCircle,
+  RotateCcw,
+  Edit,
+  Trash2
 } from 'lucide-react'
 
 interface MileageListProps {
@@ -21,24 +23,87 @@ interface MileageListProps {
   onApprove: (mileageId: string) => void
   onReject: (mileageId: string) => void
   onAddMileage: () => void
+  onEdit?: (mileage: Mileage) => void
+  onDelete?: (mileageId: string) => void
+  pagination?: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+  onPageChange?: (page: number) => void
+  onFilterChange?: (filters: {
+    search: string
+    status: string
+    type: string
+    source: string
+    dateFrom: string
+    dateTo: string
+  }) => void
 }
 
-export function MileageList({ mileages, onMileageSelect, onApprove, onReject, onAddMileage }: MileageListProps) {
+export function MileageList({ 
+  mileages, 
+  onMileageSelect, 
+  onApprove, 
+  onReject, 
+  onAddMileage,
+  onEdit,
+  onDelete,
+  pagination,
+  onPageChange,
+  onFilterChange
+}: MileageListProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const filteredMileages = mileages.filter(mileage => {
     const matchesSearch = searchTerm === '' || 
-      mileage.description.toLowerCase().includes(searchTerm.toLowerCase())
+      mileage.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (mileage.user?.company_name && mileage.user.company_name.toLowerCase().includes(searchTerm.toLowerCase()))
     
     const matchesStatus = statusFilter === 'all' || mileage.status === statusFilter
     const matchesType = typeFilter === 'all' || mileage.type === typeFilter
     const matchesSource = sourceFilter === 'all' || mileage.source === sourceFilter
+    
+    const matchesDateFrom = !dateFrom || new Date(mileage.created_at) >= new Date(dateFrom)
+    const matchesDateTo = !dateTo || new Date(mileage.created_at) <= new Date(dateTo + 'T23:59:59')
 
-    return matchesSearch && matchesStatus && matchesType && matchesSource
+    return matchesSearch && matchesStatus && matchesType && matchesSource && matchesDateFrom && matchesDateTo
   })
+
+  const applyFilters = () => {
+    if (onFilterChange) {
+      onFilterChange({
+        search: searchTerm,
+        status: statusFilter,
+        type: typeFilter,
+        source: sourceFilter,
+        dateFrom,
+        dateTo
+      })
+    }
+  }
+
+  const resetFilters = () => {
+    setSearchTerm('')
+    setStatusFilter('all')
+    setTypeFilter('all')
+    setSourceFilter('all')
+    setDateFrom('')
+    setDateTo('')
+  }
+
+  const setQuickDate = (months: number) => {
+    const today = new Date()
+    const pastDate = new Date(today.getFullYear(), today.getMonth() - months, today.getDate())
+    setDateFrom(pastDate.toISOString().split('T')[0])
+    setDateTo(today.toISOString().split('T')[0])
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -84,77 +149,235 @@ export function MileageList({ mileages, onMileageSelect, onApprove, onReject, on
     }
   }
 
+  const handleExcelDownload = async () => {
+    try {
+      const response = await fetch('/api/admin/mileage/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          search: searchTerm,
+          status: statusFilter,
+          type: typeFilter,
+          source: sourceFilter,
+          dateFrom,
+          dateTo
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('엑셀 다운로드에 실패했습니다.')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `mileage_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('엑셀 다운로드 오류:', error)
+      alert('엑셀 다운로드 중 오류가 발생했습니다.')
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* 검색 및 필터 */}
       <div className="bg-white p-6 rounded-lg shadow">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              placeholder="설명 검색"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+        <div className="space-y-4">
+          {/* 검색 및 필터 */}
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-4 items-end">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                업체명 또는 설명 검색
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="업체명 또는 설명 검색"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 h-10"
+                />
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                전체 상태
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full h-10 px-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
+              >
+                <option value="all">전체 상태</option>
+                <option value="pending">대기</option>
+                <option value="completed">완료</option>
+                <option value="cancelled">취소</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                전체 유형
+              </label>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="w-full h-10 px-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
+              >
+                <option value="all">전체 유형</option>
+                <option value="earn">적립</option>
+                <option value="spend">차감</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                전체 소스
+              </label>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="w-full h-10 px-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
+              >
+                <option value="all">전체 소스</option>
+                <option value="manual">수동</option>
+                <option value="auto">자동</option>
+                <option value="order">주문</option>
+                <option value="refund">환불</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                &nbsp;
+              </label>
+              <Button onClick={onAddMileage} className="h-10 w-full bg-black text-white hover:bg-gray-800">
+                <Plus className="h-4 w-4 mr-2" />
+                수동 등록
+              </Button>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                &nbsp;
+              </label>
+              <Button variant="outline" onClick={handleExcelDownload} className="h-10 w-full">
+                <Download className="h-4 w-4 mr-2" />
+                엑셀
+              </Button>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                &nbsp;
+              </label>
+              <Button variant="outline" onClick={resetFilters} className="h-10 w-full">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                초기화
+              </Button>
+            </div>
           </div>
-          
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">전체 상태</option>
-              <option value="pending">대기</option>
-              <option value="completed">완료</option>
-              <option value="cancelled">취소</option>
-            </select>
-          </div>
 
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">전체 유형</option>
-            <option value="earn">적립</option>
-            <option value="spend">차감</option>
-          </select>
+          {/* 날짜 필터 */}
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-4 items-end">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                시작 날짜
+              </label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-full h-10 px-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                종료 날짜
+              </label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-full h-10 px-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                &nbsp;
+              </label>
+              <Button 
+                variant="outline" 
+                className="h-10 w-full"
+                onClick={() => setQuickDate(1)}
+              >
+                최근 1개월
+              </Button>
+            </div>
 
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">전체 소스</option>
-            <option value="manual">수동</option>
-            <option value="auto">자동</option>
-            <option value="order">주문</option>
-            <option value="refund">환불</option>
-          </select>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                &nbsp;
+              </label>
+              <Button 
+                variant="outline" 
+                className="h-10 w-full"
+                onClick={() => setQuickDate(3)}
+              >
+                최근 3개월
+              </Button>
+            </div>
 
-          <div className="flex space-x-2">
-            <Button variant="outline" onClick={() => {
-              setSearchTerm('')
-              setStatusFilter('all')
-              setTypeFilter('all')
-              setSourceFilter('all')
-            }}>
-              초기화
-            </Button>
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                &nbsp;
+              </label>
+              <Button 
+                variant="outline" 
+                className="h-10 w-full"
+                onClick={() => setQuickDate(6)}
+              >
+                최근 6개월
+              </Button>
+            </div>
 
-          <div className="flex space-x-2">
-            <Button onClick={onAddMileage}>
-              <Plus className="h-4 w-4 mr-2" />
-              수동 등록
-            </Button>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              엑셀
-            </Button>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                &nbsp;
+              </label>
+              <Button 
+                onClick={applyFilters} 
+                className="h-10 w-full bg-black text-white hover:bg-gray-800"
+              >
+                검색
+              </Button>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                &nbsp;
+              </label>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setDateFrom('')
+                  setDateTo('')
+                }}
+                className="h-10 w-full"
+              >
+                날짜 초기화
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -229,20 +452,55 @@ export function MileageList({ mileages, onMileageSelect, onApprove, onReject, on
                       {getStatusText(mileage.status)}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm space-x-1">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => onMileageSelect(mileage)}
+                      title="상세 보기"
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
+                    
+                    {/* 수동 입력한 마일리지에 대해서만 수정/삭제 버튼 표시 */}
+                    {mileage.source === 'manual' && (
+                      <>
+                        {onEdit && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onEdit(mileage)}
+                            title="수정"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onDelete && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (window.confirm('정말 삭제하시겠습니까?')) {
+                                onDelete(mileage.id)
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            title="삭제"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    
+                    {/* 대기 상태인 마일리지에 대해서만 승인/거절 버튼 표시 */}
                     {mileage.status === 'pending' && (
                       <>
                         <Button
                           size="sm"
                           onClick={() => onApprove(mileage.id)}
                           className="bg-green-600 hover:bg-green-700"
+                          title="승인"
                         >
                           <CheckCircle className="h-4 w-4" />
                         </Button>
@@ -250,6 +508,7 @@ export function MileageList({ mileages, onMileageSelect, onApprove, onReject, on
                           size="sm"
                           variant="destructive"
                           onClick={() => onReject(mileage.id)}
+                          title="거절"
                         >
                           <XCircle className="h-4 w-4" />
                         </Button>
@@ -261,6 +520,61 @@ export function MileageList({ mileages, onMileageSelect, onApprove, onReject, on
             </tbody>
           </table>
         </div>
+
+        {/* 페이지네이션 */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              총 {pagination.total}개 중 {((pagination.page - 1) * pagination.limit) + 1}-{Math.min(pagination.page * pagination.limit, pagination.total)}개 표시
+            </div>
+            <div className="flex space-x-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange && onPageChange(pagination.page - 1)}
+                disabled={pagination.page <= 1}
+              >
+                이전
+              </Button>
+              
+              {[...Array(pagination.totalPages)].map((_, i) => {
+                const pageNum = i + 1
+                const isCurrentPage = pageNum === pagination.page
+                const isVisible = 
+                  pageNum === 1 ||
+                  pageNum === pagination.totalPages ||
+                  (pageNum >= pagination.page - 2 && pageNum <= pagination.page + 2)
+
+                if (!isVisible) {
+                  if (pageNum === pagination.page - 3 || pageNum === pagination.page + 3) {
+                    return <span key={pageNum} className="px-2 text-gray-500">...</span>
+                  }
+                  return null
+                }
+
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={isCurrentPage ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => onPageChange && onPageChange(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                )
+              })}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange && onPageChange(pagination.page + 1)}
+                disabled={pagination.page >= pagination.totalPages}
+              >
+                다음
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -25,6 +25,7 @@ export interface Database {
           business_license: string | null
           approval_status: 'pending' | 'approved' | 'rejected'
           is_active: boolean
+          mileage: number
           created_at: string
           updated_at: string
         }
@@ -43,6 +44,7 @@ export interface Database {
           business_license?: string | null
           approval_status?: 'pending' | 'approved' | 'rejected'
           is_active?: boolean
+          mileage?: number
           created_at?: string
           updated_at?: string
         }
@@ -61,6 +63,7 @@ export interface Database {
           business_license?: string | null
           approval_status?: 'pending' | 'approved' | 'rejected'
           is_active?: boolean
+          mileage?: number
           created_at?: string
           updated_at?: string
         }
@@ -207,6 +210,7 @@ export interface Database {
           quantity: number
           unit_price: number
           total_price: number
+          shipped_quantity: number
         }
         Insert: {
           id?: string
@@ -218,6 +222,7 @@ export interface Database {
           quantity: number
           unit_price: number
           total_price: number
+          shipped_quantity?: number
         }
         Update: {
           id?: string
@@ -229,49 +234,10 @@ export interface Database {
           quantity?: number
           unit_price?: number
           total_price?: number
+          shipped_quantity?: number
         }
       }
-      mileage: {
-        Row: {
-          id: string
-          user_id: string
-          amount: number
-          type: 'earn' | 'spend'
-          source: 'manual' | 'auto' | 'order' | 'refund'
-          description: string
-          status: 'pending' | 'completed' | 'cancelled'
-          order_id: string | null
-          processed_by: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          amount: number
-          type: 'earn' | 'spend'
-          source: 'manual' | 'auto' | 'order' | 'refund'
-          description: string
-          status?: 'pending' | 'completed' | 'cancelled'
-          order_id?: string | null
-          processed_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          amount?: number
-          type?: 'earn' | 'spend'
-          source?: 'manual' | 'auto' | 'order' | 'refund'
-          description?: string
-          status?: 'pending' | 'completed' | 'cancelled'
-          order_id?: string | null
-          processed_by?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-      }
+
       shipping_addresses: {
         Row: {
           id: string
@@ -383,6 +349,47 @@ export interface Database {
           updated_at?: string
         }
       }
+      email_logs: {
+        Row: {
+          id: string
+          order_id: string
+          recipient_email: string
+          email_type: string
+          subject: string
+          status: 'pending' | 'sent' | 'failed'
+          message_id: string | null
+          error_message: string | null
+          sent_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          recipient_email: string
+          email_type: string
+          subject: string
+          status?: 'pending' | 'sent' | 'failed'
+          message_id?: string | null
+          error_message?: string | null
+          sent_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          recipient_email?: string
+          email_type?: string
+          subject?: string
+          status?: 'pending' | 'sent' | 'failed'
+          message_id?: string | null
+          error_message?: string | null
+          sent_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       category_menus: {
         Row: {
           id: string
@@ -424,6 +431,124 @@ export interface Database {
           updated_at?: string
         }
       }
+      statements: {
+        Row: {
+          id: string
+          statement_number: string
+          statement_type: 'transaction' | 'return' | 'deduction'
+          user_id: string
+          order_id: string | null
+          total_amount: number
+          reason: string | null
+          notes: string | null
+          status: 'draft' | 'issued' | 'sent'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          statement_number: string
+          statement_type: 'transaction' | 'return' | 'deduction'
+          user_id: string
+          order_id?: string | null
+          total_amount?: number
+          reason?: string | null
+          notes?: string | null
+          status?: 'draft' | 'issued' | 'sent'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          statement_number?: string
+          statement_type?: 'transaction' | 'return' | 'deduction'
+          user_id?: string
+          order_id?: string | null
+          total_amount?: number
+          reason?: string | null
+          notes?: string | null
+          status?: 'draft' | 'issued' | 'sent'
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      statement_items: {
+        Row: {
+          id: string
+          statement_id: string
+          product_code: string | null
+          product_name: string
+          color: string | null
+          size: string | null
+          quantity: number
+          unit_price: number
+          supply_amount: number
+          vat_amount: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          statement_id: string
+          product_code?: string | null
+          product_name: string
+          color?: string | null
+          size?: string | null
+          quantity: number
+          unit_price: number
+          supply_amount: number
+          vat_amount: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          statement_id?: string
+          product_code?: string | null
+          product_name?: string
+          color?: string | null
+          size?: string | null
+          quantity?: number
+          unit_price?: number
+          supply_amount?: number
+          vat_amount?: number
+          created_at?: string
+        }
+      }
+      mileage_logs: {
+        Row: {
+          id: string
+          user_id: string
+          amount: number
+          type: 'earn' | 'spend' | 'deduction' | 'refund'
+          description: string
+          balance_after: number
+          order_id: string | null
+          statement_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          amount: number
+          type: 'earn' | 'spend' | 'deduction' | 'refund'
+          description: string
+          balance_after: number
+          order_id?: string | null
+          statement_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          amount?: number
+          type?: 'earn' | 'spend' | 'deduction' | 'refund'
+          description?: string
+          balance_after?: number
+          order_id?: string | null
+          statement_id?: string | null
+          created_at?: string
+        }
+      }
+
     }
     Views: {
       [_ in never]: never

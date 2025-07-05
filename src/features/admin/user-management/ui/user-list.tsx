@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { User } from '@/shared/types'
-import { formatDate, formatBusinessNumber } from '@/shared/lib/utils'
+import { formatDate, formatBusinessNumber, formatDateTime } from '@/shared/lib/utils'
 import { showWarning } from '@/shared/lib/toast'
 import { 
   Search, 
@@ -98,6 +98,9 @@ export function UserList({ users, loading = false, onUserSelect, onApprove, onRe
                   연락처
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  고객등급
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   사업장 소재지
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -114,7 +117,7 @@ export function UserList({ users, loading = false, onUserSelect, onApprove, onRe
             <tbody className="bg-white divide-y divide-gray-100">
               {users?.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
                     등록된 회원이 없습니다.
                   </td>
                 </tr>
@@ -123,6 +126,9 @@ export function UserList({ users, loading = false, onUserSelect, onApprove, onRe
                   <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="font-medium text-gray-900">{user.company_name}</div>
+                      {user.is_dormant && (
+                        <span className="text-xs text-orange-500 font-medium">휴면</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{user.email}</div>
@@ -135,6 +141,15 @@ export function UserList({ users, loading = false, onUserSelect, onApprove, onRe
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
                       {user.phone}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        user.customer_grade === 'premium' 
+                          ? 'text-purple-700 bg-purple-50 border border-purple-200' 
+                          : 'text-gray-700 bg-gray-50 border border-gray-200'
+                      }`}>
+                        {user.customer_grade === 'premium' ? '우수업체' : '일반'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 max-w-xs">
                       <div className="truncate" title={`(${user.postal_code}) ${user.address}`}>
@@ -150,7 +165,12 @@ export function UserList({ users, loading = false, onUserSelect, onApprove, onRe
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(user.created_at).toLocaleDateString('ko-KR')}
+                      {formatDate(user.created_at)}
+                      {user.last_login_at && (
+                        <div className="text-xs text-gray-400">
+                          최종: {formatDate(user.last_login_at)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center space-x-2">

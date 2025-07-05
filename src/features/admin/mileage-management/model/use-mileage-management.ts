@@ -6,6 +6,8 @@ export function useMileageManagement() {
   const [loading, setLoading] = useState(true)
   const [selectedMileage, setSelectedMileage] = useState<Mileage | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingMileage, setEditingMileage] = useState<Mileage | null>(null)
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -176,19 +178,87 @@ export function useMileageManagement() {
     setShowAddModal(false)
   }
 
+  const openEditModal = (mileage: Mileage) => {
+    setEditingMileage(mileage)
+    setShowEditModal(true)
+  }
+
+  const closeEditModal = () => {
+    setShowEditModal(false)
+    setEditingMileage(null)
+  }
+
+  const editMileage = async (mileageId: string, mileageData: {
+    type: 'earn' | 'spend'
+    amount: number
+    description: string
+  }) => {
+    try {
+      const response = await fetch(`/api/admin/mileage/${mileageId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(mileageData),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        await fetchMileages() // 목록 새로고침
+        setShowEditModal(false)
+        setEditingMileage(null)
+        alert('마일리지가 성공적으로 수정되었습니다.')
+      } else {
+        alert(result.error || '마일리지 수정에 실패했습니다.')
+        throw new Error(result.error || '마일리지 수정에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('마일리지 수정 중 오류:', error)
+      alert('마일리지 수정 중 오류가 발생했습니다.')
+      throw error
+    }
+  }
+
+  const deleteMileage = async (mileageId: string) => {
+    try {
+      const response = await fetch(`/api/admin/mileage/${mileageId}`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        await fetchMileages() // 목록 새로고침
+        alert('마일리지가 성공적으로 삭제되었습니다.')
+      } else {
+        alert(result.error || '마일리지 삭제에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('마일리지 삭제 중 오류:', error)
+      alert('마일리지 삭제 중 오류가 발생했습니다.')
+    }
+  }
+
   return {
     mileages,
     loading,
     selectedMileage,
     showAddModal,
+    showEditModal,
+    editingMileage,
     pagination,
     approveMileage,
     rejectMileage,
     addMileage,
+    editMileage,
+    deleteMileage,
     selectMileage,
     closeMileageDetail,
     openAddModal,
     closeAddModal,
+    openEditModal,
+    closeEditModal,
     fetchMileages
   }
 } 

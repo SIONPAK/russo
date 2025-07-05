@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
+import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
 
 // GET - 사용자 목록 조회
 export async function GET(request: NextRequest) {
@@ -10,24 +11,40 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10')
     const search = searchParams.get('search') || ''
     const status = searchParams.get('status') || ''
+    const grade = searchParams.get('grade') || ''
+    const dateFrom = searchParams.get('dateFrom') || ''
+    const dateTo = searchParams.get('dateTo') || ''
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
     
     const offset = (page - 1) * limit
 
-    // 기본 쿼리
+    // 기본 쿼리 (일반 사용자 조회)
     let query = supabase
       .from('users')
       .select('*', { count: 'exact' })
 
     // 검색 조건
     if (search) {
-      query = query.or(`company_name.ilike.%${search}%,representative_name.ilike.%${search}%,email.ilike.%${search}%,business_number.ilike.%${search}%`)
+      query = query.or(`company_name.ilike.%${search}%,representative_name.ilike.%${search}%,email.ilike.%${search}%,business_number.ilike.%${search}%,phone.ilike.%${search}%`)
     }
 
     // 상태 필터
     if (status) {
       query = query.eq('approval_status', status)
+    }
+
+    // 고객 등급 필터
+    if (grade) {
+      query = query.eq('customer_grade', grade)
+    }
+
+    // 가입일 범위 필터
+    if (dateFrom) {
+      query = query.gte('created_at', dateFrom)
+    }
+    if (dateTo) {
+      query = query.lte('created_at', dateTo)
     }
 
     // 정렬

@@ -104,12 +104,158 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - 샘플 출고
+// POST - 샘플 출고 및 생성
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
     const body = await request.json()
     
+    // 관리자 샘플 생성 처리
+    if (body.action === 'create_sample') {
+      const { customerId, customerName, items } = body
+
+      if (!customerId || !items || !Array.isArray(items) || items.length === 0) {
+        return NextResponse.json({
+          success: false,
+          error: '필수 정보가 누락되었습니다.'
+        }, { status: 400 })
+      }
+
+      const results = []
+
+      for (const item of items) {
+        const { productId, productCode, productName, color, size, quantity } = item
+
+        if (!productId || !quantity || quantity <= 0) {
+          results.push({
+            productId,
+            success: false,
+            error: '상품 정보가 누락되었습니다.'
+          })
+          continue
+        }
+
+        try {
+          // 상품 정보 확인
+          const { data: product, error: productError } = await supabase
+            .from('products')
+            .select('id, name, price, stock_quantity')
+            .eq('id', productId)
+            .single()
+
+          if (productError || !product) {
+            results.push({
+              productId,
+              success: false,
+              error: '상품을 찾을 수 없습니다.'
+            })
+            continue
+          }
+
+          // 재고 확인
+          if (product.stock_quantity < quantity) {
+            results.push({
+              productId,
+              success: false,
+              error: `재고가 부족합니다. 현재 재고: ${product.stock_quantity}개`
+            })
+            continue
+          }
+
+          // 샘플 번호 생성
+          const now = new Date()
+          const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
+          const randomStr = Math.random().toString(36).substr(2, 4).toUpperCase()
+          const sampleNumber = `SP-${dateStr}-${randomStr}`
+
+          // 샘플 생성 (항상 0원)
+          const { data: sample, error: sampleError } = await supabase
+            .from('samples')
+            .insert({
+              sample_number: sampleNumber,
+              customer_id: customerId,
+              customer_name: customerName,
+              product_id: productId,
+              product_name: productName,
+              product_options: `색상: ${color}, 사이즈: ${size}`,
+              quantity,
+              sample_type: 'photography',
+              charge_amount: 0, // 샘플 주문은 항상 0원
+              status: 'pending',
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single()
+
+          if (sampleError) {
+            results.push({
+              productId,
+              success: false,
+              error: '샘플 생성에 실패했습니다.'
+            })
+            continue
+          }
+
+          // 재고 차감
+          const { error: stockError } = await supabase
+            .from('products')
+            .update({
+              stock_quantity: product.stock_quantity - quantity,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', productId)
+
+          if (stockError) {
+            // 샘플 생성 롤백
+            await supabase.from('samples').delete().eq('id', sample.id)
+            results.push({
+              productId,
+              success: false,
+              error: '재고 업데이트에 실패했습니다.'
+            })
+            continue
+          }
+
+          // 재고 변동 이력 기록
+          await supabase
+            .from('stock_movements')
+            .insert({
+              product_id: productId,
+              movement_type: 'sample_out',
+              quantity: -quantity,
+              reference_id: sample.id,
+              reference_type: 'sample',
+              notes: `샘플 출고: ${sampleNumber}`,
+              created_at: new Date().toISOString()
+            })
+
+          results.push({
+            productId,
+            success: true,
+            sampleNumber,
+            data: sample
+          })
+
+        } catch (error) {
+          console.error(`샘플 생성 오류 (${productId}):`, error)
+          results.push({
+            productId,
+            success: false,
+            error: '처리 중 오류가 발생했습니다.'
+          })
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length
+      
+      return NextResponse.json({
+        success: successCount > 0,
+        message: `${successCount}개의 샘플이 생성되었습니다.`,
+        data: results
+      })
+    }
+
+    // 기존 샘플 출고 로직
     const { 
       customer_id,
       product_id,

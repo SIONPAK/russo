@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Package, ShoppingCart, Minus, Plus } from 'lucide-react'
+import { ArrowLeft, Package } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { useCart } from '@/features/cart/model/use-cart'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
 import { formatCurrency } from '@/shared/lib/utils'
-import { showSuccess, showInfo } from '@/shared/lib/toast'
+import { showInfo } from '@/shared/lib/toast'
 
 interface ProductDetailViewProps {
   product: any
@@ -15,14 +14,12 @@ interface ProductDetailViewProps {
 
 export function ProductDetailView({ product }: ProductDetailViewProps) {
   const router = useRouter()
-  const { addToCart } = useCart()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, userType } = useAuthStore()
   
   const [selectedOptions, setSelectedOptions] = useState({
     color: '',
     size: ''
   })
-  const [quantity, setQuantity] = useState(1)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
 
   // 모든 이미지 배열 (메인 이미지 + 추가 이미지들)
@@ -59,87 +56,6 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
       ...prev,
       [type]: value
     }))
-    // 옵션 변경 시 수량 초기화
-    setQuantity(1)
-  }
-
-  const handleQuantityChange = (delta: number) => {
-    const newQuantity = quantity + delta
-    if (newQuantity >= 1 && newQuantity <= availableStock) {
-      setQuantity(newQuantity)
-    }
-  }
-
-  const handleAddToCart = () => {
-    if (!isAuthenticated) {
-      showInfo('로그인이 필요합니다.')
-      router.push('/auth/login')
-      return
-    }
-
-    if (product.inventory_options && (!selectedOptions.color || !selectedOptions.size)) {
-      showInfo('색상과 사이즈를 선택해주세요.')
-      return
-    }
-
-    if (availableStock < quantity) {
-      showInfo('재고가 부족합니다.')
-      return
-    }
-
-    try {
-      const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
-      
-      addToCart({
-        productId: product.id,
-        productName: product.name,
-        productImage: allImages[0]?.image_url || '',
-        unitPrice,
-        quantity,
-        color: selectedOptions.color,
-        size: selectedOptions.size,
-      })
-      
-      showSuccess(`${product.name}이(가) 장바구니에 추가되었습니다.`)
-    } catch (error) {
-      showInfo('장바구니 추가 중 오류가 발생했습니다.')
-    }
-  }
-
-  const handleDirectOrder = () => {
-    if (!isAuthenticated) {
-      showInfo('로그인이 필요합니다.')
-      router.push('/auth/login')
-      return
-    }
-
-    if (product.inventory_options && (!selectedOptions.color || !selectedOptions.size)) {
-      showInfo('색상과 사이즈를 선택해주세요.')
-      return
-    }
-
-    if (availableStock < quantity) {
-      showInfo('재고가 부족합니다.')
-      return
-    }
-
-    // 상품 정보를 URL 파라미터로 전달
-    const orderItems = [{
-      id: product.id,
-      name: product.name,
-      code: product.code || '',
-      price: product.is_on_sale && product.sale_price ? product.sale_price : product.price,
-      quantity,
-      color: selectedOptions.color,
-      size: selectedOptions.size,
-      options: {
-        color: selectedOptions.color,
-        size: selectedOptions.size
-      }
-    }]
-
-    const encodedItems = encodeURIComponent(JSON.stringify(orderItems))
-    router.push(`/order?items=${encodedItems}`)
   }
 
   if (!isAuthenticated) {
@@ -230,114 +146,58 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
               </div>
             </div>
 
-            {/* 옵션 선택 */}
+            {/* 옵션 표시 (선택 불가능) */}
             {product.inventory_options && Array.isArray(product.inventory_options) && (
               <div className="space-y-4">
-                {/* 색상 선택 */}
+                {/* 색상 표시 */}
                 <div>
                   <h3 className="text-sm font-medium text-gray-900 mb-2">색상</h3>
                   <div className="flex flex-wrap gap-2">
                     {[...new Set(product.inventory_options.map((opt: any) => opt.color))].map((color) => (
-                      <button
+                      <div
                         key={color as string}
-                        onClick={() => {
-                          // 색상 변경 시 사이즈 초기화
-                          setSelectedOptions(prev => ({
-                            ...prev,
-                            color: color as string,
-                            size: ''
-                          }))
-                          // 옵션 변경 시 수량도 초기화
-                          setQuantity(1)
-                        }}
-                        className={`px-4 py-2 rounded-lg border ${
-                          selectedOptions.color === color
-                            ? 'border-black bg-black text-white'
-                            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                        }`}
+                        className="px-4 py-2 rounded-lg border border-gray-300 bg-gray-50 text-gray-700"
                       >
                         {color as string}
-                      </button>
+                      </div>
                     ))}
                   </div>
                 </div>
 
-                {/* 사이즈 선택 */}
+                {/* 사이즈 표시 */}
                 <div>
                   <h3 className="text-sm font-medium text-gray-900 mb-2">사이즈</h3>
                   <div className="flex flex-wrap gap-2">
-                    {[...new Set(
-                      product.inventory_options
-                        .filter((opt: any) => selectedOptions.color ? opt.color === selectedOptions.color : true)
-                        .map((opt: any) => opt.size)
-                    )].map((size) => (
-                      <button
+                    {[...new Set(product.inventory_options.map((opt: any) => opt.size))].map((size) => (
+                      <div
                         key={size as string}
-                        onClick={() => handleOptionChange('size', size as string)}
-                        disabled={!selectedOptions.color}
-                        className={`px-4 py-2 rounded-lg border ${
-                          selectedOptions.size === size
-                            ? 'border-black bg-black text-white'
-                            : !selectedOptions.color
-                            ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                        }`}
+                        className="px-4 py-2 rounded-lg border border-gray-300 bg-gray-50 text-gray-700"
                       >
                         {size as string}
-                      </button>
+                      </div>
                     ))}
                   </div>
-                  {!selectedOptions.color && (
-                    <p className="text-sm text-gray-500 mt-2">색상을 먼저 선택해주세요.</p>
-                  )}
                 </div>
               </div>
             )}
 
-            {/* 수량 선택 */}
-            <div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">수량</h3>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handleQuantityChange(-1)}
-                  disabled={quantity <= 1}
-                  className="p-2 rounded-lg border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <span className="px-4 py-2 border border-gray-300 rounded-lg text-center min-w-[60px]">
-                  {quantity}
-                </span>
-                <button
-                  onClick={() => handleQuantityChange(1)}
-                  disabled={quantity >= availableStock}
-                  className="p-2 rounded-lg border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
+            {/* 재고 정보 */}
+            <div className="text-sm text-gray-600">
+              재고: {product.stock_quantity || 0}개
             </div>
 
-            {/* 구매 버튼들 */}
-            <div className="space-y-3">
-              <div className="flex space-x-3">
-                <Button
-                  onClick={handleAddToCart}
-                  variant="outline"
-                  className="flex-1 h-12 text-lg"
-                  disabled={availableStock < quantity}
-                >
-                  <ShoppingCart className="h-5 w-5 mr-2" />
-                  장바구니
-                </Button>
-                <Button
-                  onClick={handleDirectOrder}
-                  className="flex-1 h-12 bg-black text-white hover:bg-gray-800 text-lg font-semibold"
-                  disabled={availableStock < quantity}
-                >
-                  바로 주문
-                </Button>
-              </div>
+            {/* 발주 안내 */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-blue-900 mb-2">발주 안내</h3>
+              <p className="text-sm text-blue-800">
+                상품 발주는 <strong>발주관리</strong> 페이지에서 진행해주세요.
+              </p>
+              <Button
+                onClick={() => router.push('/order-management')}
+                className="mt-3 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                발주관리 페이지로 이동
+              </Button>
             </div>
           </div>
         </div>

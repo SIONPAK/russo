@@ -8,34 +8,7 @@ export async function POST(request: NextRequest) {
     
     console.log('Debug API called with:', body)
     
-    // 인증 확인
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    console.log('Auth result:', { user: user ? { id: user.id, email: user.email } : null, authError })
-    
-    if (authError || !user) {
-      return NextResponse.json({
-        success: false,
-        error: '인증이 필요합니다.',
-        debug: { authError: authError?.message }
-      }, { status: 401 })
-    }
-
-    // 관리자 권한 확인
-    const { data: admin, error: adminError } = await supabase
-      .from('admins')
-      .select('*')
-      .eq('email', user.email)
-      .single()
-    
-    console.log('Admin check result:', { admin, adminError })
-
-    if (adminError || !admin) {
-      return NextResponse.json({
-        success: false,
-        error: '관리자 권한이 필요합니다.',
-        debug: { adminError: adminError?.message }
-      }, { status: 403 })
-    }
+    // 권한 확인 제거 - 일반 클라이언트 사용
 
     // 샘플 존재 확인
     const { sampleId } = body
@@ -80,8 +53,6 @@ export async function POST(request: NextRequest) {
       success: true,
       message: '디버깅 완료',
       data: {
-        user: { id: user.id, email: user.email },
-        admin,
         existingSample,
         updateResult
       }

@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || ''
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
+    const type = searchParams.get('type') // 'purchase' | 'sample' | 'normal'
     
     // 특정 주문 조회 (orderNumber가 있는 경우)
     if (orderNumber) {
@@ -137,6 +138,16 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
+    // 주문 타입 필터 (발주 주문의 경우 order_number가 PO로 시작)
+    if (type === 'purchase') {
+      query = query.like('order_number', 'PO%')
+    } else if (type === 'sample') {
+      query = query.like('order_number', 'SP%')
+    } else if (type === 'normal') {
+      query = query.not('order_number', 'like', 'PO%')
+      query = query.not('order_number', 'like', 'SP%')
+    }
+
     // 날짜 범위 필터 (오후 3시 기준)
     const dateRange = getDateRangeFromCutoff(startDate, endDate)
     query = query.gte('created_at', dateRange.start)
@@ -161,20 +172,18 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: {
-        orders: orders || [],
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: count || 0,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
-        },
-        dateRange: {
-          start: dateRange.start,
-          end: dateRange.end,
-          cutoffInfo: `오후 3시 기준 조회 (${new Date(dateRange.start).toLocaleString('ko-KR')} ~ ${new Date(dateRange.end).toLocaleString('ko-KR')})`
-        }
+      data: orders || [],
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalCount: count || 0,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      },
+      dateRange: {
+        start: dateRange.start,
+        end: dateRange.end,
+        cutoffInfo: `오후 3시 기준 조회 (${new Date(dateRange.start).toLocaleString('ko-KR')} ~ ${new Date(dateRange.end).toLocaleString('ko-KR')})`
       }
     })
 
@@ -197,12 +206,10 @@ export async function POST(request: NextRequest) {
       shippingInfo,
       totalAmount,
       shippingFee,
-      notes,
-      orderType = 'normal', // 'normal' | 'sample'
-      sampleType = 'photography' // 'photography' | 'sales' (샘플 주문인 경우)
+      notes
     } = body
 
-    console.log('주문 생성 요청:', { userId, itemsCount: items?.length, totalAmount, orderType })
+    console.log('주문 생성 요청:', { userId, itemsCount: items?.length, totalAmount })
 
     // 필수 필드 검증
     if (!userId || !items || items.length === 0 || !shippingInfo) {
@@ -212,20 +219,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 샘플 주문인 경우 특별 처리
+    // 총 수량 계산 (20장 이상 무료배송 확인용)
+    const totalQuantity = items.reduce((sum: number, item: any) => sum + item.quantity, 0)
+    
+    // 일반 주문: 20장 이상 무료배송
     let finalTotalAmount = totalAmount
     let finalShippingFee = shippingFee || 3000
-
-    if (orderType === 'sample') {
-      if (sampleType === 'photography') {
-        // 촬영용 샘플: 0원 처리
-        finalTotalAmount = 0
-        finalShippingFee = 0
-      } else if (sampleType === 'sales') {
-        // 판매용 샘플: 실제 금액 유지
-        finalTotalAmount = totalAmount
-        finalShippingFee = shippingFee || 3000
-      }
+    
+    if (totalQuantity >= 20) {
+      finalShippingFee = 0
     }
 
     // 재고 확인 및 차감
@@ -360,19 +362,15 @@ export async function POST(request: NextRequest) {
     const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
     const randomStr = Math.random().toString(36).substr(2, 4).toUpperCase()
     
-    // 샘플 주문인 경우 SP- 접두사 사용
-    const orderNumber = orderType === 'sample' 
-      ? `SP-${dateStr}-${timeStr}-${randomStr}`
-      : `${dateStr}-${timeStr}-${randomStr}`
+    const orderNumber = `${dateStr}-${timeStr}-${randomStr}`
 
     console.log('생성할 주문 데이터:', {
       user_id: userId,
       order_number: orderNumber,
-      order_type: orderType,
-      sample_type: orderType === 'sample' ? sampleType : null,
+      order_type: 'normal',
       total_amount: finalTotalAmount,
       shipping_fee: finalShippingFee,
-      status: orderType === 'sample' ? 'pending_approval' : 'pending',
+      status: 'pending',
       shipping_name: shippingInfo.name,
       shipping_phone: shippingInfo.phone,
       shipping_address: shippingInfo.address,
@@ -386,17 +384,15 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: userId,
         order_number: orderNumber,
-        order_type: orderType,
-        sample_type: orderType === 'sample' ? sampleType : null,
+        order_type: 'normal',
         total_amount: finalTotalAmount,
         shipping_fee: finalShippingFee,
-        status: orderType === 'sample' ? 'pending_approval' : 'pending', // 샘플 주문은 승인 대기
+        status: 'pending',
         shipping_name: shippingInfo.name,
         shipping_phone: shippingInfo.phone,
         shipping_address: shippingInfo.address,
         shipping_postal_code: shippingInfo.postalCode,
-        notes: notes || null,
-        due_date: orderType === 'sample' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null // 30일 후
+        notes: notes || null
       })
       .select()
       .single()
@@ -417,8 +413,8 @@ export async function POST(request: NextRequest) {
       color: item.color || '기본',
       size: item.size || '기본',
       quantity: item.quantity,
-      unit_price: orderType === 'sample' && sampleType === 'photography' ? 0 : item.unitPrice,
-      total_price: orderType === 'sample' && sampleType === 'photography' ? 0 : item.totalPrice,
+      unit_price: item.unitPrice,
+      total_price: item.totalPrice,
       options: item.options || null
     }))
 
@@ -495,9 +491,7 @@ export async function POST(request: NextRequest) {
       .eq('id', order.id)
       .single()
 
-    const message = orderType === 'sample' 
-      ? '샘플 주문이 접수되었습니다. 관리자 승인 후 발송됩니다.'
-      : '주문이 성공적으로 생성되었습니다.'
+    const message = '주문이 성공적으로 생성되었습니다.'
 
     return NextResponse.json({
       success: true,

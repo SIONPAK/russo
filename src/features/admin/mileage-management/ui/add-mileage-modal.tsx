@@ -16,6 +16,19 @@ interface AddMileageModalProps {
     amount: number
     description: string
   }) => Promise<void>
+  initialData?: {
+    user_id: string
+    type: 'earn' | 'spend'
+    amount: number
+    description: string
+    user?: {
+      id: string
+      company_name: string
+      representative_name: string
+      email: string
+    }
+  }
+  title?: string
 }
 
 interface User {
@@ -25,7 +38,7 @@ interface User {
   email: string
 }
 
-export function AddMileageModal({ isOpen, onClose, onSubmit }: AddMileageModalProps) {
+export function AddMileageModal({ isOpen, onClose, onSubmit, initialData, title = '마일리지 수동 등록' }: AddMileageModalProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [searchResults, setSearchResults] = useState<User[]>([])
@@ -73,6 +86,41 @@ export function AddMileageModal({ isOpen, onClose, onSubmit }: AddMileageModalPr
 
     return () => clearTimeout(timeoutId)
   }, [searchTerm])
+
+  // 초기값 설정 (수정 모드)
+  useEffect(() => {
+    if (initialData) {
+      setType(initialData.type)
+      setAmount(initialData.amount.toLocaleString())
+      setDescription(initialData.description)
+      
+      // 사용자 정보 설정 (수정 모드에서는 검색 비활성화)
+      if (initialData.user) {
+        setSelectedUser({
+          id: initialData.user.id,
+          company_name: initialData.user.company_name,
+          representative_name: initialData.user.representative_name,
+          email: initialData.user.email
+        })
+        setSearchTerm(initialData.user.company_name)
+      } else {
+        setSelectedUser({ 
+          id: initialData.user_id, 
+          company_name: '기존 사용자', 
+          representative_name: '', 
+          email: '' 
+        })
+        setSearchTerm('기존 사용자')
+      }
+    } else {
+      // 초기화
+      setSelectedUser(null)
+      setSearchTerm('')
+      setType('earn')
+      setAmount('')
+      setDescription('')
+    }
+  }, [initialData])
 
   // 사용자 선택
   const handleUserSelect = (user: User) => {
@@ -142,7 +190,7 @@ export function AddMileageModal({ isOpen, onClose, onSubmit }: AddMileageModalPr
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-md w-full">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="text-lg font-semibold">마일리지 수동 등록</h3>
+          <h3 className="text-lg font-semibold">{title}</h3>
           <Button variant="ghost" onClick={onClose}>
             ✕
           </Button>
@@ -162,8 +210,10 @@ export function AddMileageModal({ isOpen, onClose, onSubmit }: AddMileageModalPr
                 placeholder="회사명을 입력하세요"
                 className="pl-10 pr-10"
                 required
+                disabled={!!initialData}
+                readOnly={!!initialData}
               />
-              {selectedUser && (
+              {selectedUser && !initialData && (
                 <button
                   type="button"
                   onClick={handleUserClear}
@@ -175,7 +225,7 @@ export function AddMileageModal({ isOpen, onClose, onSubmit }: AddMileageModalPr
             </div>
             
             {/* 검색 결과 */}
-            {showSearchResults && (
+            {showSearchResults && !initialData && (
               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                 {searchLoading ? (
                   <div className="p-3 text-center text-gray-500">검색 중...</div>

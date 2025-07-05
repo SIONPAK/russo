@@ -10,6 +10,10 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId') || ''
     const type = searchParams.get('type') || '' // 'earn' or 'spend'
     const status = searchParams.get('status') || ''
+    const search = searchParams.get('search') || ''
+    const source = searchParams.get('source') || ''
+    const dateFrom = searchParams.get('dateFrom') || ''
+    const dateTo = searchParams.get('dateTo') || ''
     
     const offset = (page - 1) * limit
     const supabase = createClient()
@@ -37,6 +41,22 @@ export async function GET(request: NextRequest) {
     
     if (status && status !== 'all') {
       query = query.eq('status', status)
+    }
+    
+    if (source && source !== 'all') {
+      query = query.eq('source', source)
+    }
+    
+    if (search) {
+      query = query.or(`description.ilike.%${search}%,users.company_name.ilike.%${search}%`)
+    }
+    
+    if (dateFrom) {
+      query = query.gte('created_at', dateFrom)
+    }
+    
+    if (dateTo) {
+      query = query.lte('created_at', dateTo + 'T23:59:59')
     }
 
     // 정렬 및 페이지네이션

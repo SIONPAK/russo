@@ -1,5 +1,7 @@
 import { Button } from '@/shared/ui/button'
 import { User } from '@/shared/types'
+import { useState } from 'react'
+import { formatDateTime } from '@/shared/lib/utils'
 
 interface UserDetailModalProps {
   user: User | null
@@ -10,6 +12,8 @@ interface UserDetailModalProps {
   onDeactivate: (userId: string, reason: string) => void
   onActivate?: (userId: string) => void
   onDelete?: (userId: string) => void
+  onUpdateGrade?: (userId: string, grade: 'premium' | 'general') => void
+  onDormantToggle?: (userId: string, isDormant: boolean, reason?: string) => void
 }
 
 export function UserDetailModal({ 
@@ -20,8 +24,12 @@ export function UserDetailModal({
   onReject, 
   onDeactivate,
   onActivate,
-  onDelete
+  onDelete,
+  onUpdateGrade,
+  onDormantToggle
 }: UserDetailModalProps) {
+  const [showGradeChange, setShowGradeChange] = useState(false)
+  
   if (!isOpen || !user) return null
 
   const handleReject = () => {
@@ -37,6 +45,25 @@ export function UserDetailModal({
     if (reason) {
       onDeactivate(user.id, reason)
       onClose()
+    }
+  }
+
+  const handleGradeChange = (newGrade: 'premium' | 'general') => {
+    if (onUpdateGrade) {
+      onUpdateGrade(user.id, newGrade)
+      setShowGradeChange(false)
+    }
+  }
+
+  const handleDormantToggle = () => {
+    if (onDormantToggle) {
+      const reason = user.is_dormant 
+        ? '휴면 해제' 
+        : prompt('휴면 처리 사유를 입력하세요:')
+      
+      if (!user.is_dormant && !reason) return
+      
+      onDormantToggle(user.id, !user.is_dormant, reason || undefined)
     }
   }
 
@@ -77,8 +104,57 @@ export function UserDetailModal({
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">가입일</label>
                 <p className="text-sm text-gray-900">
-                  {new Date(user.created_at).toLocaleString('ko-KR')}
+                  {formatDateTime(user.created_at)}
                 </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">최종 로그인</label>
+                <p className="text-sm text-gray-900">
+                  {user.last_login_at 
+                    ? formatDateTime(user.last_login_at)
+                    : '로그인 기록 없음'
+                  }
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">고객 등급</label>
+                <div className="flex items-center space-x-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    user.customer_grade === 'premium' 
+                      ? 'text-purple-700 bg-purple-50 border border-purple-200' 
+                      : 'text-gray-700 bg-gray-50 border border-gray-200'
+                  }`}>
+                    {user.customer_grade === 'premium' ? '우수업체' : '일반'}
+                  </span>
+                  {onUpdateGrade && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowGradeChange(!showGradeChange)}
+                      className="text-xs"
+                    >
+                      변경
+                    </Button>
+                  )}
+                </div>
+                {showGradeChange && (
+                  <div className="mt-2 flex space-x-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleGradeChange('premium')}
+                      className={`text-xs ${user.customer_grade === 'premium' ? 'bg-purple-500' : 'bg-gray-500'}`}
+                    >
+                      우수업체
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleGradeChange('general')}
+                      className={`text-xs ${user.customer_grade === 'general' ? 'bg-gray-500' : 'bg-purple-500'}`}
+                    >
+                      일반
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -130,6 +206,37 @@ export function UserDetailModal({
             </div>
           </div>
 
+          {/* 승인 이력 */}
+          {(user.approved_at || user.rejected_at) && (
+            <div>
+              <h4 className="text-md font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">승인 이력</h4>
+              <div className="space-y-2">
+                {user.approved_at && (
+                  <p className="text-sm text-green-600">
+                    승인일: {formatDateTime(user.approved_at)}
+                  </p>
+                )}
+                {user.rejected_at && (
+                  <div>
+                    <p className="text-sm text-red-600">
+                      반려일: {formatDateTime(user.rejected_at)}
+                    </p>
+                    {user.rejected_reason && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        반려 사유: {user.rejected_reason}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {user.approval_notes && (
+                  <p className="text-sm text-gray-600">
+                    관리자 메모: {user.approval_notes}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 상태 관리 */}
           <div>
             <h4 className="text-md font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">상태 관리</h4>
@@ -173,6 +280,18 @@ export function UserDetailModal({
                   className="border-blue-200 text-blue-600 hover:bg-blue-50"
                 >
                   계정 활성화
+                </Button>
+              )}
+              {onDormantToggle && (
+                <Button 
+                  variant="outline"
+                  onClick={handleDormantToggle}
+                  className={`${user.is_dormant 
+                    ? 'border-green-200 text-green-600 hover:bg-green-50' 
+                    : 'border-orange-200 text-orange-600 hover:bg-orange-50'
+                  }`}
+                >
+                  {user.is_dormant ? '휴면 해제' : '휴면 처리'}
                 </Button>
               )}
               {onDelete && (
