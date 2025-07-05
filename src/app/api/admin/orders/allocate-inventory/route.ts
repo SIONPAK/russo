@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 
+type OrderWithUser = {
+  id: string
+  order_number: string
+  created_at: string
+  users: {
+    company_name: string
+  }
+}
+
 // POST - 재고 할당 처리
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +24,14 @@ export async function POST(request: NextRequest) {
     // 주문들을 시간순으로 정렬하여 처리 (오래된 주문부터)
     const { data: ordersToSort, error: sortError } = await supabase
       .from('orders')
-      .select('id, created_at, order_number, users!orders_user_id_fkey(company_name)')
+      .select(`
+        id,
+        order_number,
+        created_at,
+        users:users!orders_user_id_fkey (
+          company_name
+        )
+      `)
       .in('id', orderIds)
       .order('created_at', { ascending: true })
 
@@ -26,7 +42,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    console.log('시간순차적 재고 할당 시작:', ordersToSort.map((o: any) => ({
+    console.log('시간순차적 재고 할당 시작:', (ordersToSort as unknown as OrderWithUser[]).map((o) => ({
       id: o.id,
       orderNumber: o.order_number,
       company: o.users?.company_name,
@@ -34,15 +50,15 @@ export async function POST(request: NextRequest) {
     })))
 
     // 시간순차적으로 주문 처리 (오래된 주문부터)
-    for (const order of ordersToSort) {
+    for (const order of ordersToSort as unknown as OrderWithUser[]) {
       const result = await allocateInventoryForOrder(supabase, order.id)
       
       if (result.success) {
         allocatedCount++
-        console.log(`✅ 주문 ${order.order_number} (${order.users?.company_name}) 할당 완료`)
+        console.log(`✅ 주문 ${order.order_number} (${order.users?.company_name || '알 수 없음'}) 할당 완료`)
       } else if (result.reason === 'insufficient_stock') {
         insufficientStockCount++
-        console.log(`❌ 주문 ${order.order_number} (${order.users?.company_name}) 재고 부족`)
+        console.log(`❌ 주문 ${order.order_number} (${order.users?.company_name || '알 수 없음'}) 재고 부족`)
       }
     }
 
