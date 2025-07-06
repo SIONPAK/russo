@@ -46,8 +46,8 @@ export default function ShippingStatementsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedStatements, setSelectedStatements] = useState<string[]>([])
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
+    startDate: '',
+    endDate: '',
     companyName: '',
     emailSent: 'all'
   })

@@ -92,30 +92,13 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
-    // 날짜 필터 (오후 3시 기준 처리)
+    // 날짜 필터
     if (startDate) {
-      if (is3PMBased) {
-        // 오후 3시 기준: 전날 15:00 ~ 당일 14:59
-        const targetDate = new Date(startDate)
-        
-        const start = new Date(targetDate)
-        start.setDate(start.getDate() - 1)
-        start.setHours(15, 0, 0, 0)
-        
-        const end = new Date(targetDate)
-        end.setHours(14, 59, 59, 999)
-        
-        query = query
-          .gte('created_at', start.toISOString())
-          .lte('created_at', end.toISOString())
+      query = query.gte('created_at', `${startDate}T00:00:00`)
+      if (endDate) {
+        query = query.lte('created_at', `${endDate}T23:59:59`)
       } else {
-        // 일반 날짜 범위
-        query = query.gte('created_at', startDate)
-        if (endDate) {
-          const endDateTime = new Date(endDate)
-          endDateTime.setHours(23, 59, 59, 999)
-          query = query.lte('created_at', endDateTime.toISOString())
-        }
+        query = query.lte('created_at', `${startDate}T23:59:59`)
       }
     }
 

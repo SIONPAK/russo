@@ -24,21 +24,23 @@ const supabaseAdmin = createClient(
 
 // 오후 3시 기준 날짜 범위 계산
 const getDateRangeFromCutoff = (startDate?: string | null, endDate?: string | null) => {
+  // 한국 시간 기준으로 현재 시간 계산
   const now = new Date()
-  const currentHour = now.getHours()
+  const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+  const currentHour = koreaTime.getHours()
   
-  // 사용자가 날짜를 직접 지정한 경우 그대로 사용
+  // 사용자가 날짜를 직접 지정한 경우 한국 시간으로 변환
   if (startDate && endDate) {
-    const endDateTime = new Date(endDate)
-    endDateTime.setHours(23, 59, 59, 999)
+    const startDateTime = new Date(startDate + 'T00:00:00+09:00')
+    const endDateTime = new Date(endDate + 'T23:59:59+09:00')
     return {
-      start: startDate,
+      start: startDateTime.toISOString(),
       end: endDateTime.toISOString()
     }
   }
   
-  // 오후 3시 기준 자동 계산
-  let cutoffDate = new Date()
+  // 오후 3시 기준 자동 계산 (한국 시간)
+  let cutoffDate = new Date(koreaTime)
   
   if (currentHour < 15) {
     // 오후 3시 이전: 전날 오후 3시부터
@@ -50,7 +52,7 @@ const getDateRangeFromCutoff = (startDate?: string | null, endDate?: string | nu
   
   return {
     start: cutoffDate.toISOString(),
-    end: now.toISOString()
+    end: koreaTime.toISOString()
   }
 }
 
@@ -148,10 +150,15 @@ export async function GET(request: NextRequest) {
       query = query.not('order_number', 'like', 'SP%')
     }
 
-    // 날짜 범위 필터 (오후 3시 기준)
-    const dateRange = getDateRangeFromCutoff(startDate, endDate)
-    query = query.gte('created_at', dateRange.start)
-    query = query.lte('created_at', dateRange.end)
+    // 날짜 필터
+    if (startDate) {
+      query = query.gte('created_at', `${startDate}T00:00:00`)
+      if (endDate) {
+        query = query.lte('created_at', `${endDate}T23:59:59`)
+      } else {
+        query = query.lte('created_at', `${startDate}T23:59:59`)
+      }
+    }
 
     // 정렬 및 페이지네이션
     query = query
@@ -181,9 +188,9 @@ export async function GET(request: NextRequest) {
         hasPrevPage: page > 1
       },
       dateRange: {
-        start: dateRange.start,
-        end: dateRange.end,
-        cutoffInfo: `오후 3시 기준 조회 (${new Date(dateRange.start).toLocaleString('ko-KR')} ~ ${new Date(dateRange.end).toLocaleString('ko-KR')})`
+        start: startDate,
+        end: endDate,
+        cutoffInfo: `오후 3시 기준 조회 (${startDate ? new Date(startDate).toLocaleString('ko-KR') : '시작 날짜 없음'} ~ ${endDate ? new Date(endDate).toLocaleString('ko-KR') : '종료 날짜 없음'})`
       }
     })
 
