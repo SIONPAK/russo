@@ -6,7 +6,8 @@ import {
   User, 
   Package, 
   Award, 
-  FileText
+  FileText,
+  MapPin
 } from 'lucide-react'
 
 export function MypageSidebar() {
@@ -24,6 +25,12 @@ export function MypageSidebar() {
       label: '주문내역 조회',
       path: '/mypage/orders',
       description: '주문 조회 및 관리'
+    },
+    {
+      icon: MapPin,
+      label: '배송지 관리',
+      path: '/mypage/shipping-addresses',
+      description: '배송지 추가 및 관리'
     },
     {
       icon: Award,

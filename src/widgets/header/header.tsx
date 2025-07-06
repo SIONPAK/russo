@@ -109,6 +109,12 @@ export default function Header() {
       description: '주문 조회 및 관리'
     },
     {
+      icon: MapPin,
+      label: '배송지 관리',
+      path: '/mypage/shipping-addresses',
+      description: '배송지 추가 및 관리'
+    },
+    {
       icon: Award,
       label: '마일리지',
       path: '/mypage/mileage',

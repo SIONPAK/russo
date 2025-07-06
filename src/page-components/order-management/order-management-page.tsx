@@ -14,7 +14,8 @@ import {
   Package,
   Trash2,
   Calendar,
-  List
+  List,
+  X
 } from 'lucide-react'
 
 interface OrderItem {
@@ -62,7 +63,9 @@ export function OrderManagementPage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [shippingAddress, setShippingAddress] = useState<any>(null)
+  const [shippingAddresses, setShippingAddresses] = useState<any[]>([])
+  const [selectedShippingAddress, setSelectedShippingAddress] = useState<any>(null)
+  const [isShippingModalOpen, setIsShippingModalOpen] = useState(false)
   
   // 발주 내역 관련 상태
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
@@ -71,9 +74,9 @@ export function OrderManagementPage() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
 
-  // 사용자 배송지 정보 가져오기
+  // 사용자 배송지 목록 가져오기
   useEffect(() => {
-    const fetchShippingAddress = async () => {
+    const fetchShippingAddresses = async () => {
       if (!isAuthenticated || !user) return
 
       try {
@@ -83,19 +86,22 @@ export function OrderManagementPage() {
         console.log('배송지 API 응답:', result)
 
         if (result.success && result.data.length > 0) {
+          setShippingAddresses(result.data)
+          // 기본 배송지를 선택된 배송지로 설정
           const defaultAddress = result.data.find((addr: any) => addr.is_default) || result.data[0]
+          setSelectedShippingAddress(defaultAddress)
           console.log('선택된 기본 배송지:', defaultAddress)
-          setShippingAddress(defaultAddress)
         } else {
           console.log('배송지 정보 없음')
-          setShippingAddress(null)
+          setShippingAddresses([])
+          setSelectedShippingAddress(null)
         }
       } catch (error) {
         console.error('배송지 정보 조회 오류:', error)
       }
     }
 
-    fetchShippingAddress()
+    fetchShippingAddresses()
   }, [isAuthenticated, user])
 
   // 발주 내역 조회 (오후 3시 기준)
@@ -275,11 +281,11 @@ export function OrderManagementPage() {
         userId: user.id,
         items: validItems,
         totalAmount: validItems.reduce((sum, item) => sum + item.supplyAmount + item.vat, 0),
-        shippingInfo: shippingAddress ? {
-          shipping_name: shippingAddress.recipient_name,
-          shipping_phone: shippingAddress.phone,
-          shipping_address: shippingAddress.address,
-          shipping_postal_code: shippingAddress.postal_code
+        shippingInfo: selectedShippingAddress ? {
+          shipping_name: selectedShippingAddress.recipient_name,
+          shipping_phone: selectedShippingAddress.phone,
+          shipping_address: selectedShippingAddress.address,
+          shipping_postal_code: selectedShippingAddress.postal_code
         } : {
           shipping_name: (user as any).company_name || (user as any).representative_name || '',
           shipping_phone: (user as any).phone || '',
@@ -289,7 +295,7 @@ export function OrderManagementPage() {
       }
 
       console.log('발주서 저장 요청 데이터:', requestData)
-      console.log('현재 배송지 상태:', shippingAddress)
+      console.log('현재 배송지 상태:', selectedShippingAddress)
 
       const response = await fetch('/api/orders/purchase', {
         method: 'POST',
@@ -375,6 +381,49 @@ export function OrderManagementPage() {
       {/* 발주서 작성 탭 */}
       {activeTab === 'create' && (
         <>
+          {/* 배송지 선택 섹션 */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-lg font-medium mb-4">배송지 선택</h3>
+            {selectedShippingAddress ? (
+              <div className="bg-white p-4 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium">{selectedShippingAddress.recipient_name}</span>
+                      {selectedShippingAddress.is_default && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">기본</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      {selectedShippingAddress.phone}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      ({selectedShippingAddress.postal_code}) {selectedShippingAddress.address}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsShippingModalOpen(true)}
+                    className="ml-4"
+                  >
+                    배송지 변경
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">등록된 배송지가 없습니다.</p>
+                <Button
+                  onClick={() => setIsShippingModalOpen(true)}
+                  className="bg-black text-white hover:bg-gray-800"
+                >
+                  배송지 등록
+                </Button>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-between items-center mb-6">
             <Button onClick={addEmptyRow} className="bg-blue-600 hover:bg-blue-700">
               <Plus className="h-4 w-4 mr-2" />
@@ -388,19 +437,19 @@ export function OrderManagementPage() {
 
           <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[1200px]">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">품목코드</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">품목명</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">컬러</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">사이즈</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수량</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">단가</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">공급가액</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">부가세</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">액션</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">No.</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">품목코드</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">품목명</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">컬러</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">사이즈</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">수량</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">단가</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">공급가액</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">부가세</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">액션</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -414,32 +463,32 @@ export function OrderManagementPage() {
                   ) : (
                     orderItems.map((item, index) => (
                       <tr key={item.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">{index + 1}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 text-sm text-gray-900 text-center">{index + 1}</td>
+                        <td className="px-3 py-3">
                           <div
-                            className="text-sm text-blue-600 cursor-pointer hover:text-blue-800 font-medium"
+                            className="text-sm text-blue-600 cursor-pointer hover:text-blue-800 font-medium truncate"
                             onDoubleClick={() => handleProductCodeDoubleClick(index)}
                             title="더블클릭하여 상품 검색"
                           >
                             {item.productCode || '더블클릭하여 선택'}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.productName}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.color}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.size}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 text-sm text-gray-900">{item.productName}</td>
+                        <td className="px-3 py-3 text-sm text-gray-900 text-center">{item.color}</td>
+                        <td className="px-3 py-3 text-sm text-gray-900 text-center">{item.size}</td>
+                        <td className="px-3 py-3">
                           <Input
                             type="number"
                             min="0"
                             value={item.quantity}
                             onChange={(e) => updateQuantity(index, parseInt(e.target.value) || 0)}
-                            className="w-20 text-center"
+                            className="w-16 text-center text-sm"
                           />
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.unitPrice)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency(item.supplyAmount)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.vat)}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 text-sm text-gray-900 text-right">{formatCurrency(item.unitPrice)}</td>
+                        <td className="px-3 py-3 text-sm text-gray-900 font-medium text-right">{formatCurrency(item.supplyAmount)}</td>
+                        <td className="px-3 py-3 text-sm text-gray-900 text-right">{formatCurrency(item.vat)}</td>
+                        <td className="px-3 py-3 text-center">
                           <Button size="sm" variant="destructive" onClick={() => removeRow(index)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -729,6 +778,77 @@ export function OrderManagementPage() {
                   </table>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 배송지 선택 모달 */}
+      {isShippingModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold">배송지 선택</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsShippingModalOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              {shippingAddresses.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">등록된 배송지가 없습니다.</p>
+                  <p className="text-sm text-gray-400">마이페이지에서 배송지를 등록해주세요.</p>
+                </div>
+              ) : (
+                shippingAddresses.map((address) => (
+                  <div
+                    key={address.id}
+                    onClick={() => {
+                      setSelectedShippingAddress(address)
+                      setIsShippingModalOpen(false)
+                    }}
+                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                      selectedShippingAddress?.id === address.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-medium">{address.recipient_name}</span>
+                          {address.is_default && (
+                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">기본</span>
+                          )}
+                          {selectedShippingAddress?.id === address.id && (
+                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">선택됨</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          {address.phone}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          ({address.postal_code}) {address.address}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setIsShippingModalOpen(false)}
+              >
+                취소
+              </Button>
             </div>
           </div>
         </div>

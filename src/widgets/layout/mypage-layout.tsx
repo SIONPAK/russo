@@ -14,7 +14,7 @@ export function MypageLayout({ children }: MypageLayoutProps) {
     <div className="min-h-screen bg-gray-50">
       <Header />
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="min-h-screen max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex gap-8">
           {/* 사이드바 */}
           <aside className="w-64 flex-shrink-0">
