@@ -54,25 +54,184 @@ export default function ReturnStatementsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedStatements, setSelectedStatements] = useState<string[]>([])
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
+    yearMonth: format(new Date(), 'yyyy-MM'),
     companyName: '',
     returnType: 'all',
     status: 'all'
   })
   const [processing, setProcessing] = useState(false)
   const [sendingEmail, setSendingEmail] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [newStatement, setNewStatement] = useState({
+    company_name: '',
+    return_reason: '',
+    return_type: 'customer_change' as const,
+    refund_method: 'mileage' as const,
+    items: [] as Array<{
+      product_name: string
+      color: string
+      size: string
+      return_quantity: number
+      unit_price: number
+      total_price: number
+    }>
+  })
+  const [companySearchTerm, setCompanySearchTerm] = useState('')
+  const [companySearchResults, setCompanySearchResults] = useState<any[]>([])
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false)
+  const [showProductSearchModal, setShowProductSearchModal] = useState(false)
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null)
+  const [productSearchTerm, setProductSearchTerm] = useState('')
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
 
   useEffect(() => {
     fetchStatements()
   }, [filters])
 
+  // 회사명 검색
+  const searchCompanies = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setCompanySearchResults([])
+      setShowCompanyDropdown(false)
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/users?search=${encodeURIComponent(searchTerm)}&limit=10`)
+      const result = await response.json()
+
+      if (result.success) {
+        setCompanySearchResults(result.data || [])
+        setShowCompanyDropdown(true)
+      }
+    } catch (error) {
+      console.error('Company search error:', error)
+      setCompanySearchResults([])
+    }
+  }
+
+  const selectCompany = (company: any) => {
+    setNewStatement({ ...newStatement, company_name: company.company_name })
+    setCompanySearchTerm(company.company_name)
+    setShowCompanyDropdown(false)
+  }
+
+  // 외부 클릭 시 드롭다운 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.company-search-container')) {
+        setShowCompanyDropdown(false)
+      }
+    }
+
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowCompanyDropdown(false)
+      }
+    }
+
+    if (showCompanyDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleEscKey)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscKey)
+    }
+  }, [showCompanyDropdown])
+
+  // 상품 검색
+  const searchProducts = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setProductSearchResults([])
+      return
+    }
+
+    setIsSearchingProducts(true)
+    try {
+      const response = await fetch(`/api/admin/products?search=${encodeURIComponent(searchTerm)}&limit=20`)
+      const result = await response.json()
+
+      if (result.success) {
+        setProductSearchResults(result.data || [])
+      }
+    } catch (error) {
+      console.error('Product search error:', error)
+      setProductSearchResults([])
+    } finally {
+      setIsSearchingProducts(false)
+    }
+  }
+
+  const selectProduct = (product: any) => {
+    // 색상과 사이즈 옵션 추출
+    const colors = product.inventory_options 
+      ? [...new Set(product.inventory_options.map((opt: any) => opt.color).filter(Boolean))]
+      : []
+    const sizes = product.inventory_options 
+      ? [...new Set(product.inventory_options.map((opt: any) => opt.size).filter(Boolean))]
+      : []
+    
+    if (selectedItemIndex !== null && selectedItemIndex >= 0) {
+      // 기존 아이템 수정
+      updateStatementItem(selectedItemIndex, 'product_name', product.name)
+      updateStatementItem(selectedItemIndex, 'unit_price', product.is_on_sale && product.sale_price ? product.sale_price : product.price)
+      updateStatementItem(selectedItemIndex, 'available_colors', colors)
+      updateStatementItem(selectedItemIndex, 'available_sizes', sizes)
+      
+      // 첫 번째 옵션으로 초기값 설정
+      if (colors.length > 0) {
+        updateStatementItem(selectedItemIndex, 'color', colors[0])
+      }
+      if (sizes.length > 0) {
+        updateStatementItem(selectedItemIndex, 'size', sizes[0])
+      }
+    } else {
+      // 새로운 아이템 추가
+      const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
+      const newItem = {
+        product_name: product.name as string,
+        color: colors.length > 0 ? colors[0] as string : '',
+        size: sizes.length > 0 ? sizes[0] as string : '',
+        return_quantity: 1,
+        unit_price: unitPrice as number,
+        total_price: unitPrice as number
+      }
+      
+      // available_colors와 available_sizes는 별도로 처리
+      const extendedNewItem = {
+        ...newItem,
+        available_colors: colors,
+        available_sizes: sizes
+      }
+      
+      setNewStatement(prev => ({
+        ...prev,
+        items: [...prev.items, extendedNewItem as any]
+      }))
+    }
+    
+    setShowProductSearchModal(false)
+    setSelectedItemIndex(null)
+    setProductSearchTerm('')
+    setProductSearchResults([])
+  }
+
+  const openProductSearch = (itemIndex: number) => {
+    setSelectedItemIndex(itemIndex)
+    setShowProductSearchModal(true)
+    setProductSearchTerm('')
+    setProductSearchResults([])
+  }
+
   const fetchStatements = async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams({
-        startDate: filters.startDate,
-        endDate: filters.endDate,
+        yearMonth: filters.yearMonth,
         companyName: filters.companyName,
         returnType: filters.returnType,
         status: filters.status
@@ -201,6 +360,106 @@ export default function ReturnStatementsPage() {
     }
   }
 
+  const handleCreateStatement = async () => {
+    // 필수 필드 검증
+    if (!newStatement.company_name.trim()) {
+      showError('업체명을 선택해주세요.')
+      return
+    }
+
+    if (!newStatement.return_reason.trim()) {
+      showError('반품 사유를 입력해주세요.')
+      return
+    }
+
+    // 상품 정보 검증
+    const invalidItems = newStatement.items.filter(item => 
+      !item.product_name.trim() || item.return_quantity <= 0 || item.unit_price <= 0
+    )
+    
+    if (invalidItems.length > 0) {
+      showError('모든 상품의 정보를 올바르게 입력해주세요.')
+      return
+    }
+
+    // 선택된 회사명이 검색 결과에 있는지 확인
+    if (companySearchTerm && companySearchTerm !== newStatement.company_name) {
+      showError('검색 결과에서 업체를 선택해주세요.')
+      return
+    }
+
+    try {
+      setProcessing(true)
+      const response = await fetch('/api/admin/return-statements', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newStatement)
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('반품 명세서가 성공적으로 생성되었습니다.')
+        setShowCreateModal(false)
+        setCompanySearchTerm('')
+        setCompanySearchResults([])
+        setShowCompanyDropdown(false)
+        setNewStatement({
+          company_name: '',
+          return_reason: '',
+          return_type: 'customer_change' as const,
+          refund_method: 'mileage' as const,
+          items: []
+        })
+        await fetchStatements()
+      } else {
+        showError(`반품 명세서 생성 실패: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Return statement creation error:', error)
+      showError('반품 명세서 생성 중 오류가 발생했습니다.')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const addStatementItem = () => {
+    setNewStatement({
+      ...newStatement,
+      items: [...newStatement.items, {
+        product_name: '',
+        color: '',
+        size: '',
+        return_quantity: 0,
+        unit_price: 0,
+        total_price: 0
+      }]
+    })
+  }
+
+  const removeStatementItem = (index: number) => {
+    if (newStatement.items.length > 1) {
+      const newItems = newStatement.items.filter((_, i) => i !== index)
+      setNewStatement({ ...newStatement, items: newItems })
+    }
+  }
+
+  const updateStatementItem = (index: number, field: string, value: any) => {
+    const newItems = [...newStatement.items]
+    newItems[index] = { ...newItems[index], [field]: value }
+    
+    // 수량과 단가가 변경되면 총 가격 자동 계산
+    if (field === 'return_quantity' || field === 'unit_price') {
+      const quantity = field === 'return_quantity' ? value : newItems[index].return_quantity
+      const unitPrice = field === 'unit_price' ? value : newItems[index].unit_price
+      newItems[index].total_price = quantity * unitPrice
+    }
+    
+    setNewStatement({ ...newStatement, items: newItems })
+  }
+
   const toggleStatementSelection = (statementId: string) => {
     setSelectedStatements(prev => 
       prev.includes(statementId) 
@@ -286,6 +545,13 @@ export default function ReturnStatementsPage() {
         </div>
         <div className="flex gap-2">
           <Button
+            onClick={() => setShowCreateModal(true)}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            반품 명세서 생성
+          </Button>
+          <Button
             onClick={() => handleSendEmails()}
             disabled={selectedStatements.length === 0 || sendingEmail}
             className="bg-blue-600 hover:bg-blue-700"
@@ -309,22 +575,12 @@ export default function ReturnStatementsPage() {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              시작일
+              조회 월
             </label>
             <Input
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              종료일
-            </label>
-            <Input
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+              type="month"
+              value={filters.yearMonth}
+              onChange={(e) => setFilters(prev => ({ ...prev, yearMonth: e.target.value }))}
             />
           </div>
           <div>
@@ -444,9 +700,6 @@ export default function ReturnStatementsPage() {
                   회사명
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  등급
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   반품 유형
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -472,13 +725,13 @@ export default function ReturnStatementsPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={11} className="px-6 py-4 text-center text-gray-500">
                     로딩 중...
                   </td>
                 </tr>
               ) : statements.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={11} className="px-6 py-4 text-center text-gray-500">
                     반품명세서가 없습니다.
                   </td>
                 </tr>
@@ -501,9 +754,6 @@ export default function ReturnStatementsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {statement.company_name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getGradeBadge(statement.customer_grade)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getReturnTypeColor(statement.return_type)}`}>
@@ -549,6 +799,376 @@ export default function ReturnStatementsPage() {
           </table>
         </div>
       </div>
+
+      {/* 반품 명세서 생성 모달 */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">반품 명세서 생성</h3>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCreateModal(false)
+                  setCompanySearchTerm('')
+                  setCompanySearchResults([])
+                  setShowCompanyDropdown(false)
+                  setNewStatement({
+                    company_name: '',
+                    return_reason: '',
+                    return_type: 'customer_change' as const,
+                    refund_method: 'mileage' as const,
+                    items: []
+                  })
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                닫기
+              </Button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+              <div className="space-y-6">
+                {/* 기본 정보 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="relative company-search-container">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      업체명 *
+                    </label>
+                    <Input
+                      type="text"
+                      value={companySearchTerm}
+                      onChange={(e) => {
+                        setCompanySearchTerm(e.target.value)
+                        searchCompanies(e.target.value)
+                      }}
+                      onFocus={() => {
+                        if (companySearchResults.length > 0) {
+                          setShowCompanyDropdown(true)
+                        }
+                      }}
+                      placeholder="업체명을 검색하세요"
+                    />
+                    
+                    {/* 검색 결과 드롭다운 */}
+                    {showCompanyDropdown && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        {companySearchResults.length > 0 ? (
+                          companySearchResults.map((company) => (
+                            <div
+                              key={company.id}
+                              onClick={() => selectCompany(company)}
+                              className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-gray-900">{company.company_name}</div>
+                              <div className="text-sm text-gray-500">
+                                {company.representative_name} | {company.business_number}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-4 py-2 text-gray-500 text-sm">
+                            검색 결과가 없습니다.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      반품 유형
+                    </label>
+                    <select
+                      value={newStatement.return_type}
+                      onChange={(e) => setNewStatement({...newStatement, return_type: e.target.value as any})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="defect">불량</option>
+                      <option value="size_issue">사이즈 문제</option>
+                      <option value="color_issue">색상 문제</option>
+                      <option value="customer_change">고객 변심</option>
+                      <option value="other">기타</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      환불 방법
+                    </label>
+                    <select
+                      value={newStatement.refund_method}
+                      onChange={(e) => setNewStatement({...newStatement, refund_method: e.target.value as any})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="mileage">마일리지</option>
+                      <option value="card">카드</option>
+                      <option value="bank_transfer">계좌이체</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      반품 사유 *
+                    </label>
+                    <Input
+                      type="text"
+                      value={newStatement.return_reason}
+                      onChange={(e) => setNewStatement({...newStatement, return_reason: e.target.value})}
+                      placeholder="반품 사유를 입력하세요"
+                    />
+                  </div>
+                </div>
+
+                {/* 상품 목록 */}
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="text-lg font-medium text-gray-900">반품 상품</h4>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={addStatementItem}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        상품 추가
+                      </Button>
+                      <Button
+                        onClick={() => setShowProductSearchModal(true)}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        상품 검색
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {newStatement.items.map((item, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <h5 className="font-medium text-gray-900">상품 {index + 1}</h5>
+                          {newStatement.items.length > 1 && (
+                            <Button
+                              onClick={() => removeStatementItem(index)}
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              삭제
+                            </Button>
+                          )}
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              상품명 *
+                            </label>
+                            <Input
+                              type="text"
+                              value={item.product_name}
+                              onChange={(e) => updateStatementItem(index, 'product_name', e.target.value)}
+                              placeholder="상품명"
+                              className="w-full"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              컬러
+                            </label>
+                            {(item as any).available_colors && (item as any).available_colors.length > 0 ? (
+                              <select
+                                value={item.color}
+                                onChange={(e) => updateStatementItem(index, 'color', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">색상 선택</option>
+                                {(item as any).available_colors.map((color: string) => (
+                                  <option key={color} value={color}>
+                                    {color}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <Input
+                                type="text"
+                                value={item.color}
+                                onChange={(e) => updateStatementItem(index, 'color', e.target.value)}
+                                placeholder="컬러"
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              사이즈
+                            </label>
+                            {(item as any).available_sizes && (item as any).available_sizes.length > 0 ? (
+                              <select
+                                value={item.size}
+                                onChange={(e) => updateStatementItem(index, 'size', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">사이즈 선택</option>
+                                {(item as any).available_sizes.map((size: string) => (
+                                  <option key={size} value={size}>
+                                    {size}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <Input
+                                type="text"
+                                value={item.size}
+                                onChange={(e) => updateStatementItem(index, 'size', e.target.value)}
+                                placeholder="사이즈"
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              수량 *
+                            </label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={item.return_quantity}
+                              onChange={(e) => updateStatementItem(index, 'return_quantity', parseInt(e.target.value) || 0)}
+                              placeholder="수량"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              단가 *
+                            </label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={item.unit_price}
+                              onChange={(e) => updateStatementItem(index, 'unit_price', parseInt(e.target.value) || 0)}
+                              placeholder="단가"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="mt-3 text-right">
+                          <span className="text-sm text-gray-600">
+                            총 가격: <span className="font-medium">{item.total_price.toLocaleString()}원</span>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-4 text-right">
+                    <span className="text-lg font-medium text-gray-900">
+                      총 환불 금액: {newStatement.items.reduce((sum, item) => sum + item.total_price, 0).toLocaleString()}원
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCreateModal(false)
+                  setCompanySearchTerm('')
+                  setCompanySearchResults([])
+                  setShowCompanyDropdown(false)
+                  setNewStatement({
+                    company_name: '',
+                    return_reason: '',
+                    return_type: 'customer_change' as const,
+                    refund_method: 'mileage' as const,
+                    items: []
+                  })
+                }}
+              >
+                취소
+              </Button>
+              <Button
+                onClick={handleCreateStatement}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                반품 명세서 생성
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 상품 검색 모달 */}
+      {showProductSearchModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">상품 검색</h3>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowProductSearchModal(false)
+                  setSelectedItemIndex(null)
+                  setProductSearchTerm('')
+                  setProductSearchResults([])
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                닫기
+              </Button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4">
+                <Input
+                  type="text"
+                  value={productSearchTerm}
+                  onChange={(e) => {
+                    setProductSearchTerm(e.target.value)
+                    searchProducts(e.target.value)
+                  }}
+                  placeholder="상품명 또는 상품코드로 검색하세요"
+                  className="w-full"
+                />
+              </div>
+              
+              <div className="max-h-96 overflow-y-auto">
+                {isSearchingProducts ? (
+                  <div className="text-center py-8 text-gray-500">
+                    검색 중...
+                  </div>
+                ) : productSearchResults.length > 0 ? (
+                  <div className="space-y-2">
+                    {productSearchResults.map((product) => (
+                      <div
+                        key={product.id}
+                        onClick={() => selectProduct(product)}
+                        className="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-gray-900">{product.name}</div>
+                            <div className="text-sm text-gray-500">코드: {product.code}</div>
+                            <div className="text-sm text-blue-600 font-medium mt-1">
+                              {product.is_on_sale && product.sale_price 
+                                ? `${product.sale_price.toLocaleString()}원 (세일가)`
+                                : `${product.price.toLocaleString()}원`
+                              }
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : productSearchTerm ? (
+                  <div className="text-center py-8 text-gray-500">
+                    검색 결과가 없습니다.
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    상품명 또는 상품코드를 입력하세요.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 

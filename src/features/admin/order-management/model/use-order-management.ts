@@ -76,12 +76,15 @@ export interface OrderFilters {
 }
 
 export function get3PMBasedDateRange(targetDate: string) {
-  const target = new Date(targetDate)
+  // 한국 시간 기준으로 계산
+  const target = new Date(targetDate + 'T00:00:00+09:00') // 한국 시간대로 파싱
   
+  // 전날 오후 3시 (한국 시간)
   const startDate = new Date(target)
   startDate.setDate(startDate.getDate() - 1)
   startDate.setHours(15, 0, 0, 0)
   
+  // 당일 오후 2시 59분 59초 (한국 시간)
   const endDate = new Date(target)
   endDate.setHours(14, 59, 59, 999)
   
@@ -212,7 +215,11 @@ export function useOrderManagement() {
   }
 
   const fetchTodayOrders = () => {
-    const today = new Date().toISOString().split('T')[0]
+    // 한국 시간 기준으로 오늘 날짜 구하기
+    const now = new Date()
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const today = koreaTime.toISOString().split('T')[0]
+    
     updateFilters({ 
       startDate: today,
       is_3pm_based: true

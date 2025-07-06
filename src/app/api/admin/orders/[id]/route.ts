@@ -112,13 +112,19 @@ function getAvailableStock(product: any, color?: string, size?: string): number 
 // 아이템 할당 상태 계산
 function getItemAllocationStatus(item: any): string {
   const availableStock = getAvailableStock(item.products, item.color, item.size)
-  const requiredQuantity = item.quantity
-  const allocatedQuantity = item.shipped_quantity || 0
+  const alreadyShipped = item.shipped_quantity || 0
+  const remainingQuantity = item.quantity - alreadyShipped
 
-  if (allocatedQuantity >= requiredQuantity) {
+  // 이미 전량 할당된 경우
+  if (alreadyShipped >= item.quantity) {
     return 'allocated'
-  } else if (availableStock >= requiredQuantity) {
-    return 'available'
+  }
+
+  // 남은 수량을 모두 할당할 수 있는 경우
+  if (availableStock >= remainingQuantity) {
+    return 'allocated'
+  } else if (availableStock > 0) {
+    return 'partial'
   } else {
     return 'insufficient'
   }

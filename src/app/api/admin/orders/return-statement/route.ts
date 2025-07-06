@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 반품 명세서 번호 생성
-    const returnNumber = `RET-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Date.now().toString().slice(-6)}`
+    const returnNumber = `RO-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Date.now().toString().slice(-6)}`
     
     // 반품 총액 계산
     const totalReturnAmount = items.reduce((sum: number, item: any) => 

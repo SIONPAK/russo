@@ -25,6 +25,31 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
   // 모든 이미지 배열 (메인 이미지 + 추가 이미지들)
   const allImages = product.images || []
 
+  // HTML 내용 처리 함수
+  const processHtmlContent = (htmlContent: string) => {
+    if (!htmlContent) return ''
+    
+    // 상대 경로 이미지를 절대 경로로 변환
+    let processedHtml = htmlContent.replace(
+      /src="(?!https?:\/\/)([^"]*?)"/g,
+      'src="https://xcelsthkvtihudxvkzgz.supabase.co/storage/v1/object/public/product-images/$1"'
+    )
+
+    // 이미지 스타일 개선
+    processedHtml = processedHtml.replace(
+      /<img([^>]*?)>/g,
+      '<img$1 style="max-width: 100%; height: auto; margin: 20px auto; display: block; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">'
+    )
+
+    // 텍스트 정렬 스타일 개선
+    processedHtml = processedHtml.replace(
+      /style="text-align:\s*center;"/g,
+      'style="text-align: center; margin: 20px 0;"'
+    )
+
+    return processedHtml
+  }
+
   useEffect(() => {
     if (!isAuthenticated) {
       showInfo('로그인이 필요한 서비스입니다.')
@@ -195,7 +220,10 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
                 상품 발주는 <strong>발주관리</strong> 페이지에서 진행해주세요.
               </p>
               <Button
-                onClick={() => router.push('/order-management')}
+                onClick={() => {
+                  showInfo(`${product.name} 상품을 발주서에 추가합니다.`)
+                  router.push(`/order-management?product=${product.id}`)
+                }}
                 className="mt-3 bg-blue-600 hover:bg-blue-700 text-white"
               >
                 발주관리 페이지로 이동
@@ -212,13 +240,14 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
                 {product.detailed_description ? (
                   <div 
-                    className="prose prose-lg max-w-none text-gray-700 leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: product.detailed_description }}
+                    className="prose prose-lg max-w-none text-gray-700 leading-relaxed [&_img]:max-w-full [&_img]:h-auto [&_img]:mx-auto [&_img]:my-5 [&_img]:rounded-lg [&_img]:shadow-md [&_p]:text-center [&_p]:my-4"
+                    dangerouslySetInnerHTML={{ __html: processHtmlContent(product.detailed_description) }}
                   />
                 ) : (
-                  <div className="text-gray-700 leading-relaxed text-lg whitespace-pre-wrap">
-                    {product.description}
-                  </div>
+                  <div 
+                    className="text-gray-700 leading-relaxed text-lg whitespace-pre-wrap [&_img]:max-w-full [&_img]:h-auto [&_img]:mx-auto [&_img]:my-5 [&_img]:rounded-lg [&_img]:shadow-md"
+                    dangerouslySetInnerHTML={{ __html: processHtmlContent(product.description) }}
+                  />
                 )}
               </div>
             </div>

@@ -7,11 +7,15 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
+    const yearMonth = searchParams.get('yearMonth') || new Date().toISOString().slice(0, 7)
     const companyName = searchParams.get('companyName')
     const deductionType = searchParams.get('deductionType')
     const status = searchParams.get('status')
+
+    // 월단위 조회를 위한 시작일/종료일 계산
+    const [year, month] = yearMonth.split('-').map(Number)
+    const startDate = `${year}-${month.toString().padStart(2, '0')}-01`
+    const endDate = `${year}-${month.toString().padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
 
     let query = supabase
       .from('deduction_statements')
@@ -27,13 +31,9 @@ export async function GET(request: NextRequest) {
       `)
       .order('created_at', { ascending: false })
 
-    // 날짜 필터
-    if (startDate) {
-      query = query.gte('created_at', startDate)
-    }
-    if (endDate) {
-      query = query.lte('created_at', endDate + 'T23:59:59')
-    }
+    // 월단위 날짜 필터
+    query = query.gte('created_at', startDate + 'T00:00:00+09:00')
+    query = query.lte('created_at', endDate + 'T23:59:59+09:00')
 
     // 회사명 필터
     if (companyName) {

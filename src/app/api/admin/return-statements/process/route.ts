@@ -14,22 +14,26 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 반품 명세서 정보 조회
+    // 반품 명세서 정보 조회 (orders를 통해 사용자 정보 가져오기)
     const { data: statements, error: statementsError } = await supabase
       .from('return_statements')
       .select(`
         id,
         statement_number,
-        user_id,
         order_id,
         total_amount,
         refund_amount,
         status,
         refunded,
-        users!return_statements_user_id_fkey (
+        company_name,
+        orders!return_statements_order_id_fkey (
           id,
-          company_name,
-          mileage_balance
+          user_id,
+          users!orders_user_id_fkey (
+            id,
+            company_name,
+            mileage_balance
+          )
         )
       `)
       .in('id', statementIds)
@@ -62,13 +66,37 @@ export async function PATCH(request: NextRequest) {
           continue
         }
 
-        const user = Array.isArray(statement.users) ? statement.users[0] : statement.users
-        if (!user) {
-          errors.push(`${statement.statement_number}: 사용자 정보 없음`)
+        // 관리자가 직접 생성한 반품명세서의 경우 사용자 정보가 없을 수 있음
+        const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
+        const user = order?.users ? (Array.isArray(order.users) ? order.users[0] : order.users) : null
+
+        if (!user && !order?.user_id) {
+          // 사용자 정보가 없는 경우 (관리자가 직접 생성한 경우) 처리만 진행
+          console.log(`⚠️ 사용자 정보 없음 - 관리자 생성 반품명세서: ${statement.statement_number}`)
+          
+          // 반품 명세서 상태만 업데이트
+          const { error: statementError } = await supabase
+            .from('return_statements')
+            .update({
+              status: 'refunded',
+              refunded: true,
+              processed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', statement.id)
+
+          if (statementError) {
+            console.error('반품 명세서 상태 업데이트 오류:', statementError)
+            errors.push(`${statement.statement_number}: 상태 업데이트 실패`)
+            continue
+          }
+
+          processedCount++
+          console.log(`✅ 관리자 생성 반품 명세서 처리 완료: ${statement.statement_number}`)
           continue
         }
 
-        const currentMileage = user.mileage_balance || 0
+        const currentMileage = user?.mileage_balance || 0
         const refundAmount = statement.refund_amount || statement.total_amount
         const newMileage = currentMileage + refundAmount
 
@@ -76,7 +104,7 @@ export async function PATCH(request: NextRequest) {
         const { error: mileageRecordError } = await supabase
           .from('mileage')
           .insert({
-            user_id: statement.user_id,
+            user_id: order.user_id,
             amount: refundAmount,
             type: 'earn',
             source: 'refund',
@@ -99,7 +127,7 @@ export async function PATCH(request: NextRequest) {
             mileage_balance: newMileage,
             updated_at: new Date().toISOString()
           })
-          .eq('id', statement.user_id)
+          .eq('id', order.user_id)
 
         if (mileageError) {
           console.error('마일리지 증가 오류:', mileageError)

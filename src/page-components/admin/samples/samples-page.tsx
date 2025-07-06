@@ -97,6 +97,7 @@ export function SamplesPage() {
   const [viewMode, setViewMode] = useState<'grouped' | 'individual'>('grouped')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(10)
+  const [totalCount, setTotalCount] = useState(0)
   const [filters, setFilters] = useState({
     search: '',
     status: '',
@@ -125,6 +126,10 @@ export function SamplesPage() {
   const [showOrderSearch, setShowOrderSearch] = useState(false)
   const [orderSearchKeyword, setOrderSearchKeyword] = useState('')
   const [orderSearchResults, setOrderSearchResults] = useState<any[]>([])
+
+  // 상세보기 모달 상태
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState<GroupedSampleStatement | null>(null)
 
   // D-21 날짜 계산 함수
   const calculateDaysRemaining = (createdAt: string) => {
@@ -187,6 +192,9 @@ export function SamplesPage() {
         const groupedStatements = result.data.statements || []
         setGroupedStatements(groupedStatements)
         
+        // 전체 개수 설정
+        setTotalCount(result.data.pagination?.total || 0)
+        
         // 개별 뷰를 위해 그룹화된 데이터를 평면화
         const flattenedStatements = groupedStatements.flatMap((group: any) => 
           group.items.map((item: any) => ({
@@ -223,16 +231,19 @@ export function SamplesPage() {
         showError(result.error || '명세서 목록을 불러오는데 실패했습니다.')
       }
     } catch (error) {
-      console.error('명세서 조회 오류:', error)
+      console.error('명세서 목록 조회 오류:', error)
       showError('명세서 목록을 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
   }
 
+  // 페이지 변경 시 데이터 재조회 (업체별 보기에서만)
   useEffect(() => {
-    fetchStatements()
-  }, [currentPage])
+    if (viewMode === 'grouped') {
+      fetchStatements()
+    }
+  }, [currentPage, viewMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 일괄 상태 업데이트 함수
   const handleBulkAction = async (status: string) => {
@@ -278,22 +289,15 @@ export function SamplesPage() {
   }
 
   // 필터링된 명세서 목록
-  const filteredStatements = statements.filter(statement => {
-    const matchesSearch = !filters.search || 
-      statement.customer_name?.toLowerCase().includes(filters.search.toLowerCase()) ||
-      statement.sample_number?.toLowerCase().includes(filters.search.toLowerCase()) ||
-      statement.product_name?.toLowerCase().includes(filters.search.toLowerCase())
-    
-    const matchesStatus = !filters.status || statement.status === filters.status
-    
-    return matchesSearch && matchesStatus
-  })
+  const filteredStatements = statements
 
   // 페이지네이션된 명세서 목록
-  const paginatedStatements = filteredStatements.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  )
+  const paginatedStatements = viewMode === 'individual' 
+    ? statements.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+    : statements
+
+  // 전체 개수 계산 (뷰 모드에 따라 다름)
+  const totalItems = viewMode === 'individual' ? statements.length : totalCount
 
   // 통계는 상태로 관리 (fetchStatements에서 업데이트됨)
 
@@ -668,7 +672,10 @@ export function SamplesPage() {
               <option value="charged">샘플결제</option>
             </select>
 
-            <Button onClick={() => fetchStatements(filters)} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={() => {
+              setCurrentPage(1)
+              fetchStatements(filters)
+            }} className="bg-blue-600 hover:bg-blue-700">
               <Search className="h-4 w-4 mr-2" />
               검색
             </Button>
@@ -720,14 +727,20 @@ export function SamplesPage() {
               <Button
                 variant={viewMode === 'grouped' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setViewMode('grouped')}
+                onClick={() => {
+                  setViewMode('grouped')
+                  setCurrentPage(1)
+                }}
               >
                 업체별 보기
               </Button>
               <Button
                 variant={viewMode === 'individual' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setViewMode('individual')}
+                onClick={() => {
+                  setViewMode('individual')
+                  setCurrentPage(1)
+                }}
               >
                 개별 보기
               </Button>
@@ -737,12 +750,51 @@ export function SamplesPage() {
 
         <div className="overflow-x-auto">
           {viewMode === 'grouped' ? (
-            // 업체별 그룹화 뷰
-            <div className="divide-y divide-gray-200">
-              {groupedStatements.map((group) => (
-                <div key={group.id} className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-4">
+            // 업체별 그룹화 뷰 - 테이블 형태로 간단하게
+            <table className="w-full min-w-[800px]">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="w-12 px-4 py-4 text-left">
+                    <input
+                      type="checkbox"
+                      checked={selectedStatements.length === groupedStatements.length && groupedStatements.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedStatements(groupedStatements.map(g => g.id))
+                        } else {
+                          setSelectedStatements([])
+                        }
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    샘플번호
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    업체명
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    상품수
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    상태
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    남은기간
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    생성일
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    액션
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {groupedStatements.map((group) => (
+                  <tr key={group.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4">
                       <input
                         type="checkbox"
                         checked={selectedStatements.includes(group.id)}
@@ -755,76 +807,77 @@ export function SamplesPage() {
                         }}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <div>
-                        <h4 className="text-lg font-medium text-gray-900">{group.sample_number}</h4>
-                        <p className="text-sm text-gray-600">{group.customer_name}</p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm font-medium text-gray-900">
+                        {group.sample_number}
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-gray-500">
-                        D{group.days_remaining !== null ? (group.days_remaining > 0 ? `-${group.days_remaining}` : '+' + Math.abs(group.days_remaining)) : '-'}
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm font-medium text-gray-900">
+                        {group.customer_name}
                       </div>
-                      <div className="text-sm text-gray-600">
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {group.items.length}개
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        group.status === 'shipped' ? 'bg-green-100 text-green-800' :
+                        group.status === 'returned' ? 'bg-blue-100 text-blue-800' :
+                        group.status === 'charged' ? 'bg-purple-100 text-purple-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {group.status === 'shipped' ? '출고완료' :
+                         group.status === 'returned' ? '회수완료' :
+                         group.status === 'charged' ? '샘플결제' : '대기중'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {group.days_remaining !== null ? (
+                          <span className={group.is_overdue ? 'text-red-600 font-medium' : 'text-gray-900'}>
+                            D{group.days_remaining > 0 ? `-${group.days_remaining}` : `+${Math.abs(group.days_remaining)}`}
+                          </span>
+                        ) : '-'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
                         {formatDateTime(group.created_at)}
                       </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          group.status === 'shipped' ? 'bg-green-100 text-green-800' :
-                          group.status === 'returned' ? 'bg-blue-100 text-blue-800' :
-                          group.status === 'charged' ? 'bg-purple-100 text-purple-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {group.status === 'shipped' ? '출고완료' :
-                           group.status === 'returned' ? '회수완료' :
-                           group.status === 'charged' ? '샘플결제' : '대기중'}
-                        </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center space-x-2">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => {
-                            // 샘플 명세서 다운로드 함수 호출
-                            downloadSampleStatement(group)
+                            setSelectedGroup(group)
+                            setShowDetailModal(true)
                           }}
-                          className="text-xs px-2 py-1"
+                          className="text-xs"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          상세보기
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadSampleStatement(group)}
+                          className="text-xs"
                         >
                           <Download className="h-3 w-3 mr-1" />
                           명세서
                         </Button>
                       </div>
-                    </div>
-                  </div>
-                  
-                  {/* 상품 목록 */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {group.items.map((item, index) => (
-                        <div key={index} className="bg-white rounded-lg p-3 border">
-                          <div className="font-medium text-gray-900">{item.product_name}</div>
-                          <div className="text-sm text-gray-600">
-                            {item.color} / {item.size} - {item.quantity}개
-                          </div>
-                          <div className="text-sm font-medium text-green-600">
-                            무료 제공
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            미반납시: {formatCurrency(item.unit_price)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">총 수량: {group.total_quantity}개</span>
-                        <span className="font-medium text-green-600">무료 제공</span>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        반납 기한: {group.due_date ? new Date(group.due_date).toLocaleDateString() : '-'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : (
             // 개별 상품 뷰 (기존 테이블)
             <table className="w-full min-w-[1200px]">
@@ -1061,8 +1114,8 @@ export function SamplesPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredStatements.length / itemsPerPage), prev + 1))}
-            disabled={currentPage === Math.ceil(filteredStatements.length / itemsPerPage)}
+            onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalItems / itemsPerPage), prev + 1))}
+            disabled={currentPage === Math.ceil(totalItems / itemsPerPage)}
           >
             다음
           </Button>
@@ -1071,9 +1124,9 @@ export function SamplesPage() {
         <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-gray-700">
-              총 <span className="font-medium">{filteredStatements.length}</span>개 중{' '}
-              <span className="font-medium">{Math.min((currentPage - 1) * itemsPerPage + 1, filteredStatements.length)}</span>-
-              <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredStatements.length)}</span>개 표시
+              총 <span className="font-medium">{totalItems}</span>개 중{' '}
+              <span className="font-medium">{Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)}</span>-
+              <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalItems)}</span>개 표시
             </p>
           </div>
           
@@ -1087,9 +1140,9 @@ export function SamplesPage() {
               이전
             </Button>
             
-            {Array.from({ length: Math.ceil(filteredStatements.length / itemsPerPage) }, (_, i) => i + 1)
+            {Array.from({ length: Math.ceil(totalItems / itemsPerPage) }, (_, i) => i + 1)
               .filter(page => {
-                const totalPages = Math.ceil(filteredStatements.length / itemsPerPage)
+                const totalPages = Math.ceil(totalItems / itemsPerPage)
                 return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 2
               })
               .map((page, index, array) => (
@@ -1111,8 +1164,8 @@ export function SamplesPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredStatements.length / itemsPerPage), prev + 1))}
-              disabled={currentPage === Math.ceil(filteredStatements.length / itemsPerPage)}
+              onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalItems / itemsPerPage), prev + 1))}
+              disabled={currentPage === Math.ceil(totalItems / itemsPerPage)}
             >
               다음
             </Button>
@@ -1538,6 +1591,150 @@ export function SamplesPage() {
                   className="bg-green-600 hover:bg-green-700"
                 >
                   샘플 명세서 생성 ({selectedOrders.length}개)
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 상세보기 모달 */}
+      {showDetailModal && selectedGroup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">샘플 상세보기</h3>
+                  <p className="text-sm text-gray-600">{selectedGroup.sample_number} - {selectedGroup.customer_name}</p>
+                </div>
+                <Button variant="outline" onClick={() => setShowDetailModal(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            
+            <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto">
+              {/* 기본 정보 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-3">기본 정보</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">샘플번호:</span>
+                      <span className="text-gray-900">{selectedGroup.sample_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">업체명:</span>
+                      <span className="text-gray-900">{selectedGroup.customer_name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">상태:</span>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        selectedGroup.status === 'shipped' ? 'bg-green-100 text-green-800' :
+                        selectedGroup.status === 'returned' ? 'bg-blue-100 text-blue-800' :
+                        selectedGroup.status === 'charged' ? 'bg-purple-100 text-purple-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {selectedGroup.status === 'shipped' ? '출고완료' :
+                         selectedGroup.status === 'returned' ? '회수완료' :
+                         selectedGroup.status === 'charged' ? '샘플결제' : '대기중'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">생성일:</span>
+                      <span className="text-gray-900">{formatDateTime(selectedGroup.created_at)}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-3">배송 정보</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">출고일:</span>
+                      <span className="text-gray-900">{selectedGroup.outgoing_date ? formatDateTime(selectedGroup.outgoing_date) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">반납기한:</span>
+                      <span className="text-gray-900">{selectedGroup.due_date ? formatDateTime(selectedGroup.due_date) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">남은기간:</span>
+                      <span className={`${selectedGroup.is_overdue ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
+                        {selectedGroup.days_remaining !== null ? (
+                          `D${selectedGroup.days_remaining > 0 ? `-${selectedGroup.days_remaining}` : `+${Math.abs(selectedGroup.days_remaining)}`}`
+                        ) : '-'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">운송장번호:</span>
+                      <span className="text-gray-900">{selectedGroup.tracking_number || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 상품 목록 */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-900 mb-3">상품 목록</h4>
+                <div className="bg-gray-50 rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">상품명</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">컬러</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">사이즈</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">수량</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">미반납시 차감</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {selectedGroup.items.map((item, index) => (
+                        <tr key={index}>
+                          <td className="px-4 py-3 text-sm text-gray-900">{item.product_name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{item.color}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{item.size}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}개</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.unit_price)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50">
+                      <tr>
+                        <td colSpan={3} className="px-4 py-3 text-sm font-medium text-gray-900 text-right">합계:</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{selectedGroup.total_quantity}개</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(selectedGroup.total_amount)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              {/* 관리자 메모 */}
+              {selectedGroup.admin_notes && (
+                <div className="mt-6">
+                  <h4 className="text-sm font-medium text-gray-900 mb-3">관리자 메모</h4>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-sm text-gray-700">{selectedGroup.admin_notes}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <div className="flex justify-end space-x-3">
+                <Button
+                  variant="outline"
+                  onClick={() => downloadSampleStatement(selectedGroup)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  명세서 다운로드
+                </Button>
+                <Button
+                  onClick={() => setShowDetailModal(false)}
+                >
+                  닫기
                 </Button>
               </div>
             </div>

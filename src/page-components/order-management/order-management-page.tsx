@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { showSuccess, showError, showInfo } from '@/shared/lib/toast'
@@ -29,6 +30,8 @@ interface OrderItem {
   unitPrice: number
   supplyAmount: number
   vat: number
+  availableColors?: string[]
+  availableSizes?: string[]
 }
 
 interface ProductSearchResult {
@@ -56,6 +59,7 @@ interface PurchaseOrder {
 
 export function OrderManagementPage() {
   const { user, isAuthenticated } = useAuthStore()
+  const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<'create' | 'list'>('create')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(false)
@@ -70,10 +74,66 @@ export function OrderManagementPage() {
   
   // 발주 내역 관련 상태
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    // 한국 시간 기준으로 오늘 날짜
+    const now = new Date()
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    return koreaTime.toISOString().split('T')[0]
+  })
   const [isLoadingOrders, setIsLoadingOrders] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  
+  // 로컬 스토리지 키
+  const STORAGE_KEY = 'order-management-items'
+
+  // 로컬 스토리지에 발주 상품 저장
+  const saveOrderItemsToStorage = (items: OrderItem[]) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+    } catch (error) {
+      console.error('로컬 스토리지 저장 오류:', error)
+    }
+  }
+
+  // 로컬 스토리지에서 발주 상품 복원
+  const loadOrderItemsFromStorage = () => {
+    try {
+      const savedItems = localStorage.getItem(STORAGE_KEY)
+      if (savedItems) {
+        return JSON.parse(savedItems) as OrderItem[]
+      }
+    } catch (error) {
+      console.error('로컬 스토리지 복원 오류:', error)
+    }
+    return []
+  }
+
+  // 로컬 스토리지에서 발주 상품 삭제
+  const clearOrderItemsFromStorage = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch (error) {
+      console.error('로컬 스토리지 삭제 오류:', error)
+    }
+  }
+
+  // 발주 상품 상태 변경 시 로컬 스토리지에 저장
+  useEffect(() => {
+    if (orderItems.length > 0) {
+      saveOrderItemsToStorage(orderItems)
+    }
+  }, [orderItems])
+
+  // 페이지 로드 시 로컬 스토리지에서 발주 상품 복원
+  useEffect(() => {
+    if (isAuthenticated && activeTab === 'create') {
+      const savedItems = loadOrderItemsFromStorage()
+      if (savedItems.length > 0) {
+        setOrderItems(savedItems)
+      }
+    }
+  }, [isAuthenticated, activeTab])
 
   // 사용자 배송지 목록 가져오기
   useEffect(() => {
@@ -105,18 +165,21 @@ export function OrderManagementPage() {
     fetchShippingAddresses()
   }, [isAuthenticated, user])
 
-  // 발주 내역 조회 (오후 3시 기준)
+  // 발주 내역 조회 (오후 3시 기준, 한국 시간)
   const fetchPurchaseOrders = async (date: string) => {
     if (!isAuthenticated || !user) return
 
     setIsLoadingOrders(true)
     try {
-      const selectedDateTime = new Date(date)
+      // 한국 시간 기준으로 계산
+      const selectedDateTime = new Date(date + 'T00:00:00+09:00')
       
+      // 전날 오후 3시 (한국 시간)
       const startDate = new Date(selectedDateTime)
       startDate.setDate(startDate.getDate() - 1)
       startDate.setHours(15, 0, 0, 0)
       
+      // 당일 오후 2시 59분 59초 (한국 시간)
       const endDate = new Date(selectedDateTime)
       endDate.setHours(14, 59, 59, 999)
 
@@ -138,7 +201,57 @@ export function OrderManagementPage() {
     }
   }
 
-  // 탭 변경 시 발주 내역 조회
+  // URL 파라미터로 전달된 상품 자동 추가
+  useEffect(() => {
+    const productId = searchParams.get('product')
+    if (productId && isAuthenticated && activeTab === 'create' && orderItems.length === 0) {
+      addProductFromUrl(productId)
+    }
+  }, [searchParams, isAuthenticated, activeTab])
+
+  // URL 파라미터로 전달된 상품 추가
+  const addProductFromUrl = async (productId: string) => {
+    try {
+      const response = await fetch(`/api/products/${productId}`)
+      const result = await response.json()
+      
+      if (result.success && result.data) {
+        const product = result.data
+        
+        // 색상/사이즈 옵션 추출
+        const availableColors = product.inventory_options && Array.isArray(product.inventory_options) 
+          ? [...new Set(product.inventory_options.map((opt: any) => opt.color))] as string[]
+          : []
+        const availableSizes = product.inventory_options && Array.isArray(product.inventory_options)
+          ? [...new Set(product.inventory_options.map((opt: any) => opt.size))] as string[]
+          : []
+        
+        // 상품 정보를 발주서 행에 추가
+        const newItem: OrderItem = {
+          id: Date.now().toString(),
+          productId: product.id,
+          productCode: product.code,
+          productName: product.name,
+          color: '',
+          size: '',
+          quantity: 1,
+          unitPrice: product.is_on_sale && product.sale_price ? product.sale_price : product.price,
+          supplyAmount: product.is_on_sale && product.sale_price ? product.sale_price : product.price,
+          vat: Math.round((product.is_on_sale && product.sale_price ? product.sale_price : product.price) * 0.1),
+          availableColors,
+          availableSizes
+        }
+        
+        setOrderItems([newItem])
+        // URL 파라미터로 전달된 경우 토스트 표시하지 않음 (상세페이지에서 이미 표시됨)
+      }
+    } catch (error) {
+      console.error('상품 추가 오류:', error)
+      showError('상품 추가 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 탭 변경 시 데이터 조회
   useEffect(() => {
     if (activeTab === 'list') {
       fetchPurchaseOrders(selectedDate)
@@ -254,7 +367,9 @@ export function OrderManagementPage() {
         quantity: 1,  // 기본 수량 1
         unitPrice: product.price,
         supplyAmount,
-        vat
+        vat,
+        availableColors: product.colors || [],
+        availableSizes: product.sizes || []
       }
     })
 
@@ -275,7 +390,9 @@ export function OrderManagementPage() {
         quantity: 1,
         unitPrice: firstProduct.product.price,
         supplyAmount,
-        vat
+        vat,
+        availableColors: firstProduct.product.colors || [],
+        availableSizes: firstProduct.product.sizes || []
       }
 
       // 나머지 상품들은 새 행으로 추가
@@ -301,7 +418,7 @@ export function OrderManagementPage() {
     )
   }
 
-  // 수량 변경 시 금액 계산
+  // 수량 변경 시 금액 계산 (음수 허용 - 반품 요청)
   const updateQuantity = (index: number, quantity: number) => {
     const updatedItems = [...orderItems]
     const item = updatedItems[index]
@@ -326,12 +443,21 @@ export function OrderManagementPage() {
     }
 
     const validItems = orderItems.filter(item => 
-      item.productId && item.productCode && item.productName && item.quantity > 0
+      item.productId && item.productCode && item.productName && item.quantity !== 0
     )
 
     if (validItems.length === 0) {
       showError('발주할 상품을 추가해주세요.')
       return
+    }
+
+    // 음수 수량이 있는지 확인 (반품 요청)
+    const hasNegativeQuantity = validItems.some(item => item.quantity < 0)
+    if (hasNegativeQuantity) {
+      const isConfirmed = confirm('음수 수량이 포함되어 있습니다. 반품 요청으로 처리하시겠습니까?')
+      if (!isConfirmed) {
+        return
+      }
     }
 
     try {
@@ -368,6 +494,7 @@ export function OrderManagementPage() {
       if (result.success) {
         showSuccess('발주서가 저장되었습니다.')
         setOrderItems([])
+        clearOrderItemsFromStorage() // 로컬 스토리지에서 발주 상품 삭제
         setActiveTab('list')
         fetchPurchaseOrders(selectedDate)
       } else {
@@ -379,7 +506,6 @@ export function OrderManagementPage() {
     }
   }
 
-  // 발주서 상세보기
   const handleViewDetail = async (order: PurchaseOrder) => {
     try {
       // 주문 상세 정보 가져오기
@@ -401,19 +527,135 @@ export function OrderManagementPage() {
     }
   }
 
-  // 총합 계산
-  const totals = orderItems.reduce((acc, item) => ({
-    supplyAmount: acc.supplyAmount + item.supplyAmount,
-    vat: acc.vat + item.vat,
-    total: acc.total + item.supplyAmount + item.vat
-  }), { supplyAmount: 0, vat: 0, total: 0 })
+  // 오후 3시 이전인지 확인하는 함수
+  const isEditableTime = (orderDate: string) => {
+    const now = new Date()
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const orderTime = new Date(orderDate)
+    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
+    
+    // 주문일의 오후 3시 (한국 시간)
+    const cutoffTime = new Date(orderKoreaTime)
+    cutoffTime.setHours(15, 0, 0, 0)
+    
+    return koreaTime < cutoffTime
+  }
+
+  // 발주서 삭제
+  const handleDeleteOrder = async (order: PurchaseOrder) => {
+    if (!confirm(`발주번호 ${order.order_number}를 삭제하시겠습니까?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/orders/${order.id}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('발주서가 삭제되었습니다.')
+        fetchPurchaseOrders(selectedDate) // 목록 새로고침
+      } else {
+        showError(`발주서 삭제 실패: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('발주서 삭제 오류:', error)
+      showError('발주서 삭제 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 발주서 수정 (발주서 작성 탭으로 이동하여 수정)
+  const handleEditOrder = async (order: PurchaseOrder) => {
+    try {
+      // 주문 상세 정보 가져오기
+      const response = await fetch(`/api/orders?orderNumber=${order.order_number}`)
+      const result = await response.json()
+
+      if (result.success && result.data.order_items) {
+        // 발주서 작성 탭으로 이동
+        setActiveTab('create')
+        
+        // 기존 발주서 데이터를 발주서 작성 폼에 로드
+        const editItems: OrderItem[] = result.data.order_items.map((item: any, index: number) => ({
+          id: `edit-${index}`,
+          productId: item.product_id,
+          productCode: item.product_code,
+          productName: item.product_name,
+          color: item.color,
+          size: item.size,
+          quantity: item.quantity,
+          unitPrice: item.unit_price,
+          supplyAmount: item.supply_amount,
+          vat: item.vat
+        }))
+        
+        setOrderItems(editItems)
+        clearOrderItemsFromStorage() // 기존 로컬 스토리지 초기화
+        showInfo('발주서 수정 모드로 전환되었습니다. 수정 후 저장해주세요.')
+      } else {
+        showError('발주서 정보를 불러오는데 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('발주서 수정 조회 오류:', error)
+      showError('발주서 정보를 불러오는데 실패했습니다.')
+    }
+  }
+
+  // 총합 계산 (발주와 반품 구분)
+  const totals = orderItems.reduce((acc, item) => {
+    if (item.quantity > 0) {
+      // 발주 항목
+      return {
+        ...acc,
+        orderSupplyAmount: acc.orderSupplyAmount + item.supplyAmount,
+        orderVat: acc.orderVat + item.vat,
+        orderTotal: acc.orderTotal + item.supplyAmount + item.vat
+      }
+    } else if (item.quantity < 0) {
+      // 반품 항목
+      return {
+        ...acc,
+        returnSupplyAmount: acc.returnSupplyAmount + Math.abs(item.supplyAmount),
+        returnVat: acc.returnVat + Math.abs(item.vat),
+        returnTotal: acc.returnTotal + Math.abs(item.supplyAmount) + Math.abs(item.vat)
+      }
+    }
+    return acc
+  }, { 
+    orderSupplyAmount: 0, 
+    orderVat: 0, 
+    orderTotal: 0,
+    returnSupplyAmount: 0,
+    returnVat: 0,
+    returnTotal: 0
+  })
+
+  // 최종 총합 (발주 - 반품)
+  const finalTotals = {
+    supplyAmount: totals.orderSupplyAmount - totals.returnSupplyAmount,
+    vat: totals.orderVat - totals.returnVat,
+    total: totals.orderTotal - totals.returnTotal
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* 헤더 */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">발주관리</h1>
-        <p className="text-gray-600">B2B 발주서 작성 및 관리</p>
+        <p className="text-gray-600 mb-4">B2B 발주서 작성 및 관리</p>
+        
+        {/* 안내 문구 */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+          <div className="space-y-2">
+            <p><strong>*주문 마감은 오후 3시입니다.</strong></p>
+            <p>이전까지는 수정 및 삭제가 가능하고, 이후로는 불가능합니다.</p>
+            <p><strong>*'행추가'버튼을 누르고 발주하실 상품을 추가 후, 발주서 저장을 눌러주세요.</strong></p>
+            <p><strong>*반품의 경우, 수량에 (-)음수 값을 입력하여 발주서를 생성해주세요.</strong></p>
+            <p><strong>*협의되지 않은 반품은 불가능하며, 즉시 착불 반송처리 됩니다.</strong></p>
+          </div>
+        </div>
       </div>
 
       {/* 탭 메뉴 */}
@@ -483,10 +725,26 @@ export function OrderManagementPage() {
           </div>
 
           <div className="flex justify-between items-center mb-6">
-            <Button onClick={addEmptyRow} className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="h-4 w-4 mr-2" />
-              행 추가
-            </Button>
+            <div className="flex space-x-3">
+              <Button onClick={addEmptyRow} className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="h-4 w-4 mr-2" />
+                행 추가
+              </Button>
+              <Button 
+                onClick={() => {
+                  if (confirm('모든 발주 상품을 초기화하시겠습니까?')) {
+                    setOrderItems([])
+                    clearOrderItemsFromStorage()
+                    showInfo('발주 상품이 초기화되었습니다.')
+                  }
+                }}
+                variant="outline"
+                className="text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
+              >
+                <X className="h-4 w-4 mr-2" />
+                전체 초기화
+              </Button>
+            </div>
             <Button onClick={saveOrder} disabled={orderItems.length === 0} className="bg-green-600 hover:bg-green-700">
               <Save className="h-4 w-4 mr-2" />
               발주서 저장
@@ -495,15 +753,15 @@ export function OrderManagementPage() {
 
           <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1200px]">
+              <table className="w-full min-w-[1300px] table-fixed">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">No.</th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">품목코드</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">품목명</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">품목명</th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">컬러</th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">사이즈</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">수량</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">수량</th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">단가</th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">공급가액</th>
                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">부가세</th>
@@ -531,17 +789,66 @@ export function OrderManagementPage() {
                             {item.productCode || '더블클릭하여 선택'}
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-sm text-gray-900">{item.productName}</td>
-                        <td className="px-3 py-3 text-sm text-gray-900 text-center">{item.color}</td>
-                        <td className="px-3 py-3 text-sm text-gray-900 text-center">{item.size}</td>
+                        <td className="px-3 py-3 text-sm text-gray-900 truncate" title={item.productName}>{item.productName}</td>
                         <td className="px-3 py-3">
-                          <Input
-                            type="number"
-                            min="0"
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(index, parseInt(e.target.value) || 0)}
-                            className="w-16 text-center text-sm"
-                          />
+                          {item.availableColors && item.availableColors.length > 0 ? (
+                            <select
+                              value={item.color}
+                              onChange={(e) => {
+                                const newItems = [...orderItems]
+                                newItems[index].color = e.target.value
+                                setOrderItems(newItems)
+                              }}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="">색상 선택</option>
+                              {item.availableColors.map((color) => (
+                                <option key={color} value={color}>
+                                  {color}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-sm text-gray-900">{item.color}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          {item.availableSizes && item.availableSizes.length > 0 ? (
+                            <select
+                              value={item.size}
+                              onChange={(e) => {
+                                const newItems = [...orderItems]
+                                newItems[index].size = e.target.value
+                                setOrderItems(newItems)
+                              }}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="">사이즈 선택</option>
+                              {item.availableSizes.map((size) => (
+                                <option key={size} value={size}>
+                                  {size}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-sm text-gray-900">{item.size}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-col items-center">
+                            <Input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updateQuantity(index, parseInt(e.target.value) || 0)}
+                              className={`w-16 text-center text-sm ${
+                                item.quantity < 0 ? 'bg-red-100 border-red-300 text-red-700' : ''
+                              }`}
+                              placeholder="수량"
+                            />
+                            {item.quantity < 0 && (
+                              <span className="text-xs text-red-600 mt-1">반품요청</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-900 text-right">{formatCurrency(item.unitPrice)}</td>
                         <td className="px-3 py-3 text-sm text-gray-900 font-medium text-right">{formatCurrency(item.supplyAmount)}</td>
@@ -558,11 +865,38 @@ export function OrderManagementPage() {
                 
                 {orderItems.length > 0 && (
                   <tfoot className="bg-gray-50">
-                    <tr className="font-medium">
-                      <td colSpan={7} className="px-4 py-3 text-right text-sm text-gray-900">합계:</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(totals.supplyAmount)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(totals.vat)}</td>
-                      <td className="px-4 py-3 text-sm font-bold text-blue-600">{formatCurrency(totals.total)}</td>
+                    {/* 발주 항목 합계 */}
+                    {totals.orderTotal > 0 && (
+                      <tr className="text-sm">
+                        <td colSpan={7} className="px-4 py-2 text-right text-gray-600">
+                          발주 소계:
+                        </td>
+                        <td className="px-4 py-2 text-gray-600 text-right">{formatCurrency(totals.orderSupplyAmount)}</td>
+                        <td className="px-4 py-2 text-gray-600 text-right">{formatCurrency(totals.orderVat)}</td>
+                        <td className="px-4 py-2 text-gray-600 text-right">{formatCurrency(totals.orderTotal)}</td>
+                      </tr>
+                    )}
+                    
+                    {/* 반품 항목 합계 */}
+                    {totals.returnTotal > 0 && (
+                      <tr className="text-sm">
+                        <td colSpan={7} className="px-4 py-2 text-right text-red-600">
+                          반품 소계:
+                        </td>
+                        <td className="px-4 py-2 text-red-600 text-right">-{formatCurrency(totals.returnSupplyAmount)}</td>
+                        <td className="px-4 py-2 text-red-600 text-right">-{formatCurrency(totals.returnVat)}</td>
+                        <td className="px-4 py-2 text-red-600 text-right">-{formatCurrency(totals.returnTotal)}</td>
+                      </tr>
+                    )}
+                    
+                    {/* 최종 합계 */}
+                    <tr className="font-medium border-t-2 border-gray-300">
+                      <td colSpan={7} className="px-4 py-3 text-right text-gray-900">
+                        최종 합계:
+                      </td>
+                      <td className="px-4 py-3 text-gray-900 text-right">{formatCurrency(finalTotals.supplyAmount)}</td>
+                      <td className="px-4 py-3 text-gray-900 text-right">{formatCurrency(finalTotals.vat)}</td>
+                      <td className="px-4 py-3 font-bold text-blue-600 text-right">{formatCurrency(finalTotals.total)}</td>
                     </tr>
                   </tfoot>
                 )}
@@ -649,10 +983,32 @@ export function OrderManagementPage() {
                             : order.shipping_address || '-'}
                         </td>
                         <td className="px-4 py-3">
-                          <Button size="sm" variant="outline" onClick={() => handleViewDetail(order)}>
-                            <FileText className="h-4 w-4 mr-1" />
-                            상세
-                          </Button>
+                          <div className="flex space-x-2">
+                            <Button size="sm" variant="outline" onClick={() => handleViewDetail(order)}>
+                              <FileText className="h-4 w-4 mr-1" />
+                              상세
+                            </Button>
+                            {isEditableTime(order.created_at) && (
+                              <>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  onClick={() => handleEditOrder(order)}
+                                  className="text-blue-600 hover:text-blue-800"
+                                >
+                                  수정
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  onClick={() => handleDeleteOrder(order)}
+                                  className="text-red-600 hover:text-red-800"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -722,7 +1078,6 @@ export function OrderManagementPage() {
                             <h4 className="font-medium text-gray-900">{product.name}</h4>
                             <p className="text-sm text-gray-600">코드: {product.code}</p>
                             <p className="text-sm text-gray-600">가격: {formatCurrency(product.price)}</p>
-                            <p className="text-sm text-gray-600">재고: {product.stock}개</p>
                           </div>
                         </div>
                         

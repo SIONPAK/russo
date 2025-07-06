@@ -38,8 +38,10 @@ export function OrdersPage() {
   } = useOrderManagement()
 
   const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date()
-    return today.toISOString().split('T')[0]
+    // 한국 시간 기준으로 오늘 날짜
+    const now = new Date()
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    return koreaTime.toISOString().split('T')[0]
   })
 
   const [sortBy, setSortBy] = useState<'company_name' | 'created_at' | 'total_amount'>('company_name')
@@ -92,11 +94,26 @@ export function OrdersPage() {
     const totalShipped = order.order_items?.reduce((sum: number, item: any) => sum + (item.shipped_quantity || 0), 0) || 0
     
     if (totalShipped === 0) {
-      return { status: 'not_shipped', text: '미출고', color: 'text-gray-500' }
+      return { 
+        status: 'not_shipped', 
+        text: '미출고', 
+        color: 'text-gray-500',
+        detail: `0/${totalOrdered}개`
+      }
     } else if (totalShipped < totalOrdered) {
-      return { status: 'partial_shipped', text: '부분출고', color: 'text-orange-600' }
+      return { 
+        status: 'partial_shipped', 
+        text: '부분출고', 
+        color: 'text-orange-600',
+        detail: `${totalShipped}/${totalOrdered}개`
+      }
     } else {
-      return { status: 'fully_shipped', text: '전량출고', color: 'text-green-600' }
+      return { 
+        status: 'fully_shipped', 
+        text: '전량출고', 
+        color: 'text-green-600',
+        detail: `${totalShipped}/${totalOrdered}개`
+      }
     }
   }
 
@@ -677,6 +694,16 @@ export function OrdersPage() {
                                     <span className="text-gray-700">
                                       수량: {item.quantity}개
                                     </span>
+                                    {(item.shipped_quantity || 0) > 0 && (
+                                      <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                                        출고: {item.shipped_quantity}개
+                                      </span>
+                                    )}
+                                    {(item.shipped_quantity || 0) < item.quantity && (
+                                      <span className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700">
+                                        미출고: {item.quantity - (item.shipped_quantity || 0)}개
+                                      </span>
+                                    )}
                                     <span className={`text-xs px-2 py-1 rounded ${getStockStatusColor(item)}`}>
                                       현재고: {item.available_stock || 0}개
                                     </span>
@@ -698,9 +725,12 @@ export function OrdersPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`text-sm font-medium ${shippingStatus.color}`}>
+                        <div className={`text-sm font-medium ${shippingStatus.color}`}>
                           {shippingStatus.text}
-                        </span>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {shippingStatus.detail}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">

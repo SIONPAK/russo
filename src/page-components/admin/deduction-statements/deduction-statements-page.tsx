@@ -63,6 +63,17 @@ export default function DeductionStatementsPage() {
   const [processing, setProcessing] = useState(false)
   const [sendingEmail, setSendingEmail] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [orders, setOrders] = useState<any[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedOrder, setSelectedOrder] = useState<any>(null)
+  const [orderItems, setOrderItems] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+  const [productSearchTerm, setProductSearchTerm] = useState('')
+  const [showProductSearchModal, setShowProductSearchModal] = useState(false)
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null)
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [productSearchKeyword, setProductSearchKeyword] = useState('')
 
   useEffect(() => {
     fetchStatements()
@@ -604,13 +615,18 @@ function DeductionStatementCreateModal({
       }
     ]
   })
-  const [loading, setLoading] = useState(false)
   const [orders, setOrders] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<any>(null)
   const [orderItems, setOrderItems] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [productSearchTerm, setProductSearchTerm] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [showProductSearchModal, setShowProductSearchModal] = useState(false)
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null)
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [productSearchKeyword, setProductSearchKeyword] = useState('')
 
   // 주문 목록 조회
   useEffect(() => {
@@ -685,6 +701,47 @@ function DeductionStatementCreateModal({
     }
     fetchOrderItems()
   }, [formData.orderId])
+
+  // 상품 검색
+  const searchProducts = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setProductSearchResults([])
+      return
+    }
+
+    setIsSearchingProducts(true)
+    try {
+      const response = await fetch(`/api/admin/products?search=${encodeURIComponent(searchTerm)}&limit=20`)
+      const result = await response.json()
+
+      if (result.success) {
+        setProductSearchResults(result.data || [])
+      }
+    } catch (error) {
+      console.error('Product search error:', error)
+      setProductSearchResults([])
+    } finally {
+      setIsSearchingProducts(false)
+    }
+  }
+
+  const selectProduct = (product: any) => {
+    if (selectedItemIndex !== null) {
+      updateItem(selectedItemIndex, 'product_name', product.name)
+      updateItem(selectedItemIndex, 'unit_price', product.is_on_sale && product.sale_price ? product.sale_price : product.price)
+    }
+    setShowProductSearchModal(false)
+    setSelectedItemIndex(null)
+    setProductSearchKeyword('')
+    setProductSearchResults([])
+  }
+
+  const openProductSearch = (itemIndex: number) => {
+    setSelectedItemIndex(itemIndex)
+    setShowProductSearchModal(true)
+    setProductSearchKeyword('')
+    setProductSearchResults([])
+  }
 
   // 주문 상품에서 선택
   const addItemFromOrder = (orderItem: any) => {
@@ -907,40 +964,7 @@ function DeductionStatementCreateModal({
                 </div>
               )}
 
-              {/* 상품 검색에서 선택 */}
-              <div className="border rounded-lg p-4">
-                <h3 className="font-medium text-gray-900 mb-3">상품 검색</h3>
-                <div className="space-y-2">
-                  <Input
-                    type="text"
-                    placeholder="상품명으로 검색"
-                    value={productSearchTerm}
-                    onChange={(e) => setProductSearchTerm(e.target.value)}
-                  />
-                  {products.length > 0 && (
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                      {products.map((product) => (
-                        <div key={product.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div className="flex-1">
-                            <div className="font-medium text-sm">{product.name}</div>
-                            <div className="text-xs text-gray-500">
-                              코드: {product.code} | 가격: {product.price.toLocaleString()}원
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => addItemFromProduct(product)}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                          >
-                            추가
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+
             </div>
 
             {/* 선택된 차감 상품 목록 */}
@@ -970,13 +994,24 @@ function DeductionStatementCreateModal({
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           상품명 *
                         </label>
-                        <Input
-                          type="text"
-                          value={item.product_name}
-                          onChange={(e) => updateItem(index, 'product_name', e.target.value)}
-                          required
-                          className="bg-white"
-                        />
+                        <div className="flex space-x-2">
+                          <Input
+                            type="text"
+                            value={item.product_name}
+                            onChange={(e) => updateItem(index, 'product_name', e.target.value)}
+                            required
+                            className="bg-white flex-1"
+                          />
+                          <Button
+                            type="button"
+                            onClick={() => openProductSearch(index)}
+                            variant="outline"
+                            size="sm"
+                            className="px-3"
+                          >
+                            검색
+                          </Button>
+                        </div>
                       </div>
 
                       <div>
@@ -1087,6 +1122,83 @@ function DeductionStatementCreateModal({
           </form>
         </div>
       </div>
+      
+      {/* 상품 검색 모달 */}
+      {showProductSearchModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">상품 검색</h3>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowProductSearchModal(false)
+                  setSelectedItemIndex(null)
+                  setProductSearchKeyword('')
+                  setProductSearchResults([])
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                닫기
+              </Button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4">
+                <Input
+                  type="text"
+                  value={productSearchKeyword}
+                  onChange={(e) => {
+                    setProductSearchKeyword(e.target.value)
+                    searchProducts(e.target.value)
+                  }}
+                  placeholder="상품명 또는 상품코드로 검색하세요"
+                  className="w-full"
+                />
+              </div>
+              
+              <div className="max-h-96 overflow-y-auto">
+                {isSearchingProducts ? (
+                  <div className="text-center py-8 text-gray-500">
+                    검색 중...
+                  </div>
+                ) : productSearchResults.length > 0 ? (
+                  <div className="space-y-2">
+                    {productSearchResults.map((product) => (
+                      <div
+                        key={product.id}
+                        onClick={() => selectProduct(product)}
+                        className="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-gray-900">{product.name}</div>
+                            <div className="text-sm text-gray-500">코드: {product.code}</div>
+                            <div className="text-sm text-blue-600 font-medium mt-1">
+                              {product.is_on_sale && product.sale_price 
+                                ? `${product.sale_price.toLocaleString()}원 (세일가)`
+                                : `${product.price.toLocaleString()}원`
+                              }
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : productSearchKeyword ? (
+                  <div className="text-center py-8 text-gray-500">
+                    검색 결과가 없습니다.
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    상품명 또는 상품코드를 입력하세요.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 

@@ -55,6 +55,9 @@ export async function GET(request: NextRequest) {
 
     // 발주 주문만 조회 (order_number가 PO로 시작하는 것들)
     query = query.like('order_number', 'PO%')
+    
+    // 반품 전용 주문 제외
+    query = query.neq('order_type', 'return_only')
 
     // 검색 조건
     if (search) {
@@ -140,20 +143,27 @@ export async function GET(request: NextRequest) {
     }
 
     // 재고 할당 상태 계산
-    const ordersWithAllocation = orders?.map((order: any) => {
-      const allocationInfo = calculateAllocationStatus(order.order_items)
-      return {
-        ...order,
-        allocation_status: allocationInfo.status,
-        allocation_priority: calculatePriority(order.created_at),
-        order_items: order.order_items?.map((item: any) => ({
-          ...item,
-          available_stock: getAvailableStock(item.products, item.color, item.size),
-          allocated_quantity: item.shipped_quantity || 0,
-          allocation_status: getItemAllocationStatus(item)
-        }))
-      }
-    }) || []
+    const ordersWithAllocation = await Promise.all(
+      orders?.map(async (order: any) => {
+        const allocationInfo = await calculateAllocationStatus(supabase, order.order_items)
+        
+        const orderItemsWithAllocation = await Promise.all(
+          order.order_items?.map(async (item: any) => ({
+            ...item,
+            available_stock: await getAvailableStock(supabase, item.products, item.color, item.size),
+            allocated_quantity: item.shipped_quantity || 0,
+            allocation_status: await getItemAllocationStatus(supabase, item)
+          })) || []
+        )
+        
+        return {
+          ...order,
+          allocation_status: allocationInfo.status,
+          allocation_priority: calculatePriority(order.created_at),
+          order_items: orderItemsWithAllocation
+        }
+      }) || []
+    )
 
     // 통계 계산
     const stats = {
@@ -194,7 +204,7 @@ export async function GET(request: NextRequest) {
 }
 
 // 재고 할당 상태 계산 함수
-function calculateAllocationStatus(orderItems: any[]): { status: string; message: string } {
+async function calculateAllocationStatus(supabase: any, orderItems: any[]): Promise<{ status: string; message: string }> {
   if (!orderItems || orderItems.length === 0) {
     return { status: 'pending', message: '상품 정보 없음' }
   }
@@ -204,14 +214,15 @@ function calculateAllocationStatus(orderItems: any[]): { status: string; message
   let hasInsufficientStock = false
 
   for (const item of orderItems) {
-    const availableStock = getAvailableStock(item.products, item.color, item.size)
-    const requiredQuantity = item.quantity
-    const allocatedQuantity = Math.min(availableStock, requiredQuantity)
+    const availableStock = await getAvailableStock(supabase, item.products, item.color, item.size)
+    const alreadyShipped = item.shipped_quantity || 0
+    const remainingQuantity = item.quantity - alreadyShipped // 아직 할당되지 않은 수량
+    const allocatedQuantity = Math.min(availableStock, remainingQuantity)
 
-    totalAllocated += allocatedQuantity
-    totalRequired += requiredQuantity
+    totalAllocated += (alreadyShipped + allocatedQuantity)
+    totalRequired += item.quantity
 
-    if (allocatedQuantity < requiredQuantity) {
+    if ((alreadyShipped + allocatedQuantity) < item.quantity) {
       hasInsufficientStock = true
     }
   }
@@ -225,9 +236,11 @@ function calculateAllocationStatus(orderItems: any[]): { status: string; message
   }
 }
 
-// 사용 가능한 재고 계산 (특정 색상/사이즈)
-function getAvailableStock(product: any, color?: string, size?: string): number {
+// 사용 가능한 재고 계산 (특정 색상/사이즈) - 예약된 재고 고려
+async function getAvailableStock(supabase: any, product: any, color?: string, size?: string): Promise<number> {
   if (!product) return 0
+  
+  let currentStock = 0
   
   // 옵션별 재고가 있는 경우
   if (product.inventory_options && Array.isArray(product.inventory_options) && product.inventory_options.length > 0) {
@@ -236,25 +249,90 @@ function getAvailableStock(product: any, color?: string, size?: string): number 
       const matchingOption = product.inventory_options.find((option: any) => 
         option.color === color && option.size === size
       )
-      return matchingOption ? (matchingOption.stock_quantity || 0) : 0
+      currentStock = matchingOption ? (matchingOption.stock_quantity || 0) : 0
     } else {
       // 전체 재고 합계
-      return product.inventory_options.reduce((total: number, option: any) => {
+      currentStock = product.inventory_options.reduce((total: number, option: any) => {
         return total + (option.stock_quantity || 0)
       }, 0)
     }
+  } else {
+    // 기본 재고
+    currentStock = product.stock_quantity || 0
   }
   
-  // 기본 재고
-  return product.stock_quantity || 0
+  // 예약된 재고 계산 (발주로 예약된 수량)
+  try {
+    const { data: reservedItems } = await supabase
+      .from('order_items')
+      .select(`
+        quantity,
+        shipped_quantity,
+        color,
+        size,
+        orders!order_items_order_id_fkey (
+          status,
+          order_type
+        )
+      `)
+      .eq('product_id', product.id)
+      .in('orders.status', ['pending', 'confirmed', 'processing'])
+      .in('orders.order_type', ['normal', 'purchase'])
+    
+    let reservedQuantity = 0
+    
+    if (reservedItems && reservedItems.length > 0) {
+      reservedQuantity = reservedItems.reduce((sum: number, item: any) => {
+        const order = Array.isArray(item.orders) ? item.orders[0] : item.orders
+        
+        // 색상/사이즈가 지정된 경우 해당 옵션만 계산
+        if (color && size && (item.color !== color || item.size !== size)) {
+          return sum
+        }
+        
+        // 발주 주문(purchase)의 경우 이미 재고가 차감되어 있으므로 예약 수량에서 완전히 제외
+        if (order && order.order_type === 'purchase') {
+          return sum // 발주는 예약 수량에 포함하지 않음 (이미 재고 차감됨)
+        }
+        
+        // 일반 주문(normal)의 경우에만 아직 출고되지 않은 수량을 예약으로 계산
+        if (order && order.order_type === 'normal') {
+          const pendingQuantity = item.quantity - (item.shipped_quantity || 0)
+          return sum + Math.max(0, pendingQuantity)
+        }
+        
+        return sum
+      }, 0)
+    }
+    
+    // 가용 재고 = 현재 재고 - 예약된 재고
+    const availableStock = Math.max(0, currentStock - reservedQuantity)
+    
+    console.log(`재고 계산 - 상품 ID: ${product.id}, 색상: ${color || 'N/A'}, 사이즈: ${size || 'N/A'}`)
+    console.log(`  현재 재고: ${currentStock}, 예약된 재고: ${reservedQuantity}, 가용 재고: ${availableStock}`)
+    
+    return availableStock
+    
+  } catch (error) {
+    console.error('예약된 재고 계산 오류:', error)
+    // 오류 발생 시 현재 재고 반환
+    return currentStock
+  }
 }
 
 // 아이템별 할당 상태 계산
-function getItemAllocationStatus(item: any): string {
-  const availableStock = getAvailableStock(item.products, item.color, item.size)
-  const requiredQuantity = item.quantity
+async function getItemAllocationStatus(supabase: any, item: any): Promise<string> {
+  const availableStock = await getAvailableStock(supabase, item.products, item.color, item.size)
+  const alreadyShipped = item.shipped_quantity || 0
+  const remainingQuantity = item.quantity - alreadyShipped // 아직 할당되지 않은 수량
   
-  if (availableStock >= requiredQuantity) {
+  // 이미 전량 할당된 경우
+  if (alreadyShipped >= item.quantity) {
+    return 'allocated'
+  }
+  
+  // 남은 수량을 모두 할당할 수 있는 경우
+  if (availableStock >= remainingQuantity) {
     return 'allocated'
   } else if (availableStock > 0) {
     return 'partial'

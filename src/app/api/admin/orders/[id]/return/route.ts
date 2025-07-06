@@ -148,7 +148,7 @@ async function generateReturnStatement(
 ) {
   try {
     // 반품명세서 번호 생성
-    const statementNumber = `RTN-${Date.now()}-${order.order_number}`
+    const statementNumber = `RO-${Date.now()}-${order.order_number}`
 
     // 총 반품 금액 계산
     const totalAmount = returnItems.reduce((sum: number, item: any) => {

@@ -92,6 +92,13 @@ const menuItems = [
     children: []
   },
   {
+    title: '🧾 세금계산서 관리',
+    shortTitle: '세금계산서',
+    icon: FileText,
+    href: '/admin/tax-invoice',
+    children: []
+  },
+  {
     title: '샘플 관리',
     shortTitle: '샘플',
     icon: Package,

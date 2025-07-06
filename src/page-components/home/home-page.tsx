@@ -21,6 +21,7 @@ interface PopularProduct {
 }
 
 export function HomePage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const { products, loading: productsLoading, error: productsError } = useProducts()
   const [popularProducts, setPopularProducts] = useState<PopularProduct[]>([])
@@ -156,7 +157,11 @@ export function HomePage() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {popularProducts && popularProducts.length > 0 ? (
               (showAllProducts ? popularProducts : popularProducts.slice(0, 6)).map((product, index) => (
-                <div key={product.id} className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow cursor-pointer group">
+                <div 
+                  key={product.id} 
+                  className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow cursor-pointer group"
+                  onClick={() => router.push(`/products/${product.id}`)}
+                >
                   <div className="aspect-square bg-gray-100 overflow-hidden">
                     {product.images && product.images.length > 0 ? (
                       <img
