@@ -286,6 +286,46 @@ export default function DeductionStatementsPage() {
     )
   }
 
+  const searchProducts = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setProductSearchResults([])
+      return
+    }
+
+    setIsSearchingProducts(true)
+    try {
+      const response = await fetch(`/api/admin/products?search=${encodeURIComponent(searchTerm)}&limit=20`)
+      const result = await response.json()
+
+      if (result.success) {
+        setProductSearchResults(result.data || [])
+      }
+    } catch (error) {
+      console.error('Product search error:', error)
+      setProductSearchResults([])
+    } finally {
+      setIsSearchingProducts(false)
+    }
+  }
+
+  const selectProduct = (product: any) => {
+    if (selectedItemIndex !== null) {
+      updateItem(selectedItemIndex, 'product_name', product.name)
+      updateItem(selectedItemIndex, 'unit_price', product.is_on_sale && product.sale_price ? product.sale_price : product.price)
+    }
+    setShowProductSearchModal(false)
+    setSelectedItemIndex(null)
+    setProductSearchKeyword('')
+    setProductSearchResults([])
+  }
+
+  const openProductSearch = (itemIndex: number) => {
+    setSelectedItemIndex(itemIndex)
+    setShowProductSearchModal(true)
+    setProductSearchKeyword('')
+    setProductSearchResults([])
+  }
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -726,21 +766,8 @@ function DeductionStatementCreateModal({
   }
 
   const selectProduct = (product: any) => {
-    if (selectedItemIndex !== null) {
-      updateItem(selectedItemIndex, 'product_name', product.name)
-      updateItem(selectedItemIndex, 'unit_price', product.is_on_sale && product.sale_price ? product.sale_price : product.price)
-    }
-    setShowProductSearchModal(false)
-    setSelectedItemIndex(null)
-    setProductSearchKeyword('')
-    setProductSearchResults([])
-  }
-
-  const openProductSearch = (itemIndex: number) => {
-    setSelectedItemIndex(itemIndex)
-    setShowProductSearchModal(true)
-    setProductSearchKeyword('')
-    setProductSearchResults([])
+    // 기존 개별 선택 함수는 제거하고 다중 선택만 사용
+    // 더 이상 사용하지 않음
   }
 
   // 주문 상품에서 선택

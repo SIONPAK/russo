@@ -84,25 +84,65 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 통합 샘플 번호 생성 (하나의 명세서에 대한 대표 번호)
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
-    const randomSuffix = Math.random().toString(36).substr(2, 4).toUpperCase()
-    const mainSampleNumber = `SP-${today}-${randomSuffix}`
+    // 통합 샘플 번호 생성 (하나의 명세서에 대한 대표 번호) - 중복 방지
+    const koreaTime = new Date(Date.now() + (9 * 60 * 60 * 1000)) // UTC + 9시간
+    const today = koreaTime.toISOString().split('T')[0].replace(/-/g, '')
+    let mainSampleNumber = ''
+    let attempts = 0
+    const maxAttempts = 10
 
-    // 21일 후 반납 예정일 계산
-    const dueDate = new Date()
-    dueDate.setDate(dueDate.getDate() + 21)
+    // 중복되지 않는 샘플 번호 생성
+    while (attempts < maxAttempts) {
+      const timestamp = Date.now().toString().slice(-6) // 마지막 6자리
+      const randomSuffix = Math.random().toString(36).substr(2, 4).toUpperCase()
+      mainSampleNumber = `SP-${today}-${timestamp}${randomSuffix}`
+      
+      // 중복 체크
+      const { data: existingSample, error: checkError } = await supabase
+        .from('samples')
+        .select('id')
+        .like('sample_number', `${mainSampleNumber}%`)
+        .limit(1)
+        .single()
+      
+      if (checkError && checkError.code === 'PGRST116') {
+        // 데이터가 없음 (중복 없음)
+        break
+      } else if (checkError) {
+        console.error('Sample number check error:', checkError)
+        attempts++
+        continue
+      } else {
+        // 중복 발견, 다시 시도
+        attempts++
+        continue
+      }
+    }
 
-    // 샘플 명세서 생성 (실제 스키마에 맞게)
+    if (attempts >= maxAttempts) {
+      return NextResponse.json({
+        success: false,
+        error: '샘플 번호 생성에 실패했습니다. 다시 시도해주세요.'
+      }, { status: 500 })
+    }
+
+    // 21일 후 반납 예정일 계산 (한국 시간 기준)
+    const dueDate = new Date(koreaTime.getTime() + (21 * 24 * 60 * 60 * 1000)) // 21일 후
+
+    // 샘플 명세서 생성 (실제 스키마에 맞게) - statement_number 명시적으로 설정
+    const statementNumber = `SS-${today}-${Date.now().toString().slice(-6)}`
     const { data: statement, error: statementError } = await supabase
       .from('sample_statements')
       .insert({
+        statement_number: statementNumber, // 명시적으로 설정하여 트리거 중복 방지
         order_id: tempOrder.id,
         sample_type: 'photo', // 샘플은 무조건 무료 (촬영용)
         status: 'pending',
         total_amount: 0,
         admin_notes,
-        items: items || []
+        items: items || [],
+        created_at: koreaTime.toISOString(),
+        updated_at: koreaTime.toISOString()
       })
       .select()
       .single()
@@ -115,32 +155,34 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 샘플 아이템들을 samples 테이블에 개별 생성 (각각 고유한 샘플 번호 사용)
+    // 샘플 아이템들을 samples 테이블에 생성 (개별 번호 사용하되 그룹으로 관리)
     let totalAmount = 0
     const samplePromises = items.map(async (item: any, index: number) => {
-      // 샘플은 무료 제공이므로 가격은 0원
-      const unitPrice = 0
-      const totalPrice = 0
+      // 샘플은 무료 제공이지만, 미반납 시 차감할 금액은 실제 상품 가격
+      const unitPrice = 0 // 샘플 제공 가격 (무료)
+      const totalPrice = 0 // 샘플 제공 총액 (무료)
       
-      // 반납 기간 내 미반납 시 차감할 마일리지 금액 (실제 상품 가격)
-      const penaltyAmount = item.unit_price || 0
+      // 미반납 시 차감할 마일리지 금액 (실제 상품 가격 × 수량)
+      const penaltyAmount = (item.unit_price || 0) * item.quantity
 
-      // 각 샘플 아이템마다 고유한 번호 생성
+      // 각 아이템마다 고유한 번호 생성 (UNIQUE 제약조건 때문)
       const itemSampleNumber = `${mainSampleNumber}-${String(index + 1).padStart(2, '0')}`
 
-      console.log(`Creating sample ${index + 1}:`, {
+      console.log(`Creating sample ${index + 1} in group ${mainSampleNumber}:`, {
         sample_number: itemSampleNumber,
+        group_number: mainSampleNumber,
         product_name: item.product_name,
         color: item.color,
         size: item.size,
         quantity: item.quantity,
+        unit_price: item.unit_price,
         penaltyAmount
       })
 
       const { data, error } = await supabase
         .from('samples')
         .insert({
-          sample_number: itemSampleNumber, // 각 아이템마다 고유한 번호
+          sample_number: itemSampleNumber, // 개별 고유 번호
           customer_id: customer_id,
           customer_name: customer.company_name || customer.representative_name,
           product_id: item.product_id,
@@ -148,13 +190,17 @@ export async function POST(request: NextRequest) {
           product_options: `색상: ${item.color || '기본'}, 사이즈: ${item.size || 'FREE'}`,
           quantity: item.quantity,
           sample_type: 'photography', // 샘플은 무조건 무료 (촬영용)
-          charge_amount: penaltyAmount, // 미반납 시 차감할 금액
+          charge_amount: penaltyAmount, // 미반납 시 차감할 금액 (실제 상품 가격 × 수량)
           status: 'pending',
           due_date: dueDate.toISOString().split('T')[0],
           delivery_address: deliveryAddress ? 
             `${deliveryAddress.address} (${deliveryAddress.recipient_name}, ${deliveryAddress.phone})` : 
             customer.address,
-          admin_notes: admin_notes || `샘플 ${index + 1} - 반납기한: ${dueDate.toISOString().split('T')[0]} (미반납시 ₩${penaltyAmount.toLocaleString()} 차감)`
+          admin_notes: admin_notes || `샘플 그룹 ${mainSampleNumber} (${index + 1}/${items.length}) - 반납기한: ${dueDate.toISOString().split('T')[0]} (미반납시 ₩${penaltyAmount.toLocaleString()} 차감)`,
+          // 그룹 정보를 notes에 추가하여 그룹 관리
+          notes: `GROUP:${mainSampleNumber}|ITEM:${index + 1}|TOTAL:${items.length}|PENALTY:${penaltyAmount}`,
+          created_at: koreaTime.toISOString(),
+          updated_at: koreaTime.toISOString()
         })
         .select()
 
@@ -163,15 +209,16 @@ export async function POST(request: NextRequest) {
         throw error
       }
 
-      console.log(`Sample ${index + 1} created successfully:`, data)
+      console.log(`Sample ${index + 1} created successfully in group:`, data)
+      totalAmount += penaltyAmount // 총 미반납 시 차감 금액 누적
       return data
     })
 
     let createdSamples = []
     try {
-      console.log(`Creating ${items.length} samples with number: ${mainSampleNumber}`)
+      console.log(`Creating ${items.length} samples with group number: ${mainSampleNumber}`)
       createdSamples = await Promise.all(samplePromises)
-      console.log(`Successfully created ${createdSamples.length} samples`)
+      console.log(`Successfully created ${createdSamples.length} samples in group ${mainSampleNumber}`)
     } catch (error) {
       console.error('Sample creation error:', error)
       return NextResponse.json({
@@ -180,7 +227,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 재고 변동 이력 기록 (샘플 출고)
+    // 재고 변동 이력 기록 (샘플 출고) - 한국 시간으로 저장
     try {
       const stockMovements = createdSamples.flat().map(sample => ({
         product_id: sample.product_id,
@@ -189,7 +236,7 @@ export async function POST(request: NextRequest) {
         reference_id: sample.id,
         reference_type: 'sample',
         notes: `샘플 출고: ${sample.sample_number} (촬영용 샘플 발송)`,
-        created_at: new Date().toISOString()
+        created_at: koreaTime.toISOString()
       }))
 
       const { error: stockError } = await supabase
@@ -231,11 +278,11 @@ export async function POST(request: NextRequest) {
       // 재고 이력 실패는 경고만 하고 계속 진행
     }
 
-    // 명세서 총액은 0원 (무료 제공)
+    // 명세서 총액을 미반납 시 차감할 총 금액으로 업데이트
     const { error: updateError } = await supabase
       .from('sample_statements')
       .update({
-        total_amount: 0
+        total_amount: totalAmount // 미반납 시 차감할 총 금액
       })
       .eq('id', statement.id)
 
@@ -245,14 +292,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `샘플 명세서가 생성되었습니다. (샘플번호: ${mainSampleNumber}, 반납기한: ${dueDate.toISOString().split('T')[0]})`,
+      message: `샘플 명세서가 생성되었습니다. (그룹번호: ${mainSampleNumber}, 반납기한: ${dueDate.toISOString().split('T')[0]}, 미반납시 차감: ₩${totalAmount.toLocaleString()})`,
       data: {
         statement,
         sample_number: mainSampleNumber,
         total_items: items.length,
-        total_amount: 0, // 무료 제공
+        total_amount: totalAmount, // 미반납 시 차감할 총 금액
         due_date: dueDate.toISOString().split('T')[0],
-        penalty_info: `반납 기한 내 미반납 시 마일리지 차감`
+        penalty_info: `반납 기한 내 미반납 시 총 ₩${totalAmount.toLocaleString()} 마일리지 차감 (그룹 단위 관리)`
       }
     })
 

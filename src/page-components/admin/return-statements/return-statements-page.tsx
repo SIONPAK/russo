@@ -84,6 +84,16 @@ export default function ReturnStatementsPage() {
   const [productSearchTerm, setProductSearchTerm] = useState('')
   const [productSearchResults, setProductSearchResults] = useState<any[]>([])
   const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+  const [selectedProducts, setSelectedProducts] = useState<{
+    productId: string
+    productName: string
+    productCode: string
+    color: string
+    size: string
+    unitPrice: number
+    availableColors: string[]
+    availableSizes: string[]
+  }[]>([])
 
   useEffect(() => {
     fetchStatements()
@@ -166,65 +176,64 @@ export default function ReturnStatementsPage() {
     }
   }
 
-  const selectProduct = (product: any) => {
-    // 색상과 사이즈 옵션 추출
-    const colors = product.inventory_options 
-      ? [...new Set(product.inventory_options.map((opt: any) => opt.color).filter(Boolean))]
-      : []
-    const sizes = product.inventory_options 
-      ? [...new Set(product.inventory_options.map((opt: any) => opt.size).filter(Boolean))]
-      : []
-    
-    if (selectedItemIndex !== null && selectedItemIndex >= 0) {
-      // 기존 아이템 수정
-      updateStatementItem(selectedItemIndex, 'product_name', product.name)
-      updateStatementItem(selectedItemIndex, 'unit_price', product.is_on_sale && product.sale_price ? product.sale_price : product.price)
-      updateStatementItem(selectedItemIndex, 'available_colors', colors)
-      updateStatementItem(selectedItemIndex, 'available_sizes', sizes)
-      
-      // 첫 번째 옵션으로 초기값 설정
-      if (colors.length > 0) {
-        updateStatementItem(selectedItemIndex, 'color', colors[0])
-      }
-      if (sizes.length > 0) {
-        updateStatementItem(selectedItemIndex, 'size', sizes[0])
-      }
+  const toggleProductSelection = (product: any, color: string, size: string) => {
+    const productKey = `${product.id}-${color}-${size}`
+    const isSelected = selectedProducts.some(p => 
+      p.productId === product.id && p.color === color && p.size === size
+    )
+
+    if (isSelected) {
+      setSelectedProducts(prev => prev.filter(p => 
+        !(p.productId === product.id && p.color === color && p.size === size)
+      ))
     } else {
-      // 새로운 아이템 추가
       const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
-      const newItem = {
-        product_name: product.name as string,
-        color: colors.length > 0 ? colors[0] as string : '',
-        size: sizes.length > 0 ? sizes[0] as string : '',
-        return_quantity: 1,
-        unit_price: unitPrice as number,
-        total_price: unitPrice as number
-      }
-      
-      // available_colors와 available_sizes는 별도로 처리
-      const extendedNewItem = {
-        ...newItem,
-        available_colors: colors,
-        available_sizes: sizes
-      }
-      
-      setNewStatement(prev => ({
-        ...prev,
-        items: [...prev.items, extendedNewItem as any]
-      }))
+      setSelectedProducts(prev => [...prev, {
+        productId: product.id,
+        productName: product.name,
+        productCode: product.code,
+        color,
+        size,
+        unitPrice,
+        availableColors: product.colors || [],
+        availableSizes: product.sizes || []
+      }])
     }
-    
-    setShowProductSearchModal(false)
-    setSelectedItemIndex(null)
-    setProductSearchTerm('')
-    setProductSearchResults([])
   }
 
-  const openProductSearch = (itemIndex: number) => {
-    setSelectedItemIndex(itemIndex)
-    setShowProductSearchModal(true)
+  const addSelectedProductsToStatement = () => {
+    if (selectedProducts.length === 0) {
+      showError('추가할 상품을 선택해주세요.')
+      return
+    }
+
+    const newItems = selectedProducts.map(product => ({
+      product_name: product.productName,
+      color: product.color,
+      size: product.size,
+      return_quantity: 1,
+      unit_price: product.unitPrice,
+      total_price: product.unitPrice,
+      available_colors: product.availableColors,
+      available_sizes: product.availableSizes
+    }))
+
+    setNewStatement(prev => ({
+      ...prev,
+      items: [...prev.items, ...newItems]
+    }))
+
+    setSelectedProducts([])
+    setShowProductSearchModal(false)
     setProductSearchTerm('')
     setProductSearchResults([])
+    showSuccess(`${selectedProducts.length}개 상품이 추가되었습니다.`)
+  }
+
+  const isProductSelected = (product: any, color: string, size: string) => {
+    return selectedProducts.some(p => 
+      p.productId === product.id && p.color === color && p.size === size
+    )
   }
 
   const fetchStatements = async () => {
@@ -1096,14 +1105,17 @@ export default function ReturnStatementsPage() {
       {/* 상품 검색 모달 */}
       {showProductSearchModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[85vh] overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-lg font-medium text-gray-900">상품 검색</h3>
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">상품 검색</h3>
+                <p className="text-sm text-gray-600 mt-1">상품명 또는 상품코드로 검색하세요.</p>
+              </div>
               <Button
                 variant="outline"
                 onClick={() => {
                   setShowProductSearchModal(false)
-                  setSelectedItemIndex(null)
+                  setSelectedProducts([])
                   setProductSearchTerm('')
                   setProductSearchResults([])
                 }}
@@ -1114,7 +1126,7 @@ export default function ReturnStatementsPage() {
             </div>
             
             <div className="p-6">
-              <div className="mb-4">
+              <div className="flex space-x-2 mb-6">
                 <Input
                   type="text"
                   value={productSearchTerm}
@@ -1123,37 +1135,76 @@ export default function ReturnStatementsPage() {
                     searchProducts(e.target.value)
                   }}
                   placeholder="상품명 또는 상품코드로 검색하세요"
-                  className="w-full"
+                  className="flex-1 h-12"
+                  autoFocus
                 />
+                <Button 
+                  onClick={() => searchProducts(productSearchTerm)} 
+                  disabled={isSearchingProducts}
+                  className="h-12 px-6"
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  {isSearchingProducts ? '검색중...' : '검색'}
+                </Button>
               </div>
               
               <div className="max-h-96 overflow-y-auto">
                 {isSearchingProducts ? (
-                  <div className="text-center py-8 text-gray-500">
-                    검색 중...
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-4 text-gray-600">검색 중...</p>
                   </div>
                 ) : productSearchResults.length > 0 ? (
-                  <div className="space-y-2">
-                    {productSearchResults.map((product) => (
-                      <div
-                        key={product.id}
-                        onClick={() => selectProduct(product)}
-                        className="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-medium text-gray-900">{product.name}</div>
-                            <div className="text-sm text-gray-500">코드: {product.code}</div>
-                            <div className="text-sm text-blue-600 font-medium mt-1">
-                              {product.is_on_sale && product.sale_price 
-                                ? `${product.sale_price.toLocaleString()}원 (세일가)`
-                                : `${product.price.toLocaleString()}원`
-                              }
+                  <div className="space-y-4">
+                    {productSearchResults.map((product) => {
+                      // 색상과 사이즈 옵션 추출
+                      const colors: string[] = product.inventory_options 
+                        ? [...new Set(product.inventory_options.map((opt: any) => opt.color).filter(Boolean).map(String))]
+                        : ['기본']
+                      const sizes: string[] = product.inventory_options 
+                        ? [...new Set(product.inventory_options.map((opt: any) => opt.size).filter(Boolean).map(String))]
+                        : ['FREE']
+                      
+                      return (
+                        <div key={product.id} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4 className="font-medium text-gray-900">{product.name}</h4>
+                              <p className="text-sm text-gray-600">코드: {product.code}</p>
+                              <p className="text-sm text-blue-600 font-medium">
+                                {product.is_on_sale && product.sale_price 
+                                  ? `${product.sale_price.toLocaleString()}원 (세일가)`
+                                  : `${product.price.toLocaleString()}원`
+                                }
+                              </p>
                             </div>
                           </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {colors.map((color) =>
+                              sizes.map((size) => {
+                                const isSelected = isProductSelected(product, color, size)
+                                return (
+                                  <Button
+                                    key={`${color}-${size}`}
+                                    variant={isSelected ? "default" : "outline"}
+                                    onClick={() => toggleProductSelection(product, color, size)}
+                                    className={`text-left justify-start ${
+                                      isSelected 
+                                        ? 'bg-blue-600 text-white border-blue-600' 
+                                        : 'hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {isSelected && <span className="mr-2">✓</span>}
+                                    {color} / {size}
+                                  </Button>
+                                )
+                              })
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : productSearchTerm ? (
                   <div className="text-center py-8 text-gray-500">
@@ -1164,6 +1215,47 @@ export default function ReturnStatementsPage() {
                     상품명 또는 상품코드를 입력하세요.
                   </div>
                 )}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-600">
+                  {selectedProducts.length > 0 && (
+                    <span className="font-medium text-blue-600">
+                      {selectedProducts.length}개 상품 선택됨
+                    </span>
+                  )}
+                </div>
+                {selectedProducts.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setSelectedProducts([])}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    선택 해제
+                  </Button>
+                )}
+              </div>
+              <div className="flex space-x-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowProductSearchModal(false)
+                    setSelectedProducts([])
+                    setProductSearchTerm('')
+                    setProductSearchResults([])
+                  }}
+                >
+                  취소
+                </Button>
+                <Button
+                  onClick={addSelectedProductsToStatement}
+                  disabled={selectedProducts.length === 0}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  선택한 상품 추가 ({selectedProducts.length})
+                </Button>
               </div>
             </div>
           </div>

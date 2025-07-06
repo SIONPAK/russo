@@ -69,14 +69,14 @@ export async function GET(request: NextRequest) {
 
     // 샘플 번호별로 그룹화 (업체별 명세서)
     const groupedSamples = samples.reduce((acc: any, sample: any) => {
-      // 샘플 번호에서 기본 그룹 번호 추출 (SP-20250706-XQ3H-01 -> SP-20250706-XQ3H)
-      const baseNumber = sample.sample_number.replace(/-\d{2}$/, '')
-      const key = baseNumber
+      // 개별 번호에서 그룹 번호 추출 (SP-20250706-XQ3H-01 -> SP-20250706-XQ3H)
+      const groupNumber = sample.sample_number.replace(/-\d{2}$/, '')
+      const key = groupNumber
       
       if (!acc[key]) {
         acc[key] = {
           id: sample.id, // 대표 ID
-          sample_number: baseNumber, // 기본 샘플 번호 사용
+          sample_number: groupNumber, // 그룹 번호
           customer_id: sample.customer_id,
           customer_name: sample.customer_name,
           status: sample.status,
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 통계 계산 (명세서 기준)
+    // 통계 계산 (명세서 기준) - 그룹 번호로 계산
     const uniqueSampleNumbers = [...new Set(allSamples.map(s => s.sample_number.replace(/-\d{2}$/, '')))]
     const stats = {
       shipped: uniqueSampleNumbers.filter(sn => {

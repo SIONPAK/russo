@@ -120,13 +120,12 @@ export async function POST(request: NextRequest) {
 
           // 재고 변동 이력 기록
           if (changeAmount !== 0) {
-            const koreaTime = new Date(Date.now() + (9 * 60 * 60 * 1000))
             const movementData = {
               product_id: product.id,
               movement_type: changeAmount > 0 ? 'inbound' : 'adjustment',
               quantity: changeAmount,
               notes: `${color}/${size} 옵션 재고 변경 (엑셀 일괄 업로드) - 이전: ${previousStock}, 변경: ${changeAmount}, 결과: ${newStock}`,
-              created_at: koreaTime.toISOString()
+              created_at: new Date().toISOString()
             }
             
             console.log(`재고 변동 이력 기록 시도:`, movementData)
@@ -166,13 +165,12 @@ export async function POST(request: NextRequest) {
 
           // 재고 변동 이력 기록
           if (changeAmount !== 0) {
-            const koreaTime = new Date(Date.now() + (9 * 60 * 60 * 1000))
             const movementData = {
               product_id: product.id,
               movement_type: changeAmount > 0 ? 'inbound' : 'adjustment',
               quantity: changeAmount,
               notes: `전체 재고 변경 (엑셀 일괄 업로드) - 이전: ${previousStock}, 변경: ${changeAmount}, 결과: ${newStock}`,
-              created_at: koreaTime.toISOString()
+              created_at: new Date().toISOString()
             }
             
             console.log(`재고 변동 이력 기록 시도:`, movementData)
