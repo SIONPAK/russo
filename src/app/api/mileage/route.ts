@@ -106,15 +106,16 @@ export async function GET(request: NextRequest) {
 
     console.log('🔍 전체 마일리지 데이터 수:', allMileageData?.length || 0)
 
-    // 잔액 계산 (users 테이블의 mileage_balance 사용 또는 계산)
-    let currentBalance = userData.mileage_balance || 0
+    // 잔액 계산 - 항상 실제 마일리지 내역을 기반으로 계산
+    let currentBalance = 0
     
-    // 만약 mileage_balance가 null이면 직접 계산
-    if (userData.mileage_balance === null && allMileageData) {
+    if (allMileageData) {
       currentBalance = allMileageData.reduce((sum: number, item: any) => {
         return sum + (item.type === 'earn' ? item.amount : -item.amount)
       }, 0)
     }
+
+    console.log('🔍 실제 마일리지 내역 기반 계산된 잔액:', currentBalance)
 
     // 이번 달 통계 계산
     const now = new Date()
@@ -197,13 +198,13 @@ export async function POST(request: NextRequest) {
       ? currentBalance + amountValue 
       : currentBalance - amountValue
 
-    // 차감 시 잔액 부족 체크
-    if (type === 'spend' && newBalance < 0) {
-      return NextResponse.json({ 
-        success: false, 
-        error: '마일리지 잔액이 부족합니다' 
-      }, { status: 400 })
-    }
+    // 차감 시 잔액 부족 체크 제거 - 음수 허용
+    // if (type === 'spend' && newBalance < 0) {
+    //   return NextResponse.json({ 
+    //     success: false, 
+    //     error: '마일리지 잔액이 부족합니다' 
+    //   }, { status: 400 })
+    // }
 
     console.log('🔍 마일리지 업데이트:', {
       userId,

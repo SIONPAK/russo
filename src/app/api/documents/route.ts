@@ -13,109 +13,216 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate') || ''
     const endDate = searchParams.get('endDate') || ''
 
-    // 현재 사용자 확인 (URL 파라미터 또는 세션에서)
-    const urlUserId = searchParams.get('userId')
-    let currentUserId = urlUserId
-    
-    // URL에 userId가 없으면 세션에서 가져오기
-    if (!currentUserId) {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      if (userError || !user) {
-        return NextResponse.json({
-          success: false,
-          error: '사용자 정보를 찾을 수 없습니다.'
-        }, { status: 401 })
-      }
-      currentUserId = user.id
+    // 회사명 파라미터 확인
+    const companyName = searchParams.get('companyName')
+    if (!companyName) {
+      return NextResponse.json({
+        success: false,
+        error: '회사명이 필요합니다.'
+      }, { status: 400 })
+    }
+
+    // 회사 정보 조회
+    const { data: userData, error: userDataError } = await supabase
+      .from('users')
+      .select('id, company_name')
+      .eq('company_name', companyName)
+      .single()
+
+    if (userDataError || !userData) {
+      return NextResponse.json({
+        success: false,
+        error: '회사 정보를 찾을 수 없습니다.'
+      }, { status: 404 })
     }
 
     const offset = (page - 1) * limit
+    let allStatements: any[] = []
 
-    let query = supabase
-      .from('statements')
-      .select(`
-        *,
-        orders!statements_order_id_fkey (
-          order_number,
-          created_at
-        ),
-        statement_items (
+    // 1. 거래명세서 (주문 기반)
+    if (type === 'all' || type === 'transaction') {
+      const { data: orders } = await supabase
+        .from('orders')
+        .select(`
           id,
-          product_name,
-          color,
-          size,
-          quantity,
-          unit_price,
-          total_amount
-        )
-      `, { count: 'exact' })
-      .eq('user_id', currentUserId)
+          order_number,
+          total_amount,
+          shipping_fee,
+          status,
+          created_at,
+          order_items (
+            id,
+            product_name,
+            color,
+            size,
+            quantity,
+            unit_price,
+            total_price
+          )
+        `)
+        .eq('user_id', userData.id)
+        .in('status', ['shipped', 'delivered']) // 출고된 주문만
+        .order('created_at', { ascending: false })
 
-    // 명세서 타입 필터
-    if (type !== 'all') {
-      query = query.eq('statement_type', type)
+      if (orders) {
+        orders.forEach(order => {
+          allStatements.push({
+            id: `order_${order.id}`,
+            statement_number: order.order_number,
+            statement_type: 'transaction',
+            total_amount: order.total_amount + (order.shipping_fee || 0),
+            status: 'issued',
+            created_at: order.created_at,
+            order_number: order.order_number,
+            items: order.order_items || []
+          })
+        })
+      }
     }
 
-    // 날짜 필터
-    if (startDate) {
-      query = query.gte('created_at', startDate)
+    // 2. 반품명세서
+    if (type === 'all' || type === 'return') {
+      // 먼저 사용자의 주문 ID들을 가져온 후 반품명세서 조회
+      const { data: userOrders } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('user_id', userData.id)
+
+      if (userOrders && userOrders.length > 0) {
+        const orderIds = userOrders.map(order => order.id)
+        
+        const { data: returnStatements } = await supabase
+          .from('return_statements')
+          .select(`
+            id,
+            statement_number,
+            total_amount,
+            refund_amount,
+            status,
+            return_reason,
+            created_at,
+            items,
+            order_id,
+            orders!return_statements_order_id_fkey (
+              order_number
+            )
+          `)
+          .in('order_id', orderIds)
+          .order('created_at', { ascending: false })
+
+        if (returnStatements) {
+          returnStatements.forEach(statement => {
+            const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
+            allStatements.push({
+              id: `return_${statement.id}`,
+              statement_number: statement.statement_number,
+              statement_type: 'return',
+              total_amount: statement.refund_amount || statement.total_amount,
+              status: statement.status === 'pending' ? 'issued' : 'sent',
+              created_at: statement.created_at,
+              order_number: order?.order_number || '',
+              reason: statement.return_reason,
+              items: statement.items || []
+            })
+          })
+        }
+      }
     }
-    if (endDate) {
-      const endDateTime = new Date(endDate)
-      endDateTime.setHours(23, 59, 59, 999)
-      query = query.lte('created_at', endDateTime.toISOString())
+
+    // 3. 차감명세서
+    if (type === 'all' || type === 'deduction') {
+      // 먼저 사용자의 주문 ID들을 가져온 후 차감명세서 조회
+      const { data: userOrders } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('user_id', userData.id)
+
+      if (userOrders && userOrders.length > 0) {
+        const orderIds = userOrders.map(order => order.id)
+        
+        const { data: deductionStatements } = await supabase
+          .from('deduction_statements')
+          .select(`
+            id,
+            statement_number,
+            total_amount,
+            deduction_reason,
+            status,
+            created_at,
+            items,
+            order_id,
+            orders!deduction_statements_order_id_fkey (
+              order_number
+            )
+          `)
+          .in('order_id', orderIds)
+          .order('created_at', { ascending: false })
+
+        if (deductionStatements) {
+          deductionStatements.forEach(statement => {
+            const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
+            allStatements.push({
+              id: `deduction_${statement.id}`,
+              statement_number: statement.statement_number,
+              statement_type: 'deduction',
+              total_amount: statement.total_amount,
+              status: statement.status === 'pending' ? 'issued' : 'sent',
+              created_at: statement.created_at,
+              order_number: order?.order_number || '',
+              reason: statement.deduction_reason,
+              items: statement.items || []
+            })
+          })
+        }
+      }
     }
 
-    // 정렬 및 페이지네이션
-    query = query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    const { data: statements, error, count } = await query
-
-    if (error) {
-      console.error('명세서 조회 오류:', error)
-      return NextResponse.json({
-        success: false,
-        error: '명세서 조회에 실패했습니다.'
-      }, { status: 500 })
+    // 날짜 필터링
+    if (startDate || endDate) {
+      allStatements = allStatements.filter(statement => {
+        const createdAt = new Date(statement.created_at)
+        if (startDate && createdAt < new Date(startDate)) return false
+        if (endDate && createdAt > new Date(endDate + 'T23:59:59')) return false
+        return true
+      })
     }
 
-    const totalPages = Math.ceil((count || 0) / limit)
+    // 정렬 (최신순)
+    allStatements.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-    // 명세서 타입별 통계
-    const { data: stats } = await supabase
-      .from('statements')
-      .select('statement_type, total_amount')
-      .eq('user_id', currentUserId)
+    // 페이지네이션
+    const totalItems = allStatements.length
+    const totalPages = Math.ceil(totalItems / limit)
+    const paginatedStatements = allStatements.slice(offset, offset + limit)
 
+    // 통계 계산
     const statistics = {
       transaction: {
-        count: stats?.filter(s => s.statement_type === 'transaction').length || 0,
-        total: stats?.filter(s => s.statement_type === 'transaction')
-          .reduce((sum, s) => sum + s.total_amount, 0) || 0
+        count: allStatements.filter(s => s.statement_type === 'transaction').length,
+        total: allStatements.filter(s => s.statement_type === 'transaction')
+          .reduce((sum, s) => sum + s.total_amount, 0)
       },
       return: {
-        count: stats?.filter(s => s.statement_type === 'return').length || 0,
-        total: stats?.filter(s => s.statement_type === 'return')
-          .reduce((sum, s) => sum + s.total_amount, 0) || 0
+        count: allStatements.filter(s => s.statement_type === 'return').length,
+        total: allStatements.filter(s => s.statement_type === 'return')
+          .reduce((sum, s) => sum + s.total_amount, 0)
       },
       deduction: {
-        count: stats?.filter(s => s.statement_type === 'deduction').length || 0,
-        total: stats?.filter(s => s.statement_type === 'deduction')
-          .reduce((sum, s) => sum + s.total_amount, 0) || 0
+        count: allStatements.filter(s => s.statement_type === 'deduction').length,
+        total: allStatements.filter(s => s.statement_type === 'deduction')
+          .reduce((sum, s) => sum + s.total_amount, 0)
       }
     }
 
     return NextResponse.json({
       success: true,
       data: {
-        statements: statements || [],
+        statements: paginatedStatements,
         statistics,
         pagination: {
           currentPage: page,
           totalPages,
-          totalItems: count || 0,
+          totalItems,
           itemsPerPage: limit
         }
       }

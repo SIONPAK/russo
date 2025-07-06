@@ -7,7 +7,8 @@ import {
   Package, 
   Award, 
   FileText,
-  MapPin
+  MapPin,
+  Receipt
 } from 'lucide-react'
 
 export function MypageSidebar() {
@@ -40,9 +41,15 @@ export function MypageSidebar() {
     },
     {
       icon: FileText,
-      label: '서류 관리',
+      label: '명세서 관리',
       path: '/mypage/documents',
-      description: '거래명세서, 세금계산서 등'
+      description: '거래명세서, 반품명세서, 차감명세서'
+    },
+    {
+      icon: Receipt,
+      label: '세금계산서',
+      path: '/mypage/tax-invoice',
+      description: '월별 세금계산서 조회'
     }
   ]
 

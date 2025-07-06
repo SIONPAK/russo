@@ -133,29 +133,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 차감의 경우 잔액 확인
-    if (type === 'spend') {
-      const { data: currentBalance } = await supabase
-        .from('mileage')
-        .select('amount, type')
-        .eq('user_id', user_id)
-        .eq('status', 'completed')
-
-      let totalBalance = 0
-      if (currentBalance) {
-        totalBalance = currentBalance.reduce((sum, record) => {
-          return record.type === 'earn' ? sum + record.amount : sum - record.amount
-        }, 0)
-      }
-
-      if (totalBalance < amount) {
-        return NextResponse.json({
-          success: false,
-          error: `잔액이 부족합니다. 현재 잔액: ${totalBalance.toLocaleString()}원`
-        }, { status: 400 })
-      }
-    }
-
     // 마일리지 거래 생성
     const { data: mileage, error } = await supabase
       .from('mileage')

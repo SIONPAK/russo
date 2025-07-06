@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { formatDateTime } from '@/shared/lib/utils'
+import { format } from 'date-fns'
+import { ko } from 'date-fns/locale'
 import { 
   FileText, 
   Download, 
@@ -12,7 +13,8 @@ import {
   Calendar,
   Eye,
   Receipt,
-  CreditCard
+  CreditCard,
+  RefreshCw
 } from 'lucide-react'
 
 interface Statement {
@@ -21,23 +23,17 @@ interface Statement {
   statement_type: 'transaction' | 'return' | 'deduction'
   total_amount: number
   reason?: string
-  notes?: string
-  status: 'draft' | 'issued' | 'sent'
+  status: 'issued' | 'sent'
   created_at: string
-  orders?: {
-    order_number: string
-    created_at: string
-  }
-  statement_items: Array<{
-    id: string
+  order_number: string
+  items: Array<{
+    id?: string
     product_name: string
-    product_code: string
     color: string
     size: string
     quantity: number
     unit_price: number
-    supply_amount: number
-    vat_amount: number
+    total_price: number
   }>
 }
 
@@ -63,12 +59,12 @@ export function DocumentsPage() {
 
   // 명세서 목록 조회
   const fetchStatements = async () => {
-    if (!user?.id) return
+    if (!isAuthenticated || !user || !('company_name' in user) || !(user as any).company_name) return
 
     setLoading(true)
     try {
       const params = new URLSearchParams({
-        userId: user.id,
+        companyName: (user as any).company_name,
         page: currentPage.toString(),
         limit: '20',
         type: selectedType,
@@ -94,10 +90,19 @@ export function DocumentsPage() {
   }
 
   useEffect(() => {
-    if (user?.id) {
+    if (isAuthenticated) {
       fetchStatements()
     }
-  }, [user?.id, currentPage, selectedType, dateRange])
+  }, [isAuthenticated, currentPage, selectedType, dateRange])
+
+  // 필터 변경 시 첫 페이지로 이동
+  const handleFilterChange = () => {
+    setCurrentPage(1)
+  }
+
+  useEffect(() => {
+    handleFilterChange()
+  }, [selectedType, dateRange])
 
   // 명세서 타입 텍스트 변환
   const getStatementTypeText = (type: string) => {
@@ -122,7 +127,6 @@ export function DocumentsPage() {
   // 상태 텍스트 변환
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'draft': return '임시저장'
       case 'issued': return '발행완료'
       case 'sent': return '발송완료'
       default: return status
@@ -132,7 +136,6 @@ export function DocumentsPage() {
   // 상태 색상 클래스
   const getStatusClass = (status: string) => {
     switch (status) {
-      case 'draft': return 'bg-gray-100 text-gray-800'
       case 'issued': return 'bg-green-100 text-green-800'
       case 'sent': return 'bg-blue-100 text-blue-800'
       default: return 'bg-gray-100 text-gray-800'
@@ -147,15 +150,13 @@ export function DocumentsPage() {
       })
 
       if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${getStatementTypeText(statement.statement_type)}_${statement.statement_number}.xlsx`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
+        const data = await response.json()
+        if (data.success) {
+          // 성공 메시지 표시
+          alert('명세서가 다운로드되었습니다.')
+        } else {
+          alert('다운로드에 실패했습니다: ' + data.error)
+        }
       } else {
         const errorData = await response.json()
         alert('다운로드에 실패했습니다: ' + errorData.error)
@@ -166,12 +167,17 @@ export function DocumentsPage() {
     }
   }
 
+  // 페이지 변경
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">로그인이 필요합니다</h1>
-          <p className="text-gray-600">문서 관리를 하려면 로그인해주세요.</p>
+          <p className="text-gray-600">명세서 관리를 하려면 로그인해주세요.</p>
         </div>
       </div>
     )
@@ -185,6 +191,10 @@ export function DocumentsPage() {
           <h1 className="text-2xl font-bold text-gray-900">명세서 관리</h1>
           <p className="text-gray-600">거래명세서, 반품명세서, 차감명세서를 확인할 수 있습니다.</p>
         </div>
+        <Button onClick={fetchStatements} variant="outline" size="sm">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          새로고침
+        </Button>
       </div>
 
       {/* 통계 카드 */}
@@ -201,7 +211,7 @@ export function DocumentsPage() {
             </div>
           </div>
         </div>
-
+        
         <div className="bg-white p-6 rounded-lg border">
           <div className="flex items-center justify-between">
             <div>
@@ -210,11 +220,11 @@ export function DocumentsPage() {
               <p className="text-sm text-gray-500">총 {statistics.return.total.toLocaleString()}원</p>
             </div>
             <div className="p-3 bg-orange-100 rounded-full">
-              <FileText className="w-6 h-6 text-orange-600" />
+              <Receipt className="w-6 h-6 text-orange-600" />
             </div>
           </div>
         </div>
-
+        
         <div className="bg-white p-6 rounded-lg border">
           <div className="flex items-center justify-between">
             <div>
@@ -223,7 +233,7 @@ export function DocumentsPage() {
               <p className="text-sm text-gray-500">총 {statistics.deduction.total.toLocaleString()}원</p>
             </div>
             <div className="p-3 bg-red-100 rounded-full">
-              <FileText className="w-6 h-6 text-red-600" />
+              <CreditCard className="w-6 h-6 text-red-600" />
             </div>
           </div>
         </div>
@@ -276,120 +286,123 @@ export function DocumentsPage() {
       </div>
 
       {/* 명세서 목록 */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                  명세서 번호
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                  타입
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                  주문번호
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                  금액
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                  상태
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                  발행일
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">
-                  액션
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                    로딩 중...
-                  </td>
-                </tr>
-              ) : statements.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                    명세서가 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                statements.map((statement) => (
-                  <tr key={statement.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {statement.statement_number}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatementTypeClass(statement.statement_type)}`}>
+      <div className="bg-white rounded-lg border">
+        {loading ? (
+          <div className="p-12 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">명세서 목록을 불러오는 중...</p>
+          </div>
+        ) : statements.length === 0 ? (
+          <div className="p-12 text-center text-gray-500">
+            <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+            <p>명세서가 없습니다.</p>
+          </div>
+        ) : (
+          <>
+            {/* 테이블 헤더 */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="grid grid-cols-12 gap-4 text-sm font-medium text-gray-500">
+                <div className="col-span-2">명세서 번호</div>
+                <div className="col-span-2">타입</div>
+                <div className="col-span-2">주문번호</div>
+                <div className="col-span-2">금액</div>
+                <div className="col-span-2">발행일</div>
+                <div className="col-span-1">상태</div>
+                <div className="col-span-1">액션</div>
+              </div>
+            </div>
+
+            {/* 명세서 목록 */}
+            <div className="divide-y divide-gray-200">
+              {statements.map((statement) => (
+                <div key={statement.id} className="px-6 py-4 hover:bg-gray-50">
+                  <div className="grid grid-cols-12 gap-4 items-center">
+                    <div className="col-span-2">
+                      <p className="text-sm font-medium text-gray-900">
+                        {statement.statement_number}
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatementTypeClass(statement.statement_type)}`}>
                         {getStatementTypeText(statement.statement_type)}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {statement.orders?.order_number || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-medium">
-                      <span className={statement.statement_type === 'deduction' ? 'text-red-600' : 'text-gray-900'}>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm text-gray-900">{statement.order_number}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm font-medium text-gray-900">
                         {statement.total_amount.toLocaleString()}원
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusClass(statement.status)}`}>
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-sm text-gray-500">
+                        {format(new Date(statement.created_at), 'yyyy-MM-dd', { locale: ko })}
+                      </p>
+                    </div>
+                    <div className="col-span-1">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusClass(statement.status)}`}>
                         {getStatusText(statement.status)}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {new Date(statement.created_at).toLocaleDateString('ko-KR')}
-                    </td>
-                    <td className="px-4 py-3">
+                    </div>
+                    <div className="col-span-1">
                       <Button
+                        onClick={() => handleDownload(statement)}
                         size="sm"
                         variant="outline"
-                        onClick={() => handleDownload(statement)}
+                        className="h-8 w-8 p-0"
                       >
-                        <Download className="w-4 h-4 mr-1" />
-                        다운로드
+                        <Download className="h-4 w-4" />
                       </Button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 사유 표시 (반품/차감명세서) */}
+                  {statement.reason && (
+                    <div className="mt-2 ml-0">
+                      <p className="text-xs text-gray-500">
+                        사유: {statement.reason}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
 
-      {/* 페이지네이션 */}
-      {totalPages > 1 && (
-        <div className="flex justify-center space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-          >
-            이전
-          </Button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-            <Button
-              key={page}
-              variant={currentPage === page ? 'default' : 'outline'}
-              onClick={() => setCurrentPage(page)}
-            >
-              {page}
-            </Button>
-          ))}
-          <Button
-            variant="outline"
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-            disabled={currentPage === totalPages}
-          >
-            다음
-          </Button>
-        </div>
-      )}
+            {/* 페이지네이션 */}
+            {totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-700">
+                    총 {statements.length}건
+                  </div>
+                  <div className="flex space-x-2">
+                    <Button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      variant="outline"
+                      size="sm"
+                    >
+                      이전
+                    </Button>
+                    <span className="px-3 py-1 text-sm text-gray-700">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <Button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      variant="outline"
+                      size="sm"
+                    >
+                      다음
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 } 

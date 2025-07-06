@@ -145,7 +145,11 @@ export function MileagePage() {
   })
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('ko-KR').format(Math.abs(price))
+    return new Intl.NumberFormat('ko-KR').format(price)
+  }
+
+  const getMileageColor = (balance: number) => {
+    return balance < 0 ? 'text-red-600' : 'text-white'
   }
 
   const formatDate = (dateString: string) => {
@@ -214,7 +218,7 @@ export function MileagePage() {
               <h3 className="text-sm font-medium">보유 마일리지</h3>
               <CreditCard className="w-5 h-5 opacity-80" />
             </div>
-            <p className="text-2xl font-bold">
+            <p className={`text-2xl font-bold ${getMileageColor(summary.currentBalance)}`}>
               {formatPrice(summary.currentBalance)}원
             </p>
             <p className="text-gray-300 text-xs mt-1">사용 가능한 마일리지</p>
