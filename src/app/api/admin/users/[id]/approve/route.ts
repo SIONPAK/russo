@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/shared/lib/supabase/server'
+import { supabase } from '@/shared/lib/supabase'
 import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
 
 // POST - 사용자 승인/반려
@@ -8,7 +8,6 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient()
     const { id } = await params
     const { action, reason, notes } = await request.json()
 
@@ -27,6 +26,7 @@ export async function POST(
       .single()
 
     if (fetchError) {
+      console.error('User fetch error:', fetchError)
       return NextResponse.json(
         { success: false, error: '사용자를 찾을 수 없습니다.' },
         { status: 404 }
@@ -46,7 +46,7 @@ export async function POST(
         approved_at: action === 'approve' ? currentTime : null,
         rejected_at: action === 'reject' ? currentTime : null,
         approval_notes: notes || null,
-        approved_by: action === 'approve' ? 'system' : null,
+        approved_by: action === 'approve' ? null : null,
         updated_at: currentTime
       })
       .eq('id', id)
