@@ -74,7 +74,9 @@ export function OrderManagementPage() {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date()
-    return today.toISOString().split('T')[0]
+    // 한국 시간(UTC+9)으로 변환
+    const koreaTime = new Date(today.getTime() + (9 * 60 * 60 * 1000))
+    return koreaTime.toISOString().split('T')[0]
   })
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [isLoadingOrders, setIsLoadingOrders] = useState(false)
