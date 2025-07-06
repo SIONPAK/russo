@@ -63,6 +63,7 @@ export function OrderManagementPage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [selectedProducts, setSelectedProducts] = useState<Array<{product: ProductSearchResult, color: string, size: string}>>([])  // 다중 선택된 상품들
   const [shippingAddresses, setShippingAddresses] = useState<any[]>([])
   const [selectedShippingAddress, setSelectedShippingAddress] = useState<any>(null)
   const [isShippingModalOpen, setIsShippingModalOpen] = useState(false)
@@ -173,6 +174,7 @@ export function OrderManagementPage() {
     setIsProductSearchOpen(true)
     setSearchKeyword('')
     setSearchResults([])
+    setSelectedProducts([])  // 팝업 열 때 선택된 상품들 초기화
   }
 
   // 상품 검색
@@ -218,29 +220,85 @@ export function OrderManagementPage() {
     }
   }
 
-  // 상품 선택
-  const selectProduct = (product: ProductSearchResult, color: string, size: string) => {
-    if (selectedRowIndex === null) return
+  // 상품 선택/해제 (다중 선택)
+  const toggleProductSelection = (product: ProductSearchResult, color: string, size: string) => {
+    const selectionKey = `${product.id}-${color}-${size}`
+    const existingIndex = selectedProducts.findIndex(
+      item => `${item.product.id}-${item.color}-${item.size}` === selectionKey
+    )
 
-    const supplyAmount = product.price
-    const vat = Math.floor(supplyAmount * 0.1)
+    if (existingIndex >= 0) {
+      // 이미 선택된 상품이면 제거
+      setSelectedProducts(prev => prev.filter((_, index) => index !== existingIndex))
+    } else {
+      // 새로운 상품이면 추가
+      setSelectedProducts(prev => [...prev, { product, color, size }])
+    }
+  }
 
-    const updatedItems = [...orderItems]
-    updatedItems[selectedRowIndex] = {
-      ...updatedItems[selectedRowIndex],
-      productId: product.id,
-      productCode: product.code,
-      productName: product.name,
-      color,
-      size,
-      unitPrice: product.price,
-      supplyAmount,
-      vat
+  // 선택된 상품들을 모두 행에 추가
+  const addSelectedProductsToRows = () => {
+    if (selectedProducts.length === 0) return
+
+    const newItems = selectedProducts.map(({ product, color, size }) => {
+      const supplyAmount = product.price
+      const vat = Math.floor(supplyAmount * 0.1)
+
+      return {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        productId: product.id,
+        productCode: product.code,
+        productName: product.name,
+        color,
+        size,
+        quantity: 1,  // 기본 수량 1
+        unitPrice: product.price,
+        supplyAmount,
+        vat
+      }
+    })
+
+    // 기존 행이 선택되어 있다면 첫 번째 선택된 상품으로 해당 행 업데이트, 나머지는 새 행으로 추가
+    if (selectedRowIndex !== null && selectedProducts.length > 0) {
+      const updatedItems = [...orderItems]
+      const firstProduct = selectedProducts[0]
+      const supplyAmount = firstProduct.product.price
+      const vat = Math.floor(supplyAmount * 0.1)
+
+      updatedItems[selectedRowIndex] = {
+        ...updatedItems[selectedRowIndex],
+        productId: firstProduct.product.id,
+        productCode: firstProduct.product.code,
+        productName: firstProduct.product.name,
+        color: firstProduct.color,
+        size: firstProduct.size,
+        quantity: 1,
+        unitPrice: firstProduct.product.price,
+        supplyAmount,
+        vat
+      }
+
+      // 나머지 상품들은 새 행으로 추가
+      const remainingItems = newItems.slice(1)
+      setOrderItems([...updatedItems, ...remainingItems])
+    } else {
+      // 모든 상품을 새 행으로 추가
+      setOrderItems(prev => [...prev, ...newItems])
     }
 
-    setOrderItems(updatedItems)
+    // 팝업 닫기 및 상태 초기화
     setIsProductSearchOpen(false)
     setSelectedRowIndex(null)
+    setSelectedProducts([])
+    showSuccess(`${selectedProducts.length}개 상품이 추가되었습니다.`)
+  }
+
+  // 선택된 상품인지 확인
+  const isProductSelected = (product: ProductSearchResult, color: string, size: string) => {
+    const selectionKey = `${product.id}-${color}-${size}`
+    return selectedProducts.some(
+      item => `${item.product.id}-${item.color}-${item.size}` === selectionKey
+    )
   }
 
   // 수량 변경 시 금액 계산
@@ -609,25 +667,38 @@ export function OrderManagementPage() {
       {/* 상품 검색 팝업 */}
       {isProductSearchOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] overflow-hidden">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">상품 검색</h3>
-              <p className="text-sm text-gray-600 mt-1">상품명의 일부를 입력하여 검색하세요.</p>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[85vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">상품 검색</h3>
+                <p className="text-sm text-gray-600 mt-1">상품명의 일부를 입력하여 검색하세요.</p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsProductSearchOpen(false)
+                  setSelectedProducts([])
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                닫기
+              </Button>
             </div>
             
             <div className="p-6">
-              <div className="flex space-x-2 mb-4">
+              <div className="flex space-x-2 mb-6">
                 <Input
                   type="text"
-                  placeholder="상품명 검색..."
+                  placeholder="상품명 또는 상품코드로 검색..."
                   value={searchKeyword}
                   onChange={(e) => setSearchKeyword(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && searchProducts(searchKeyword)}
-                  className="flex-1"
+                  className="flex-1 h-12"
+                  autoFocus
                 />
-                <Button onClick={() => searchProducts(searchKeyword)} disabled={isSearching}>
+                <Button onClick={() => searchProducts(searchKeyword)} disabled={isSearching} className="h-12 px-6">
                   <Search className="h-4 w-4 mr-2" />
-                  검색
+                  {isSearching ? '검색중...' : '검색'}
                 </Button>
               </div>
 
@@ -657,16 +728,24 @@ export function OrderManagementPage() {
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {product.colors.map((color) =>
-                            product.sizes.map((size) => (
-                              <Button
-                                key={`${color}-${size}`}
-                                variant="outline"
-                                onClick={() => selectProduct(product, color, size)}
-                                className="text-left justify-start"
-                              >
-                                {color} / {size}
-                              </Button>
-                            ))
+                            product.sizes.map((size) => {
+                              const isSelected = isProductSelected(product, color, size)
+                              return (
+                                <Button
+                                  key={`${color}-${size}`}
+                                  variant={isSelected ? "default" : "outline"}
+                                  onClick={() => toggleProductSelection(product, color, size)}
+                                  className={`text-left justify-start ${
+                                    isSelected 
+                                      ? 'bg-blue-600 text-white border-blue-600' 
+                                      : 'hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {isSelected && <span className="mr-2">✓</span>}
+                                  {color} / {size}
+                                </Button>
+                              )
+                            })
                           )}
                         </div>
                       </div>
@@ -676,10 +755,42 @@ export function OrderManagementPage() {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-              <Button variant="outline" onClick={() => setIsProductSearchOpen(false)}>
-                닫기
-              </Button>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-600">
+                  {selectedProducts.length > 0 && (
+                    <span className="font-medium text-blue-600">
+                      {selectedProducts.length}개 상품 선택됨
+                    </span>
+                  )}
+                </div>
+                {selectedProducts.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setSelectedProducts([])}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    선택 초기화
+                  </Button>
+                )}
+              </div>
+              <div className="flex space-x-3">
+                <Button variant="outline" onClick={() => {
+                  setIsProductSearchOpen(false)
+                  setSelectedProducts([])
+                }}>
+                  취소
+                </Button>
+                {selectedProducts.length > 0 && (
+                  <Button 
+                    onClick={addSelectedProductsToRows}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    선택한 상품 추가 ({selectedProducts.length}개)
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>

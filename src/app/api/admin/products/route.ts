@@ -257,6 +257,36 @@ export async function POST(request: NextRequest) {
       productImages = images || []
     }
 
+    // 상품 등록 시 초기 재고 기록 (stock_movements)
+    if (totalStockQuantity > 0) {
+      // 옵션별로 재고 변동 이력 기록
+      for (const option of body.inventory_options) {
+        if (option.stock_quantity > 0) {
+          const movementData = {
+            product_id: product.id,
+            movement_type: 'initial_stock',
+            quantity: option.stock_quantity,
+            notes: `상품 등록 시 초기 재고 (${option.color}/${option.size})`,
+            created_at: new Date().toISOString()
+          }
+          
+          console.log(`상품 등록 재고 변동 이력 기록:`, movementData)
+          
+          const { data: movementResult, error: movementError } = await supabase
+            .from('stock_movements')
+            .insert(movementData)
+            .select()
+          
+          if (movementError) {
+            console.error(`재고 변동 이력 기록 실패:`, movementError)
+            // 재고 이력 기록 실패는 경고만 하고 계속 진행
+          } else {
+            console.log(`재고 변동 이력 기록 성공:`, movementResult)
+          }
+        }
+      }
+    }
+
     // 상품에 이미지 정보 추가하여 반환
     const enrichedProduct = {
       ...product,

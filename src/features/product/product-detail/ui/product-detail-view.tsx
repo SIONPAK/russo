@@ -181,10 +181,12 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
               </div>
             )}
 
-            {/* 재고 정보 */}
-            <div className="text-sm text-gray-600">
-              재고: {product.stock_quantity || 0}개
-            </div>
+            {/* 재고 정보 - 관리자만 표시 */}
+            {userType === 'admin' && (
+              <div className="text-sm text-gray-600">
+                재고: {product.stock_quantity || 0}개
+              </div>
+            )}
 
             {/* 발주 안내 */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

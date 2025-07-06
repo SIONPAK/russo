@@ -177,9 +177,9 @@ export async function PUT(
           await supabase
             .from('product_images')
             .update({
-              alt_text: img.altText || name,
-              is_main: img.isMain || false,
-              sort_order: img.sortOrder || i + 1
+              alt_text: img.alt_text || img.altText || name,
+              is_main: img.is_main || img.isMain || false,
+              sort_order: img.sort_order || img.sortOrder || i + 1
             })
             .eq('id', img.id)
         } else {
@@ -188,10 +188,10 @@ export async function PUT(
             .from('product_images')
             .insert({
               product_id: id,
-              image_url: img.url,
-              alt_text: img.altText || name,
-              is_main: img.isMain || false,
-              sort_order: img.sortOrder || i + 1
+              image_url: img.image_url || img.url,
+              alt_text: img.alt_text || img.altText || name,
+              is_main: img.is_main || img.isMain || false,
+              sort_order: img.sort_order || img.sortOrder || i + 1
             })
         }
       }

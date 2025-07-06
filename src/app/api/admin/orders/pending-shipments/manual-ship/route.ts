@@ -68,6 +68,30 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
+    // 재고 변동 이력 기록
+    const movementData = {
+      product_id: orderItem.product_id,
+      movement_type: 'order_shipment',
+      quantity: -quantity, // 출고는 음수
+      notes: `미출고 수동 처리`,
+      reference_id: orderItem.order_id,
+      reference_type: 'order',
+      created_at: new Date().toISOString()
+    }
+    
+    console.log('재고 변동 이력 기록 시도:', movementData)
+    
+    const { data: movementResult, error: movementError } = await supabase
+      .from('stock_movements')
+      .insert(movementData)
+      .select()
+    
+    if (movementError) {
+      console.error('재고 변동 이력 기록 실패:', movementError)
+    } else {
+      console.log('재고 변동 이력 기록 성공:', movementResult)
+    }
+
     // 주문 상태 업데이트 (모든 상품이 출고되었는지 확인)
     const { data: allItems } = await supabase
       .from('order_items')

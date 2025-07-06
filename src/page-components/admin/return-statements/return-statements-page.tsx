@@ -101,7 +101,7 @@ export default function ReturnStatementsPage() {
       return
     }
 
-    if (!confirm(`선택된 ${statementIds.length}건의 반품을 처리하시겠습니까?`)) {
+    if (!confirm(`선택된 ${statementIds.length}건의 반품을 처리하시겠습니까?\n(마일리지 증가가 자동으로 적용됩니다)`)) {
       return
     }
 
@@ -118,7 +118,18 @@ export default function ReturnStatementsPage() {
       const result = await response.json()
 
       if (result.success) {
-        showSuccess(`반품 처리 완료: 성공 ${result.data.processed}건`)
+        const { processedCount, totalMileageAdded, errors } = result.data
+        let message = `반품 처리 완료: 성공 ${processedCount}건`
+        
+        if (totalMileageAdded > 0) {
+          message += `, 총 마일리지 증가 ${totalMileageAdded.toLocaleString()}P`
+        }
+        
+        if (errors && errors.length > 0) {
+          message += `\n실패 ${errors.length}건: ${errors.join(', ')}`
+        }
+        
+        showSuccess(message)
         await fetchStatements()
         setSelectedStatements([])
       } else {

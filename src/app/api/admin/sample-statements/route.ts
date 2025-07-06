@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 
-// GET - 샘플 명세서 목록 조회
+// GET - 샘플 명세서 목록 조회 (업체별 그룹화)
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     
     const offset = (page - 1) * limit
 
-    // 샘플 명세서 데이터 조회 (명세서별로 그룹화)
+    // 샘플 데이터 조회 (전체 조회 후 그룹화)
     let query = supabase
       .from('samples')
       .select(`
@@ -57,9 +57,6 @@ export async function GET(request: NextRequest) {
       query = query.or(`sample_number.ilike.%${search}%,customer_name.ilike.%${search}%,product_name.ilike.%${search}%`)
     }
 
-    // 페이지네이션
-    query = query.range(offset, offset + limit - 1)
-
     const { data: samples, error } = await query
 
     if (error) {
@@ -70,33 +67,69 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 전체 개수 조회
-    let countQuery = supabase
-      .from('samples')
-      .select('*', { count: 'exact', head: true })
+    // 샘플 번호별로 그룹화 (업체별 명세서)
+    const groupedSamples = samples.reduce((acc: any, sample: any) => {
+      // 샘플 번호에서 기본 그룹 번호 추출 (SP-20250706-XQ3H-01 -> SP-20250706-XQ3H)
+      const baseNumber = sample.sample_number.replace(/-\d{2}$/, '')
+      const key = baseNumber
+      
+      if (!acc[key]) {
+        acc[key] = {
+          id: sample.id, // 대표 ID
+          sample_number: baseNumber, // 기본 샘플 번호 사용
+          customer_id: sample.customer_id,
+          customer_name: sample.customer_name,
+          status: sample.status,
+          outgoing_date: sample.outgoing_date,
+          due_date: sample.due_date,
+          delivery_address: sample.delivery_address,
+          tracking_number: sample.tracking_number,
+          admin_notes: sample.admin_notes,
+          created_at: sample.created_at,
+          updated_at: sample.updated_at,
+          sample_type: sample.sample_type,
+          items: [],
+          total_quantity: 0,
+          total_amount: 0
+        }
+      }
 
-    if (status && status !== 'all') {
-      countQuery = countQuery.eq('status', status)
-    }
+      // 아이템 추가
+      acc[key].items.push({
+        id: sample.id,
+        product_id: sample.product_id,
+        product_name: sample.product_name,
+        product_options: sample.product_options,
+        color: sample.product_options?.split(',')[0]?.replace('색상:', '').trim() || '-',
+        size: sample.product_options?.split(',')[1]?.replace('사이즈:', '').trim() || '-',
+        quantity: sample.quantity,
+        unit_price: sample.charge_amount || 0,
+        total_price: (sample.charge_amount || 0) * sample.quantity
+      })
 
-    if (search) {
-      countQuery = countQuery.or(`sample_number.ilike.%${search}%,customer_name.ilike.%${search}%,product_name.ilike.%${search}%`)
-    }
+      // 총 수량 및 금액 계산
+      acc[key].total_quantity += sample.quantity
+      acc[key].total_amount += (sample.charge_amount || 0) * sample.quantity
 
-    const { count, error: countError } = await countQuery
+      return acc
+    }, {})
 
-    if (countError) {
-      console.error('Sample statements count error:', countError)
-      return NextResponse.json({
-        success: false,
-        error: '샘플 명세서 개수 조회에 실패했습니다.'
-      }, { status: 500 })
-    }
+    // 그룹화된 샘플을 배열로 변환
+    const groupedStatements = Object.values(groupedSamples).map((group: any) => ({
+      ...group,
+      days_remaining: group.due_date ? Math.ceil((new Date(group.due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null,
+      is_overdue: group.due_date ? new Date() > new Date(group.due_date) : false,
+      // 샘플명 자동 생성 (1차샘플, 2차샘플 등)
+      sample_name: `${group.items.length}개 상품 샘플`
+    }))
+
+    // 페이지네이션 적용
+    const paginatedStatements = groupedStatements.slice(offset, offset + limit)
 
     // 통계 데이터 계산
     const { data: allSamples, error: statsError } = await supabase
       .from('samples')
-      .select('status, charge_amount, outgoing_date, due_date')
+      .select('sample_number, status, charge_amount, outgoing_date, due_date')
 
     if (statsError) {
       console.error('Sample statistics error:', statsError)
@@ -106,53 +139,41 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 통계 계산
+    // 통계 계산 (명세서 기준)
+    const uniqueSampleNumbers = [...new Set(allSamples.map(s => s.sample_number.replace(/-\d{2}$/, '')))]
     const stats = {
-      shipped: allSamples.filter(s => s.status === 'shipped').length,
-      returned: allSamples.filter(s => s.status === 'returned').length,
-      charged: allSamples.filter(s => s.status === 'charged').length,
-      overdue: allSamples.filter(s => {
-        if (!s.outgoing_date || !s.due_date) return false
-        const now = new Date()
-        const dueDate = new Date(s.due_date)
-        return now > dueDate && s.status === 'shipped'
+      shipped: uniqueSampleNumbers.filter(sn => {
+        const samplesWithSN = allSamples.filter(s => s.sample_number.replace(/-\d{2}$/, '') === sn)
+        return samplesWithSN.every(s => s.status === 'shipped')
+      }).length,
+      returned: uniqueSampleNumbers.filter(sn => {
+        const samplesWithSN = allSamples.filter(s => s.sample_number.replace(/-\d{2}$/, '') === sn)
+        return samplesWithSN.every(s => s.status === 'returned')
+      }).length,
+      charged: uniqueSampleNumbers.filter(sn => {
+        const samplesWithSN = allSamples.filter(s => s.sample_number.replace(/-\d{2}$/, '') === sn)
+        return samplesWithSN.every(s => s.status === 'charged')
+      }).length,
+      overdue: uniqueSampleNumbers.filter(sn => {
+        const samplesWithSN = allSamples.filter(s => s.sample_number.replace(/-\d{2}$/, '') === sn)
+        return samplesWithSN.some(s => {
+          if (!s.outgoing_date || !s.due_date) return false
+          const now = new Date()
+          const dueDate = new Date(s.due_date)
+          return now > dueDate && s.status === 'shipped'
+        })
       }).length
     }
-
-    // 개별 샘플 데이터를 그대로 반환 (그룹화하지 않음)
-    const statements = samples.map((sample: any) => ({
-      id: sample.id,
-      sample_number: sample.sample_number,
-      customer_id: sample.customer_id,
-      customer_name: sample.customer_name,
-      product_id: sample.product_id,
-      product_name: sample.product_name,
-      product_options: sample.product_options,
-      color: sample.product_options?.split(',')[0]?.replace('색상:', '').trim() || '-',
-      size: sample.product_options?.split(',')[1]?.replace('사이즈:', '').trim() || '-',
-      quantity: sample.quantity,
-      unit_price: sample.charge_amount || 0,
-      total_price: (sample.charge_amount || 0) * sample.quantity,
-      status: sample.status,
-      outgoing_date: sample.outgoing_date,
-      due_date: sample.due_date,
-      days_remaining: sample.due_date ? Math.ceil((new Date(sample.due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null,
-      is_overdue: sample.due_date ? new Date() > new Date(sample.due_date) : false,
-      tracking_number: sample.tracking_number,
-      admin_notes: sample.admin_notes,
-      created_at: sample.created_at,
-      updated_at: sample.updated_at
-    }))
 
     return NextResponse.json({
       success: true,
       data: {
-        statements,
+        statements: paginatedStatements,
         pagination: {
           page,
           limit,
-          total: count || 0,
-          totalPages: Math.ceil((count || 0) / limit)
+          total: groupedStatements.length,
+          totalPages: Math.ceil(groupedStatements.length / limit)
         },
         stats
       }

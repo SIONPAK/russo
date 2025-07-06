@@ -6,14 +6,14 @@ import { ToastContainer } from "react-toastify";
 
 export const metadata: Metadata = {
   title: {
-    default: "루소 | 의류 도매 플랫폼",
-    template: "%s | 루소"
+    default: "주식회사 루소 | 의류 도매 및 생산 전문",
+    template: "%s | 주식회사 루소"
   },
-  description: "루소는 전국 의류 소매업체들을 위한 원스톱 플랫폼입니다. 다양한 의류 상품을 합리적인 가격으로 제공하며, 신속한 배송과 전문적인 서비스로 고객만족을 실현합니다.",
-  keywords: ["의류 도매", "도매 플랫폼", "의류 B2B", "패션 도매", "의류 공급업체", "루소", "LUSSO"],
-  authors: [{ name: "루소" }],
-  creator: "루소",
-  publisher: "루소",
+  description: "저희는 베트남, 중국, 인도네시아, 방글라데시 등 현지 대량 생산 기반으로 고품질 의류를 합리적인 가격에 공급하는 의류 도매 및 생산 전문 기업입니다.",
+  keywords: ["의류 도매", "의류 생산", "해외 생산", "베트남 생산", "중국 생산", "인도네시아 생산", "방글라데시 생산", "의류 OEM", "의류 ODM", "주식회사 루소"],
+  authors: [{ name: "주식회사 루소" }],
+  creator: "주식회사 루소",
+  publisher: "주식회사 루소",
   formatDetection: {
     email: false,
     address: false,
@@ -27,22 +27,22 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'ko_KR',
     url: '/',
-    title: '루소 | 의류 도매 플랫폼',
-    description: '루소는 전국 의류 도매업체들을 위한 원스톱 플랫폼입니다. 다양한 의류 상품을 합리적인 가격으로 제공하며, 신속한 배송과 전문적인 서비스로 고객만족을 실현합니다.',
-    siteName: '루소',
+    title: '주식회사 루소 | 의류 도매 및 생산 전문',
+    description: '저희는 베트남, 중국, 인도네시아, 방글라데시 등 현지 대량 생산 기반으로 고품질 의류를 합리적인 가격에 공급하는 의류 도매 및 생산 전문 기업입니다.',
+    siteName: '주식회사 루소',
     images: [
       {
         url: '/images/opengraph_image.jpeg',
         width: 1200,
         height: 630,
-        alt: '루소 - 의류 도매 플랫폼',
+        alt: '주식회사 루소 - 의류 도매 및 생산 전문',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '루소 | 의류 도매 플랫폼',
-    description: '루소는 전국 의류 도매업체들을 위한 원스톱 플랫폼입니다. 다양한 의류 상품을 합리적인 가격으로 제공하며, 신속한 배송과 전문적인 서비스로 고객만족을 실현합니다.',
+    title: '주식회사 루소 | 의류 도매 및 생산 전문',
+    description: '저희는 베트남, 중국, 인도네시아, 방글라데시 등 현지 대량 생산 기반으로 고품질 의류를 합리적인 가격에 공급하는 의류 도매 및 생산 전문 기업입니다.',
     images: ['/images/opengraph_image.jpeg'],
   },
   robots: {

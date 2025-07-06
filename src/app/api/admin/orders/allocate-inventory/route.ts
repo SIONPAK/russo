@@ -192,9 +192,15 @@ async function allocateItemInventory(supabase: any, item: any) {
             return opt
           })
 
+          // 전체 재고량 재계산
+          const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+          
           await supabase
             .from('products')
-            .update({ inventory_options: updatedOptions })
+            .update({ 
+              inventory_options: updatedOptions,
+              stock_quantity: totalStock
+            })
             .eq('id', product.id)
         }
       } else {
@@ -234,6 +240,30 @@ async function allocateItemInventory(supabase: any, item: any) {
           shipped_quantity: alreadyShipped + stockToAllocate 
         })
         .eq('id', item.id)
+
+      // 재고 변동 이력 기록 (출고)
+      const movementData = {
+        product_id: product.id,
+        movement_type: 'order_shipment',
+        quantity: -stockToAllocate, // 출고는 음수
+        notes: `주문 출고 처리 (주문 재고 할당)`,
+        reference_id: item.order_id,
+        reference_type: 'order',
+        created_at: new Date().toISOString()
+      }
+      
+      console.log(`재고 변동 이력 기록 시도:`, movementData)
+      
+      const { data: movementResult, error: movementError } = await supabase
+        .from('stock_movements')
+        .insert(movementData)
+        .select()
+      
+      if (movementError) {
+        console.error(`재고 변동 이력 기록 실패:`, movementError)
+      } else {
+        console.log(`재고 변동 이력 기록 성공:`, movementResult)
+      }
     }
 
     console.log(`아이템 ${item.id} 할당:`, {

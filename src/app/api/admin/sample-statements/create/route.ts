@@ -10,9 +10,8 @@ export async function POST(request: NextRequest) {
     const { 
       customer_id, 
       items, 
-      delivery_address, 
       admin_notes,
-      sample_type = 'sales',
+      sample_type = 'photography', // 샘플은 무조건 무료 (촬영용)
       from_order_id = null 
     } = body
 
@@ -37,31 +36,73 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // 명세서 번호 생성
+    // 고객의 기본 배송지 조회
+    const { data: shippingAddress, error: shippingError } = await supabase
+      .from('shipping_addresses')
+      .select('*')
+      .eq('user_id', customer_id)
+      .eq('is_default', true)
+      .single()
+
+    // 기본 배송지가 없으면 첫 번째 배송지 사용
+    let deliveryAddress = null
+    if (!shippingAddress) {
+      const { data: firstAddress } = await supabase
+        .from('shipping_addresses')
+        .select('*')
+        .eq('user_id', customer_id)
+        .limit(1)
+        .single()
+      
+      deliveryAddress = firstAddress
+    } else {
+      deliveryAddress = shippingAddress
+    }
+
+    // 임시 주문 생성 (샘플 명세서를 위한)
+    const { data: tempOrder, error: orderError } = await supabase
+      .from('orders')
+      .insert({
+        user_id: customer_id,
+        order_number: `SAMPLE-${Date.now()}`,
+        status: 'pending',
+        total_amount: 0,
+        shipping_name: deliveryAddress?.recipient_name || customer.representative_name || customer.company_name,
+        shipping_phone: deliveryAddress?.phone || customer.phone,
+        shipping_address: deliveryAddress?.address || customer.address || '',
+        shipping_postal_code: deliveryAddress?.postal_code || '',
+        notes: `샘플 명세서용 임시 주문 - ${sample_type === 'photography' ? '촬영용' : '판매용'}`
+      })
+      .select()
+      .single()
+
+    if (orderError) {
+      console.error('Temp order creation error:', orderError)
+      return NextResponse.json({
+        success: false,
+        error: '임시 주문 생성에 실패했습니다.'
+      }, { status: 500 })
+    }
+
+    // 통합 샘플 번호 생성 (하나의 명세서에 대한 대표 번호)
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
     const randomSuffix = Math.random().toString(36).substr(2, 4).toUpperCase()
-    const statementNumber = `SS-${today}-${randomSuffix}`
+    const mainSampleNumber = `SP-${today}-${randomSuffix}`
 
     // 21일 후 반납 예정일 계산
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 21)
 
-    // 샘플 명세서 생성
+    // 샘플 명세서 생성 (실제 스키마에 맞게)
     const { data: statement, error: statementError } = await supabase
       .from('sample_statements')
       .insert({
-        statement_number: statementNumber,
-        customer_id,
-        customer_name: customer.company_name || customer.name,
-        customer_email: customer.email,
-        customer_phone: customer.phone,
-        customer_address: customer.address,
-        business_number: customer.business_number,
-        representative_name: customer.representative_name,
-        delivery_address: delivery_address || customer.address,
+        order_id: tempOrder.id,
+        sample_type: 'photo', // 샘플은 무조건 무료 (촬영용)
+        status: 'pending',
+        total_amount: 0,
         admin_notes,
-        due_date: dueDate.toISOString().split('T')[0],
-        status: 'pending'
+        items: items || []
       })
       .select()
       .single()
@@ -74,124 +115,76 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    let statementItems = []
+    // 샘플 아이템들을 samples 테이블에 개별 생성 (각각 고유한 샘플 번호 사용)
+    let totalAmount = 0
+    const samplePromises = items.map(async (item: any, index: number) => {
+      // 샘플은 무료 제공이므로 가격은 0원
+      const unitPrice = 0
+      const totalPrice = 0
+      
+      // 반납 기간 내 미반납 시 차감할 마일리지 금액 (실제 상품 가격)
+      const penaltyAmount = item.unit_price || 0
 
-    if (from_order_id) {
-      // 주문에서 데이터 가져오기
-      const { data: orderItems, error: orderItemsError } = await supabase
-        .from('order_items')
-        .select(`
-          *,
-          products!order_items_product_id_fkey (
-            id,
-            name,
-            code,
-            price
-          )
-        `)
-        .eq('order_id', from_order_id)
+      // 각 샘플 아이템마다 고유한 번호 생성
+      const itemSampleNumber = `${mainSampleNumber}-${String(index + 1).padStart(2, '0')}`
 
-      if (orderItemsError || !orderItems) {
-        return NextResponse.json({
-          success: false,
-          error: '주문 아이템을 찾을 수 없습니다.'
-        }, { status: 404 })
-      }
-
-      // 주문 아이템을 샘플 명세서 아이템으로 변환
-      const itemsToInsert = orderItems.map(item => {
-        const unitPrice = sample_type === 'photography' ? 0 : (item.products?.price || item.unit_price)
-        const totalPrice = unitPrice * item.quantity
-        const supplyAmount = totalPrice
-        const taxAmount = Math.floor(supplyAmount * 0.1)
-
-        return {
-          statement_id: statement.id,
-          product_id: item.product_id,
-          product_name: item.product_name,
-          product_code: item.products?.code || '',
-          product_options: `색상: ${item.color || '기본'}, 사이즈: ${item.size || 'FREE'}`,
-          color: item.color || '기본',
-          size: item.size || 'FREE',
-          quantity: item.quantity,
-          unit_price: unitPrice,
-          total_price: totalPrice,
-          supply_amount: supplyAmount,
-          tax_amount: taxAmount,
-          sample_type,
-          sample_number: `SP-${today}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`
-        }
+      console.log(`Creating sample ${index + 1}:`, {
+        sample_number: itemSampleNumber,
+        product_name: item.product_name,
+        color: item.color,
+        size: item.size,
+        quantity: item.quantity,
+        penaltyAmount
       })
 
-      const { data: insertedItems, error: itemsError } = await supabase
-        .from('sample_statement_items')
-        .insert(itemsToInsert)
-        .select()
-
-      if (itemsError) {
-        console.error('Sample statement items creation error:', itemsError)
-        return NextResponse.json({
-          success: false,
-          error: '샘플 명세서 아이템 생성에 실패했습니다.'
-        }, { status: 500 })
-      }
-
-      statementItems = insertedItems
-    } else {
-      // 직접 입력된 아이템들 처리
-      const itemsToInsert = items.map((item: any) => {
-        const unitPrice = sample_type === 'photography' ? 0 : item.unit_price
-        const totalPrice = unitPrice * item.quantity
-        const supplyAmount = totalPrice
-        const taxAmount = Math.floor(supplyAmount * 0.1)
-
-        return {
-          statement_id: statement.id,
+      const { data, error } = await supabase
+        .from('samples')
+        .insert({
+          sample_number: itemSampleNumber, // 각 아이템마다 고유한 번호
+          customer_id: customer_id,
+          customer_name: customer.company_name || customer.representative_name,
           product_id: item.product_id,
           product_name: item.product_name,
-          product_code: item.product_code || '',
           product_options: `색상: ${item.color || '기본'}, 사이즈: ${item.size || 'FREE'}`,
-          color: item.color || '기본',
-          size: item.size || 'FREE',
           quantity: item.quantity,
-          unit_price: unitPrice,
-          total_price: totalPrice,
-          supply_amount: supplyAmount,
-          tax_amount: taxAmount,
-          sample_type,
-          sample_number: `SP-${today}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`
-        }
-      })
-
-      const { data: insertedItems, error: itemsError } = await supabase
-        .from('sample_statement_items')
-        .insert(itemsToInsert)
+          sample_type: 'photography', // 샘플은 무조건 무료 (촬영용)
+          charge_amount: penaltyAmount, // 미반납 시 차감할 금액
+          status: 'pending',
+          due_date: dueDate.toISOString().split('T')[0],
+          delivery_address: deliveryAddress ? 
+            `${deliveryAddress.address} (${deliveryAddress.recipient_name}, ${deliveryAddress.phone})` : 
+            customer.address,
+          admin_notes: admin_notes || `샘플 ${index + 1} - 반납기한: ${dueDate.toISOString().split('T')[0]} (미반납시 ₩${penaltyAmount.toLocaleString()} 차감)`
+        })
         .select()
 
-      if (itemsError) {
-        console.error('Sample statement items creation error:', itemsError)
-        return NextResponse.json({
-          success: false,
-          error: '샘플 명세서 아이템 생성에 실패했습니다.'
-        }, { status: 500 })
+      if (error) {
+        console.error(`Sample creation error for item ${index + 1}:`, error)
+        throw error
       }
 
-      statementItems = insertedItems
+      console.log(`Sample ${index + 1} created successfully:`, data)
+      return data
+    })
+
+    let createdSamples = []
+    try {
+      console.log(`Creating ${items.length} samples with number: ${mainSampleNumber}`)
+      createdSamples = await Promise.all(samplePromises)
+      console.log(`Successfully created ${createdSamples.length} samples`)
+    } catch (error) {
+      console.error('Sample creation error:', error)
+      return NextResponse.json({
+        success: false,
+        error: '샘플 생성에 실패했습니다.'
+      }, { status: 500 })
     }
 
-    // 총액 계산 및 업데이트
-    const totalQuantity = statementItems.reduce((sum, item) => sum + item.quantity, 0)
-    const totalAmount = statementItems.reduce((sum, item) => sum + item.total_price, 0)
-    const supplyAmount = statementItems.reduce((sum, item) => sum + item.supply_amount, 0)
-    const taxAmount = statementItems.reduce((sum, item) => sum + item.tax_amount, 0)
-
+    // 명세서 총액은 0원 (무료 제공)
     const { error: updateError } = await supabase
       .from('sample_statements')
       .update({
-        total_quantity: totalQuantity,
-        total_amount: totalAmount,
-        supply_amount: supplyAmount,
-        tax_amount: taxAmount
+        total_amount: 0
       })
       .eq('id', statement.id)
 
@@ -199,32 +192,17 @@ export async function POST(request: NextRequest) {
       console.error('Sample statement update error:', updateError)
     }
 
-    // 완성된 샘플 명세서 정보 조회
-    const { data: finalStatement, error: finalError } = await supabase
-      .from('sample_statements')
-      .select(`
-        *,
-        sample_statement_items (
-          *,
-          products!sample_statement_items_product_id_fkey (
-            id,
-            name,
-            code,
-            price
-          )
-        )
-      `)
-      .eq('id', statement.id)
-      .single()
-
-    if (finalError) {
-      console.error('Final statement query error:', finalError)
-    }
-
     return NextResponse.json({
       success: true,
-      message: '샘플 명세서가 생성되었습니다.',
-      data: finalStatement || statement
+      message: `샘플 명세서가 생성되었습니다. (샘플번호: ${mainSampleNumber}, 반납기한: ${dueDate.toISOString().split('T')[0]})`,
+      data: {
+        statement,
+        sample_number: mainSampleNumber,
+        total_items: items.length,
+        total_amount: 0, // 무료 제공
+        due_date: dueDate.toISOString().split('T')[0],
+        penalty_info: `반납 기한 내 미반납 시 마일리지 차감`
+      }
     })
 
   } catch (error) {

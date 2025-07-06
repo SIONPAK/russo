@@ -88,6 +88,28 @@ export async function PATCH(
         }, { status: 500 })
       }
 
+      // 재고 변동 이력 기록
+      const movementData = {
+        product_id: productId,
+        movement_type: 'adjustment',
+        quantity: adjustment,
+        notes: `옵션별 재고 조정 (${color}/${size}) - ${reason || '수동 재고 조정'}`,
+        created_at: new Date().toISOString()
+      }
+      
+      console.log('재고 변동 이력 기록 시도:', movementData)
+      
+      const { data: movementResult, error: movementError } = await supabase
+        .from('stock_movements')
+        .insert(movementData)
+        .select()
+      
+      if (movementError) {
+        console.error('재고 변동 이력 기록 실패:', movementError)
+      } else {
+        console.log('재고 변동 이력 기록 성공:', movementResult)
+      }
+
       console.log(`재고 조정 완료: ${product.id} (${color}/${size}) ${currentQuantity} → ${newQuantity}`)
 
     } else {
@@ -117,6 +139,28 @@ export async function PATCH(
           success: false,
           error: '재고 조정에 실패했습니다.'
         }, { status: 500 })
+      }
+
+      // 재고 변동 이력 기록
+      const movementData = {
+        product_id: productId,
+        movement_type: 'adjustment',
+        quantity: adjustment,
+        notes: `전체 재고 조정 - ${reason || '수동 재고 조정'}`,
+        created_at: new Date().toISOString()
+      }
+      
+      console.log('재고 변동 이력 기록 시도:', movementData)
+      
+      const { data: movementResult, error: movementError } = await supabase
+        .from('stock_movements')
+        .insert(movementData)
+        .select()
+      
+      if (movementError) {
+        console.error('재고 변동 이력 기록 실패:', movementError)
+      } else {
+        console.log('재고 변동 이력 기록 성공:', movementResult)
       }
 
       console.log(`재고 조정 완료: ${product.id} ${currentQuantity} → ${newQuantity}`)

@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { formatCurrency, formatDateTime } from '@/shared/lib/utils'
 import { downloadSampleShippingExcel, downloadOrderShippingExcel, parseTrackingExcel } from '@/shared/lib/excel-utils'
+import { generateReceipt } from '@/shared/lib/receipt-utils'
 import { showSuccess, showError, showInfo } from '@/shared/lib/toast'
 import { 
   Search, 
@@ -49,6 +50,33 @@ interface SampleStatement {
   updated_at: string
 }
 
+interface GroupedSampleStatement {
+  id: string
+  sample_number: string
+  customer_id: string
+  customer_name: string
+  status: 'shipped' | 'returned' | 'charged'
+  outgoing_date: string | null
+  due_date: string | null
+  days_remaining: number | null
+  is_overdue: boolean
+  tracking_number: string | null
+  admin_notes: string | null
+  created_at: string
+  updated_at: string
+  items: {
+    product_id: string
+    product_name: string
+    color: string
+    size: string
+    quantity: number
+    unit_price: number
+    total_price: number
+  }[]
+  total_quantity: number
+  total_amount: number
+}
+
 // 샘플 아이템 인터페이스
 interface SampleItem {
   id: string
@@ -63,8 +91,10 @@ interface SampleItem {
 
 export function SamplesPage() {
   const [statements, setStatements] = useState<SampleStatement[]>([])
+  const [groupedStatements, setGroupedStatements] = useState<GroupedSampleStatement[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStatements, setSelectedStatements] = useState<string[]>([])
+  const [viewMode, setViewMode] = useState<'grouped' | 'individual'>('grouped')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(10)
   const [filters, setFilters] = useState({
@@ -95,7 +125,6 @@ export function SamplesPage() {
   const [showOrderSearch, setShowOrderSearch] = useState(false)
   const [orderSearchKeyword, setOrderSearchKeyword] = useState('')
   const [orderSearchResults, setOrderSearchResults] = useState<any[]>([])
-  const [sampleType, setSampleType] = useState<'photography' | 'sales'>('sales')
 
   // D-21 날짜 계산 함수
   const calculateDaysRemaining = (createdAt: string) => {
@@ -134,7 +163,10 @@ export function SamplesPage() {
   }
 
   // 통화 포맷 함수
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(amount)) {
+      return '₩0'
+    }
     return `₩${amount.toLocaleString()}`
   }
 
@@ -152,7 +184,37 @@ export function SamplesPage() {
       const result = await response.json()
 
       if (result.success) {
-        setStatements(result.data.statements || [])
+        const groupedStatements = result.data.statements || []
+        setGroupedStatements(groupedStatements)
+        
+        // 개별 뷰를 위해 그룹화된 데이터를 평면화
+        const flattenedStatements = groupedStatements.flatMap((group: any) => 
+          group.items.map((item: any) => ({
+            id: item.id,
+            sample_number: group.sample_number,
+            customer_id: group.customer_id,
+            customer_name: group.customer_name,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            product_options: item.product_options,
+            color: item.color,
+            size: item.size,
+            quantity: item.quantity,
+            unit_price: item.unit_price || 0,
+            total_price: item.total_price || 0,
+            status: group.status,
+            outgoing_date: group.outgoing_date,
+            due_date: group.due_date,
+            days_remaining: group.days_remaining,
+            is_overdue: group.is_overdue,
+            tracking_number: group.tracking_number,
+            admin_notes: group.admin_notes,
+            created_at: group.created_at,
+            updated_at: group.updated_at
+          }))
+        )
+        setStatements(flattenedStatements)
+        
         // 통계 데이터도 업데이트
         if (result.data.stats) {
           setStats(result.data.stats)
@@ -286,6 +348,12 @@ export function SamplesPage() {
       unit_price: 0
     }
     setSampleItems([...sampleItems, newItem])
+    
+    // 새로 추가된 행의 인덱스를 선택하고 상품 검색 모달 열기
+    setSelectedRowIndex(sampleItems.length)
+    setShowProductSearch(true)
+    setProductSearchKeyword('')
+    setProductSearchResults([])
   }
 
   // 샘플 아이템 제거
@@ -296,22 +364,37 @@ export function SamplesPage() {
 
   // 상품 선택
   const selectProduct = (product: any, color: string, size: string) => {
-    if (selectedRowIndex === null) return
-
-    const updatedItems = [...sampleItems]
-    updatedItems[selectedRowIndex] = {
-      ...updatedItems[selectedRowIndex],
-      product_id: product.id,
-      product_code: product.code,
-      product_name: product.name,
-      color,
-      size,
-      unit_price: product.price || 0
+    if (selectedRowIndex !== null) {
+      // 기존 행 업데이트
+      const updatedItems = [...sampleItems]
+      updatedItems[selectedRowIndex] = {
+        ...updatedItems[selectedRowIndex],
+        product_id: product.id,
+        product_code: product.code,
+        product_name: product.name,
+        color,
+        size,
+        unit_price: product.price || 0
+      }
+      setSampleItems(updatedItems)
+      setSelectedRowIndex(null)
+    } else {
+      // 새로운 아이템 추가
+      const newItem: SampleItem = {
+        id: Date.now().toString(),
+        product_id: product.id,
+        product_code: product.code,
+        product_name: product.name,
+        color,
+        size,
+        quantity: 1,
+        unit_price: product.price || 0
+      }
+      setSampleItems([...sampleItems, newItem])
     }
-
-    setSampleItems(updatedItems)
-    setShowProductSearch(false)
-    setSelectedRowIndex(null)
+    
+    // 모달은 닫지 않고 계속 선택할 수 있도록 함
+    // setShowProductSearch(false)
   }
 
   // 주문 검색 함수
@@ -326,10 +409,53 @@ export function SamplesPage() {
       const result = await response.json()
 
       if (result.success) {
-        setOrderSearchResults(result.data)
+        // result.data는 객체이고, 실제 주문 배열은 result.data.orders에 있음
+        setOrderSearchResults(result.data.orders || [])
+      } else {
+        setOrderSearchResults([])
       }
     } catch (error) {
       console.error('주문 검색 오류:', error)
+      setOrderSearchResults([])
+    }
+  }
+
+  // 샘플 명세서 다운로드 함수 (영수증 폼 사용)
+  const downloadSampleStatement = (group: GroupedSampleStatement) => {
+    try {
+      // 영수증 데이터 구성
+      const receiptData = {
+        orderNumber: group.sample_number,
+        orderDate: new Date(group.created_at).toLocaleDateString('ko-KR'),
+        customerName: group.customer_name,
+        customerPhone: '', // 실제 고객 정보에서 가져와야 함
+        shippingName: group.customer_name,
+        shippingPhone: '',
+        shippingPostalCode: '',
+        shippingAddress: '',
+        items: group.items.map(item => ({
+          productName: item.product_name,
+          productCode: `${item.color}/${item.size}`,
+          quantity: item.quantity,
+          unitPrice: 0, // 샘플은 무료
+          totalPrice: 0, // 샘플은 무료
+          options: {
+            color: item.color,
+            size: item.size
+          }
+        })),
+        subtotal: 0, // 샘플은 무료
+        shippingFee: 0,
+        totalAmount: 0, // 샘플은 무료
+        notes: '샘플 제공 - 무료'
+      }
+
+      // 영수증 생성 함수 호출
+      generateReceipt(receiptData)
+      showSuccess('샘플 명세서가 다운로드되었습니다.')
+    } catch (error) {
+      console.error('샘플 명세서 다운로드 오류:', error)
+      showError('샘플 명세서 다운로드에 실패했습니다.')
     }
   }
 
@@ -350,7 +476,7 @@ export function SamplesPage() {
           body: JSON.stringify({
             customer_id: order.user_id,
             from_order_id: order.id,
-            sample_type: sampleType,
+            sample_type: 'photography', // 샘플은 무조건 무료 (촬영용)
             admin_notes: `${order.order_number}에서 생성된 샘플 명세서`
           })
         }).then(res => res.json())
@@ -391,6 +517,9 @@ export function SamplesPage() {
       return
     }
 
+    console.log('Creating sample statement with items:', sampleItems)
+    console.log('Selected customer:', selectedCustomer)
+
     try {
       const response = await fetch('/api/admin/sample-statements/create', {
         method: 'POST',
@@ -400,11 +529,12 @@ export function SamplesPage() {
         body: JSON.stringify({
           customer_id: selectedCustomer.id,
           items: sampleItems,
-          sample_type: sampleType
+          sample_type: 'photography', // 샘플은 무조건 무료 (촬영용)
         })
       })
 
       const result = await response.json()
+      console.log('Sample creation result:', result)
 
       if (result.success) {
         showSuccess('샘플 명세서가 생성되었습니다.')
@@ -582,208 +712,323 @@ export function SamplesPage() {
 
       {/* 명세서 목록 테이블 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* 보기 모드 전환 */}
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-medium text-gray-900">샘플 관리</h3>
+            <div className="flex gap-2">
+              <Button
+                variant={viewMode === 'grouped' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('grouped')}
+              >
+                업체별 보기
+              </Button>
+              <Button
+                variant={viewMode === 'individual' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('individual')}
+              >
+                개별 보기
+              </Button>
+            </div>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1200px]">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="w-12 px-4 py-4 text-left">
-                  <input
-                    type="checkbox"
-                    checked={selectedStatements.length === statements.length && statements.length > 0}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedStatements(statements.map(s => s.id))
-                      } else {
-                        setSelectedStatements([])
-                      }
-                    }}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  샘플코드
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  품목명
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  컬러
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  사이즈
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  수량
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  단가
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  부가세
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  고객
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  남은 기간
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  생성일
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  상태
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  액션
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedStatements.map((statement) => (
-                <tr key={statement.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-4">
+          {viewMode === 'grouped' ? (
+            // 업체별 그룹화 뷰
+            <div className="divide-y divide-gray-200">
+              {groupedStatements.map((group) => (
+                <div key={group.id} className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedStatements.includes(group.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedStatements([...selectedStatements, group.id])
+                          } else {
+                            setSelectedStatements(selectedStatements.filter(id => id !== group.id))
+                          }
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <h4 className="text-lg font-medium text-gray-900">{group.sample_number}</h4>
+                        <p className="text-sm text-gray-600">{group.customer_name}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm text-gray-500">
+                        D{group.days_remaining !== null ? (group.days_remaining > 0 ? `-${group.days_remaining}` : '+' + Math.abs(group.days_remaining)) : '-'}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {formatDateTime(group.created_at)}
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          group.status === 'shipped' ? 'bg-green-100 text-green-800' :
+                          group.status === 'returned' ? 'bg-blue-100 text-blue-800' :
+                          group.status === 'charged' ? 'bg-purple-100 text-purple-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {group.status === 'shipped' ? '출고완료' :
+                           group.status === 'returned' ? '회수완료' :
+                           group.status === 'charged' ? '샘플결제' : '대기중'}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            // 샘플 명세서 다운로드 함수 호출
+                            downloadSampleStatement(group)
+                          }}
+                          className="text-xs px-2 py-1"
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          명세서
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 상품 목록 */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {group.items.map((item, index) => (
+                        <div key={index} className="bg-white rounded-lg p-3 border">
+                          <div className="font-medium text-gray-900">{item.product_name}</div>
+                          <div className="text-sm text-gray-600">
+                            {item.color} / {item.size} - {item.quantity}개
+                          </div>
+                          <div className="text-sm font-medium text-green-600">
+                            무료 제공
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            미반납시: {formatCurrency(item.unit_price)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">총 수량: {group.total_quantity}개</span>
+                        <span className="font-medium text-green-600">무료 제공</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        반납 기한: {group.due_date ? new Date(group.due_date).toLocaleDateString() : '-'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            // 개별 상품 뷰 (기존 테이블)
+            <table className="w-full min-w-[1200px]">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="w-12 px-4 py-4 text-left">
                     <input
                       type="checkbox"
-                      checked={selectedStatements.includes(statement.id)}
+                      checked={selectedStatements.length === statements.length && statements.length > 0}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedStatements([...selectedStatements, statement.id])
+                          setSelectedStatements(statements.map(s => s.id))
                         } else {
-                          setSelectedStatements(selectedStatements.filter(id => id !== statement.id))
+                          setSelectedStatements([])
                         }
                       }}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm font-medium text-gray-900">
-                      {statement.sample_number}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm font-medium text-gray-900">
-                      {statement.product_name}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm text-gray-900">
-                      {statement.color}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm text-gray-900">
-                      {statement.size}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm text-gray-900">
-                      {statement.quantity}개
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm font-medium text-gray-900">
-                      ₩{statement.unit_price.toLocaleString()}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm font-medium text-gray-900">
-                      ₩{statement.total_price.toLocaleString()}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm text-gray-900">
-                      {statement.customer_name}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm text-gray-900">
-                      {statement.days_remaining !== null ? (
-                        <span className={statement.is_overdue ? 'text-red-600 font-medium' : 'text-gray-900'}>
-                          {statement.is_overdue ? `D+${Math.abs(statement.days_remaining)}` : `D-${statement.days_remaining}`}
-                        </span>
-                      ) : '-'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm text-gray-900">
-                      {statement.created_at ? formatDateTime(statement.created_at) : '-'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm text-gray-900">
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        statement.status === 'shipped' ? 'bg-yellow-100 text-yellow-800' :
-                        statement.status === 'returned' ? 'bg-green-100 text-green-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {statement.status === 'shipped' ? '출고완료' : 
-                         statement.status === 'returned' ? '회수완료' : '샘플결제'}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm font-medium">
-                    <div className="flex items-center space-x-2">
-                      {/* 상태 변경 드롭다운 */}
-                      <select
-                        value={statement.status}
-                        onChange={async (e) => {
-                          const newStatus = e.target.value
-                          if (newStatus === statement.status) return
-                          
-                          const statusLabels: {[key: string]: string} = {
-                            'shipped': '출고완료',
-                            'returned': '회수완료',
-                            'charged': '샘플결제'
-                          }
-                          
-                          const confirmMessage = newStatus === 'charged' 
-                            ? `샘플 결제로 변경하시겠습니까?\n고객의 마일리지에서 샘플 금액이 차감됩니다.`
-                            : `상태를 "${statusLabels[newStatus]}"로 변경하시겠습니까?`
-                          
-                          if (!confirm(confirmMessage)) {
-                            e.target.value = statement.status // 원래 값으로 되돌리기
-                            return
-                          }
-                          
-                          try {
-                            const response = await fetch('/api/admin/sample-statements', {
-                              method: 'PATCH',
-                              headers: {
-                                'Content-Type': 'application/json',
-                              },
-                              body: JSON.stringify({
-                                action: `mark_${newStatus}`,
-                                sample_ids: [statement.id]
-                              })
-                            })
-                            
-                            const result = await response.json()
-                            
-                            if (result.success) {
-                              showSuccess('상태가 변경되었습니다.')
-                              fetchStatements()
-                            } else {
-                              showError(result.error || '상태 변경에 실패했습니다.')
-                              e.target.value = statement.status // 원래 값으로 되돌리기
-                            }
-                          } catch (error) {
-                            console.error('상태 변경 오류:', error)
-                            showError('상태 변경 중 오류가 발생했습니다.')
-                            e.target.value = statement.status // 원래 값으로 되돌리기
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    샘플코드
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    품목명
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    컬러
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    사이즈
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    수량
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    제공방식
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    미반납시 차감
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    고객
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    남은 기간
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    생성일
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    상태
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    액션
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {paginatedStatements.map((statement) => (
+                  <tr key={statement.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedStatements.includes(statement.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedStatements([...selectedStatements, statement.id])
+                          } else {
+                            setSelectedStatements(selectedStatements.filter(id => id !== statement.id))
                           }
                         }}
-                        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="shipped">출고완료</option>
-                        <option value="returned">회수완료</option>
-                        <option value="charged">샘플결제</option>
-                      </select>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm font-medium text-gray-900">
+                        {statement.sample_number}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm font-medium text-gray-900">
+                        {statement.product_name}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {statement.color}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {statement.size}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {statement.quantity}개
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm font-medium text-green-600">
+                        무료 제공
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm font-medium text-red-600">
+                        {formatCurrency(statement.unit_price)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {statement.customer_name}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {statement.days_remaining !== null ? (
+                          <span className={statement.is_overdue ? 'text-red-600 font-medium' : 'text-gray-900'}>
+                            {statement.is_overdue ? `D+${Math.abs(statement.days_remaining)}` : `D-${statement.days_remaining}`}
+                          </span>
+                        ) : '-'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        {statement.created_at ? formatDateTime(statement.created_at) : '-'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-gray-900">
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          statement.status === 'shipped' ? 'bg-yellow-100 text-yellow-800' :
+                          statement.status === 'returned' ? 'bg-green-100 text-green-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {statement.status === 'shipped' ? '출고완료' : 
+                           statement.status === 'returned' ? '회수완료' : '샘플결제'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 text-sm font-medium">
+                      <div className="flex items-center space-x-2">
+                        {/* 상태 변경 드롭다운 */}
+                        <select
+                          value={statement.status}
+                          onChange={async (e) => {
+                            const newStatus = e.target.value
+                            if (newStatus === statement.status) return
+                            
+                            const statusLabels: {[key: string]: string} = {
+                              'shipped': '출고완료',
+                              'returned': '회수완료',
+                              'charged': '샘플결제'
+                            }
+                            
+                            const confirmMessage = newStatus === 'charged' 
+                              ? `샘플 결제로 변경하시겠습니까?\n고객의 마일리지에서 샘플 금액이 차감됩니다.`
+                              : `상태를 "${statusLabels[newStatus]}"로 변경하시겠습니까?`
+                            
+                            if (!confirm(confirmMessage)) {
+                              e.target.value = statement.status // 원래 값으로 되돌리기
+                              return
+                            }
+                            
+                            try {
+                              const response = await fetch('/api/admin/sample-statements', {
+                                method: 'PATCH',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                  action: `mark_${newStatus}`,
+                                  sample_ids: [statement.id]
+                                })
+                              })
+                              
+                              const result = await response.json()
+                              
+                              if (result.success) {
+                                showSuccess('상태가 변경되었습니다.')
+                                fetchStatements()
+                              } else {
+                                showError(result.error || '상태 변경에 실패했습니다.')
+                                e.target.value = statement.status // 원래 값으로 되돌리기
+                              }
+                            } catch (error) {
+                              console.error('상태 변경 오류:', error)
+                              showError('상태 변경 중 오류가 발생했습니다.')
+                              e.target.value = statement.status // 원래 값으로 되돌리기
+                            }
+                          }}
+                          className="text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="shipped">출고완료</option>
+                          <option value="returned">회수완료</option>
+                          <option value="charged">샘플결제</option>
+                        </select>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
         
         {/* 로딩 상태 */}
@@ -1005,7 +1250,13 @@ export function SamplesPage() {
                         <tfoot className="bg-gray-50">
                           <tr className="font-medium">
                             <td colSpan={6} className="px-4 py-3 text-right text-sm text-gray-900">합계:</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">
+                            <td className="px-4 py-3 text-sm text-green-600 font-medium">
+                              무료 제공
+                            </td>
+                          </tr>
+                          <tr className="text-xs text-gray-500">
+                            <td colSpan={6} className="px-4 py-2 text-right">미반납시 총 차감 예정:</td>
+                            <td className="px-4 py-2 text-red-600 font-medium">
                               {formatCurrency(sampleItems.reduce((total, item) => total + item.unit_price * item.quantity, 0))}
                             </td>
                           </tr>
@@ -1097,24 +1348,48 @@ export function SamplesPage() {
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900">상품 검색</h3>
-                <Button variant="outline" onClick={() => setShowProductSearch(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => {
+                      setShowProductSearch(false)
+                      setSelectedRowIndex(null)
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    선택 완료
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowProductSearch(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
             
             <div className="p-6">
               <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="상품명 또는 상품코드로 검색"
-                  value={productSearchKeyword}
-                  onChange={(e) => {
-                    setProductSearchKeyword(e.target.value)
-                    searchProducts(e.target.value)
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="상품명 또는 상품코드로 검색"
+                    value={productSearchKeyword}
+                    onChange={(e) => {
+                      setProductSearchKeyword(e.target.value)
+                      searchProducts(e.target.value)
+                    }}
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                {productSearchKeyword && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    "{productSearchKeyword}"에 대한 검색 결과: {productSearchResults.length}개
+                  </div>
+                )}
               </div>
 
               <div className="max-h-[500px] overflow-y-auto">
@@ -1139,10 +1414,17 @@ export function SamplesPage() {
                             <Button
                               key={`${option.color}-${option.size}`}
                               variant="outline"
-                              onClick={() => selectProduct(product, option.color, option.size)}
-                              className="text-left justify-start"
+                              onClick={() => {
+                                selectProduct(product, option.color, option.size)
+                                // 선택 후 성공 메시지 표시
+                                showSuccess(`${product.name} (${option.color}/${option.size})이 추가되었습니다.`)
+                              }}
+                              className="text-left justify-start hover:bg-blue-50 hover:border-blue-300"
                             >
-                              {option.color} / {option.size}
+                              <div className="flex items-center justify-between w-full">
+                                <span>{option.color} / {option.size}</span>
+                                <span className="text-xs text-gray-500">재고: {option.stock_quantity || 0}</span>
+                              </div>
                             </Button>
                           ))}
                         </div>
@@ -1170,34 +1452,7 @@ export function SamplesPage() {
             </div>
             
             <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto">
-              {/* 샘플 타입 선택 */}
-              <div className="mb-6">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">샘플 타입</h4>
-                <div className="flex gap-4">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="sampleType"
-                      value="photography"
-                      checked={sampleType === 'photography'}
-                      onChange={(e) => setSampleType(e.target.value as 'photography' | 'sales')}
-                      className="mr-2"
-                    />
-                    촬영용 (무료)
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="sampleType"
-                      value="sales"
-                      checked={sampleType === 'sales'}
-                      onChange={(e) => setSampleType(e.target.value as 'photography' | 'sales')}
-                      className="mr-2"
-                    />
-                    판매용 (유료)
-                  </label>
-                </div>
-              </div>
+              {/* 샘플은 무조건 무료이므로 타입 선택 제거 */}
 
               {/* 주문 검색 */}
               <div className="mb-6">

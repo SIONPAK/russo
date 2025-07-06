@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         // 상품 조회
         const { data: product, error: productError } = await supabase
           .from('products')
-          .select('id, name, inventory_options')
+          .select('id, name, inventory_options, stock_quantity')
           .eq('code', productCode)
           .single()
 
@@ -90,8 +90,22 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          // 옵션 재고 업데이트
-          inventoryOptions[optionIndex].stock_quantity = stockQuantity
+          // 기존 재고량 저장
+          const previousStock = inventoryOptions[optionIndex].stock_quantity || 0
+          
+          // 재고 변경량 계산 (음수 허용)
+          const changeAmount = stockQuantity
+          const newStock = previousStock + changeAmount
+
+          // 재고가 음수가 되지 않도록 체크
+          if (newStock < 0) {
+            errors.push(`${i + 2}행: 재고가 음수가 될 수 없습니다. (현재: ${previousStock}, 변경: ${changeAmount})`)
+            errorCount++
+            continue
+          }
+
+          // 옵션 재고 업데이트 (누적)
+          inventoryOptions[optionIndex].stock_quantity = newStock
 
           // 전체 재고량 재계산
           const totalStock = inventoryOptions.reduce((sum: number, option: any) => sum + option.stock_quantity, 0)
@@ -110,12 +124,48 @@ export async function POST(request: NextRequest) {
             errorCount++
             continue
           }
+
+          // 재고 변동 이력 기록
+          if (changeAmount !== 0) {
+            const movementData = {
+              product_id: product.id,
+              movement_type: changeAmount > 0 ? 'inbound' : 'adjustment',
+              quantity: changeAmount,
+              notes: `${color}/${size} 옵션 재고 변경 (엑셀 일괄 업로드)`,
+              created_at: new Date().toISOString()
+            }
+            
+            console.log(`재고 변동 이력 기록 시도:`, movementData)
+            
+            const { data: movementResult, error: movementError } = await supabase
+              .from('stock_movements')
+              .insert(movementData)
+              .select()
+            
+            if (movementError) {
+              console.error(`재고 변동 이력 기록 실패 (${productCode}):`, movementError)
+              errors.push(`${i + 2}행: 재고 변동 이력 기록 실패 - ${movementError.message}`)
+            } else {
+              console.log(`재고 변동 이력 기록 성공:`, movementResult)
+            }
+          }
         } else {
           // 전체 재고 업데이트 (옵션이 없는 경우)
+          const previousStock = product.stock_quantity || 0
+          const changeAmount = stockQuantity
+          const newStock = previousStock + changeAmount
+
+          // 재고가 음수가 되지 않도록 체크
+          if (newStock < 0) {
+            errors.push(`${i + 2}행: 재고가 음수가 될 수 없습니다. (현재: ${previousStock}, 변경: ${changeAmount})`)
+            errorCount++
+            continue
+          }
+
           const { error: updateError } = await supabase
             .from('products')
             .update({
-              stock_quantity: stockQuantity,
+              stock_quantity: newStock,
               updated_at: new Date().toISOString()
             })
             .eq('id', product.id)
@@ -124,6 +174,31 @@ export async function POST(request: NextRequest) {
             errors.push(`${i + 2}행: 재고 업데이트 실패 (${productCode})`)
             errorCount++
             continue
+          }
+
+          // 재고 변동 이력 기록
+          if (changeAmount !== 0) {
+            const movementData = {
+              product_id: product.id,
+              movement_type: changeAmount > 0 ? 'inbound' : 'adjustment',
+              quantity: changeAmount,
+              notes: `전체 재고 변경 (엑셀 일괄 업로드)`,
+              created_at: new Date().toISOString()
+            }
+            
+            console.log(`재고 변동 이력 기록 시도:`, movementData)
+            
+            const { data: movementResult, error: movementError } = await supabase
+              .from('stock_movements')
+              .insert(movementData)
+              .select()
+            
+            if (movementError) {
+              console.error(`재고 변동 이력 기록 실패 (${productCode}):`, movementError)
+              errors.push(`${i + 2}행: 재고 변동 이력 기록 실패 - ${movementError.message}`)
+            } else {
+              console.log(`재고 변동 이력 기록 성공:`, movementResult)
+            }
           }
         }
 

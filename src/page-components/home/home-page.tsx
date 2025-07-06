@@ -79,8 +79,34 @@ export function HomePage() {
   // 비디오 인덱스가 변경될 때 새 비디오 로드
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.load()
-      videoRef.current.play().catch(console.error)
+      const video = videoRef.current
+      
+      // 비디오 로딩 이벤트 리스너
+      const handleCanPlay = () => {
+        video.play().catch(console.error)
+      }
+      
+      // 로딩 상태 관리
+      const handleLoadStart = () => {
+        video.style.opacity = '0.5'
+      }
+      
+      const handleLoadedData = () => {
+        video.style.opacity = '1'
+      }
+      
+      video.addEventListener('canplay', handleCanPlay)
+      video.addEventListener('loadstart', handleLoadStart)
+      video.addEventListener('loadeddata', handleLoadedData)
+      
+      video.load()
+      
+      // 클린업
+      return () => {
+        video.removeEventListener('canplay', handleCanPlay)
+        video.removeEventListener('loadstart', handleLoadStart)
+        video.removeEventListener('loadeddata', handleLoadedData)
+      }
     }
   }, [currentVideoIndex])
 
@@ -183,7 +209,7 @@ export function HomePage() {
       <section className="bg-white py-16">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center">
-            <h2 className="text-3xl font-paperlogy-bold mb-8 text-black">루소 프로모션</h2>
+            <h2 className="text-3xl font-paperlogy-bold mb-8 text-black">주식회사 루소</h2>
             <div className="max-w-4xl mx-auto">
               <div className="bg-black rounded-lg overflow-hidden shadow-lg">
                 <video

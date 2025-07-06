@@ -108,7 +108,7 @@ export default function DeductionStatementsPage() {
 
     try {
       setProcessing(true)
-      const response = await fetch('/api/admin/deduction-statements', {
+      const response = await fetch('/api/admin/deduction-statements/process', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json'

@@ -111,6 +111,25 @@ export async function POST(request: NextRequest) {
                 .eq('id', item.id)
             )
 
+            // 재고 변동 이력 기록
+            const movementData = {
+              product_id: item.product_id,
+              movement_type: 'order_shipment',
+              quantity: -shippableQuantity, // 출고는 음수
+              notes: `주문 벌크 출고 처리`,
+              reference_id: orderId,
+              reference_type: 'order',
+              created_at: new Date().toISOString()
+            }
+            
+            console.log('재고 변동 이력 기록 시도:', movementData)
+            
+            updatePromises.push(
+              supabase
+                .from('stock_movements')
+                .insert(movementData)
+            )
+
             // 재고 차감
             if (product && product.inventory_options && Array.isArray(product.inventory_options)) {
               // 옵션별 재고 차감

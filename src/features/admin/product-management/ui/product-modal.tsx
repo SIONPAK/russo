@@ -93,7 +93,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
         name: product.name || '',
         description: product.description || '',
         detailed_description: product.detailed_description || '',
-        category_id: product.category_id || '',
+        category_id: String(product.category_id || product.category?.id || ''),
         code: product.code || '',
         price: product.price || 0,
         sale_price: product.sale_price || 0,
@@ -860,10 +860,35 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                 toolbar: 'undo redo | blocks | ' +
                   'bold italic forecolor | alignleft aligncenter ' +
                   'alignright alignjustify | bullist numlist outdent indent | ' +
-                  'removeformat | help',
+                  'image link | removeformat | help',
                 content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
                 branding: false,
-                promotion: false
+                promotion: false,
+                images_upload_handler: async (blobInfo: any) => {
+                  return new Promise(async (resolve, reject) => {
+                    try {
+                      const formData = new FormData()
+                      formData.append('files', blobInfo.blob(), blobInfo.filename())
+                      
+                      const response = await fetch('/api/upload/product-images', {
+                        method: 'POST',
+                        body: formData
+                      })
+                      
+                      const result = await response.json()
+                      
+                      if (result.success && result.data.urls && result.data.urls.length > 0) {
+                        resolve(result.data.urls[0])
+                      } else {
+                        reject('이미지 업로드에 실패했습니다.')
+                      }
+                    } catch (error) {
+                      reject('이미지 업로드 중 오류가 발생했습니다.')
+                    }
+                  })
+                },
+                images_upload_base_path: '',
+                automatic_uploads: true
               }}
             />
           </div>

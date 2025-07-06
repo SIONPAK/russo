@@ -153,17 +153,17 @@ export default function RegisterPage() {
         username: data.userId,
         email: data.email,
         password: data.password,
-        company_name: data.companyName,
-        business_number: data.businessNumber,
-        representative_name: data.representativeName,
+        companyName: data.companyName,
+        businessNumber: data.businessNumber,
+        representativeName: data.representativeName,
         phone: data.phone,
         address: `${data.address} ${data.detailAddress}`.trim(),
-        postal_code: data.postalCode,
-        recipient_name: data.recipientName,
-        recipient_phone: data.recipientPhone,
-        recipient_address: `${data.recipientAddress} ${data.recipientDetailAddress}`.trim(),
-        recipient_postal_code: data.recipientPostalCode,
-        business_license: '' // 추후 파일 업로드 기능 추가
+        postalCode: data.postalCode,
+        recipientName: data.recipientName,
+        recipientPhone: data.recipientPhone,
+        recipientAddress: `${data.recipientAddress} ${data.recipientDetailAddress}`.trim(),
+        recipientPostalCode: data.recipientPostalCode,
+        businessLicense: '' // 추후 파일 업로드 기능 추가
       }
 
       // 실제 회원가입 API 호출
@@ -285,6 +285,8 @@ export default function RegisterPage() {
   // 아이디 변경 시 중복확인 상태 초기화
   const handleUserIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUsernameCheckStatus('idle')
+    // react-hook-form의 onChange도 호출
+    setValue('userId', e.target.value)
   }
 
   return (
@@ -459,7 +461,7 @@ export default function RegisterPage() {
                                 }
                               })}
                               onChange={handleUserIdChange}
-                              className="w-full h-12 text-base pr-20"
+                              className="w-full h-12 text-base pl-10 pr-20"
                             />
                             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
                               {usernameCheckStatus === 'available' && (
@@ -471,7 +473,7 @@ export default function RegisterPage() {
                               <Button
                                 type="button"
                                 onClick={checkUserIdAvailability}
-                                disabled={!watchUserId || watchUserId.length < 4 || usernameCheckStatus === 'checking'}
+                                disabled={!watchUserId || watchUserId.length < 4 || usernameCheckStatus === 'checking' || !/^[a-zA-Z0-9]+$/.test(watchUserId || '')}
                                 className="text-xs px-2 py-1 h-8"
                               >
                                 {usernameCheckStatus === 'checking' ? '확인중...' : '중복확인'}

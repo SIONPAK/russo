@@ -128,6 +128,12 @@ export function InventoryPage() {
   const [stockHistoryData, setStockHistoryData] = useState<any[]>([])
   const [stockHistoryLoading, setStockHistoryLoading] = useState(false)
 
+  // 입고/출고 내역 상태 추가
+  const [inboundData, setInboundData] = useState<any[]>([])
+  const [outboundData, setOutboundData] = useState<any[]>([])
+  const [inboundLoading, setInboundLoading] = useState(false)
+  const [outboundLoading, setOutboundLoading] = useState(false)
+
   // 상품 데이터 가져오기
   useEffect(() => {
     fetchProducts()
@@ -395,6 +401,10 @@ export function InventoryPage() {
   useEffect(() => {
     if (currentTab === 'history') {
       fetchStockHistory()
+    } else if (currentTab === 'inbound') {
+      fetchInboundData()
+    } else if (currentTab === 'outbound') {
+      fetchOutboundData()
     }
   }, [currentTab])
 
@@ -605,12 +615,88 @@ export function InventoryPage() {
     }
   }
 
-  const registerInbound = () => {
-    setInboundModal({
-      isOpen: true,
-      productId: '',
-      productName: ''
-    })
+  const registerInbound = async (productId: string, quantity: number, reason: string, color?: string, size?: string) => {
+    try {
+      setLoading(true)
+      
+      const response = await fetch('/api/admin/inventory/inbound', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          product_id: productId,
+          quantity,
+          reason,
+          color,
+          size
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        showSuccess('입고 등록이 완료되었습니다.')
+        fetchInboundData() // 입고 내역 새로고침
+        fetchProducts() // 상품 목록 새로고침
+        setInboundModal({ isOpen: false, productId: '', productName: '' })
+      } else {
+        showError(result.error || '입고 등록에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('입고 등록 실패:', error)
+      showError('입고 등록 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 입고 내역 가져오기
+  const fetchInboundData = async () => {
+    try {
+      setInboundLoading(true)
+      
+      // stock_movements 테이블에서 입고 내역 조회
+      const response = await fetch('/api/admin/inventory/movements?type=inbound')
+      const result = await response.json()
+      
+      if (result.success) {
+        setInboundData(result.data || [])
+      } else {
+        showError('입고 내역을 불러오는데 실패했습니다.')
+        setInboundData([])
+      }
+    } catch (error) {
+      console.error('입고 내역 조회 실패:', error)
+      showError('입고 내역을 불러오는데 실패했습니다.')
+      setInboundData([])
+    } finally {
+      setInboundLoading(false)
+    }
+  }
+
+  // 출고 내역 가져오기
+  const fetchOutboundData = async () => {
+    try {
+      setOutboundLoading(true)
+      
+      // stock_movements 테이블에서 출고 내역 조회
+      const response = await fetch('/api/admin/inventory/movements?type=outbound')
+      const result = await response.json()
+      
+      if (result.success) {
+        setOutboundData(result.data || [])
+      } else {
+        showError('출고 내역을 불러오는데 실패했습니다.')
+        setOutboundData([])
+      }
+    } catch (error) {
+      console.error('출고 내역 조회 실패:', error)
+      showError('출고 내역을 불러오는데 실패했습니다.')
+      setOutboundData([])
+    } finally {
+      setOutboundLoading(false)
+    }
   }
 
   // 필터링된 상품 목록
@@ -977,27 +1063,206 @@ export function InventoryPage() {
           )}
 
           {currentTab === 'inbound' && (
-            <div className="text-center py-12">
-              <TrendingUp className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">입고 관리</h3>
-              <p className="text-gray-600 mb-4">입고 예정, 입고 처리, 입고 이력을 관리합니다.</p>
-              <Button onClick={() => showInfo('입고 관리 기능을 준비 중입니다.')}>
-                <Plus className="h-4 w-4 mr-2" />
-                입고 등록
-              </Button>
-            </div>
+            <>
+              {/* 액션 버튼 */}
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">입고 관리</h3>
+                <div className="flex space-x-2">
+                  <Button variant="outline" onClick={fetchInboundData} disabled={inboundLoading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${inboundLoading ? 'animate-spin' : ''}`} />
+                    새로고침
+                  </Button>
+                  <Button onClick={() => setInboundModal({ isOpen: true, productId: '', productName: '' })}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    입고 등록
+                  </Button>
+                </div>
+              </div>
+
+              {/* 입고 내역 목록 */}
+              <div className="bg-gray-50 rounded-lg">
+                <div className="px-6 py-4 border-b border-gray-200 bg-white rounded-t-lg">
+                  <h4 className="text-md font-medium text-gray-900">
+                    입고 내역 ({inboundData.length}건)
+                  </h4>
+                </div>
+                
+                {inboundLoading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">입고 내역을 불러오는 중...</p>
+                  </div>
+                ) : inboundData.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            상품정보
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            입고수량
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            입고유형
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            사유
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            입고일시
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {inboundData.map((item, index) => (
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">{item.product_name}</div>
+                                <div className="text-sm text-gray-500">{item.product_code}</div>
+                                {item.color && item.size && (
+                                  <div className="text-sm text-gray-500">{item.color} / {item.size}</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm font-medium text-green-600">
+                                +{item.quantity}개
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                                {item.movement_type === 'adjustment' ? '재고조정' : 
+                                 item.movement_type === 'purchase' ? '신규입고' :
+                                 item.movement_type === 'return' ? '반품입고' :
+                                 item.movement_type === 'sample_return' ? '샘플반납' : '기타'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {item.notes || item.reason || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {new Date(item.created_at).toLocaleDateString('ko-KR')} {new Date(item.created_at).toLocaleTimeString('ko-KR')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <TrendingUp className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>입고 내역이 없습니다.</p>
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           {currentTab === 'outbound' && (
-            <div className="text-center py-12">
-              <TrendingDown className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">출고 관리</h3>
-              <p className="text-gray-600 mb-4">출고 예정, 출고 처리, 출고 이력을 관리합니다.</p>
-              <Button onClick={() => showInfo('출고 관리 기능을 준비 중입니다.')}>
-                <Truck className="h-4 w-4 mr-2" />
-                출고 등록
-              </Button>
-            </div>
+            <>
+              {/* 액션 버튼 */}
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">출고 관리</h3>
+                <div className="flex space-x-2">
+                  <Button variant="outline" onClick={fetchOutboundData} disabled={outboundLoading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${outboundLoading ? 'animate-spin' : ''}`} />
+                    새로고침
+                  </Button>
+                </div>
+              </div>
+
+              {/* 출고 내역 목록 */}
+              <div className="bg-gray-50 rounded-lg">
+                <div className="px-6 py-4 border-b border-gray-200 bg-white rounded-t-lg">
+                  <h4 className="text-md font-medium text-gray-900">
+                    출고 내역 ({outboundData.length}건)
+                  </h4>
+                </div>
+                
+                {outboundLoading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">출고 내역을 불러오는 중...</p>
+                  </div>
+                ) : outboundData.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            상품정보
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            출고수량
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            출고유형
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            주문정보
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            출고일시
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {outboundData.map((item, index) => (
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">{item.product_name}</div>
+                                <div className="text-sm text-gray-500">{item.product_code}</div>
+                                {item.color && item.size && (
+                                  <div className="text-sm text-gray-500">{item.color} / {item.size}</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm font-medium text-red-600">
+                                -{Math.abs(item.quantity)}개
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">
+                                {item.movement_type === 'order_shipment' ? '주문출고' :
+                                 item.movement_type === 'sample_out' ? '샘플출고' :
+                                 item.movement_type === 'adjustment' ? '재고조정' : '기타'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {item.reference_type === 'order' ? (
+                                <div>
+                                  <div className="font-medium">{item.order_number || '-'}</div>
+                                  <div>{item.customer_name || '-'}</div>
+                                </div>
+                              ) : item.reference_type === 'sample' ? (
+                                <div>
+                                  <div className="font-medium">샘플: {item.sample_number || '-'}</div>
+                                  <div>{item.customer_name || '-'}</div>
+                                </div>
+                              ) : (
+                                <div>{item.notes || item.reason || '-'}</div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {new Date(item.created_at).toLocaleDateString('ko-KR')} {new Date(item.created_at).toLocaleTimeString('ko-KR')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <TrendingDown className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>출고 내역이 없습니다.</p>
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           {currentTab === 'history' && (
@@ -1284,6 +1549,187 @@ export function InventoryPage() {
           </div>
         </div>
       )}
+
+      {/* 입고 등록 모달 */}
+      {inboundModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">입고 등록</h3>
+              <Button variant="outline" size="sm" onClick={() => setInboundModal({ isOpen: false, productId: '', productName: '' })}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <InboundRegistrationForm
+              products={products}
+              onSubmit={registerInbound}
+              onCancel={() => setInboundModal({ isOpen: false, productId: '', productName: '' })}
+            />
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+// 입고 등록 폼 컴포넌트
+function InboundRegistrationForm({ 
+  products, 
+  onSubmit, 
+  onCancel 
+}: { 
+  products: Product[]
+  onSubmit: (productId: string, quantity: number, reason: string, color?: string, size?: string) => void
+  onCancel: () => void
+}) {
+  const [selectedProduct, setSelectedProduct] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [reason, setReason] = useState('')
+  const [selectedColor, setSelectedColor] = useState('')
+  const [selectedSize, setSelectedSize] = useState('')
+
+  // 선택된 상품의 옵션 정보
+  const selectedProductData = products.find(p => p.id === selectedProduct)
+  const hasOptions = selectedProductData?.inventory_options && selectedProductData.inventory_options.length > 0
+
+  // 사용 가능한 색상 목록
+  const availableColors = hasOptions 
+    ? [...new Set(selectedProductData!.inventory_options!.map(opt => opt.color))]
+    : []
+
+  // 선택된 색상에 따른 사이즈 목록
+  const availableSizes = hasOptions && selectedColor
+    ? selectedProductData!.inventory_options!
+        .filter(opt => opt.color === selectedColor)
+        .map(opt => opt.size)
+    : []
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!selectedProduct || !quantity || !reason.trim()) {
+      showError('모든 필드를 입력해주세요.')
+      return
+    }
+
+    // 옵션이 있는 상품인 경우 색상/사이즈 필수 체크
+    if (hasOptions && (!selectedColor || !selectedSize)) {
+      showError('색상과 사이즈를 선택해주세요.')
+      return
+    }
+
+    const qty = parseInt(quantity)
+    if (qty <= 0) {
+      showError('올바른 수량을 입력해주세요.')
+      return
+    }
+
+    onSubmit(selectedProduct, qty, reason, selectedColor || undefined, selectedSize || undefined)
+  }
+
+  // 상품 변경 시 옵션 초기화
+  const handleProductChange = (productId: string) => {
+    setSelectedProduct(productId)
+    setSelectedColor('')
+    setSelectedSize('')
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">상품 선택</label>
+        <select
+          value={selectedProduct}
+          onChange={(e) => handleProductChange(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          required
+        >
+          <option value="">상품을 선택하세요</option>
+          {products.map(product => (
+            <option key={product.id} value={product.id}>
+              [{product.code}] {product.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* 색상/사이즈 옵션 (옵션이 있는 상품인 경우만 표시) */}
+      {hasOptions && (
+        <>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">색상</label>
+            <select
+              value={selectedColor}
+              onChange={(e) => {
+                setSelectedColor(e.target.value)
+                setSelectedSize('') // 색상 변경 시 사이즈 초기화
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            >
+              <option value="">색상을 선택하세요</option>
+              {availableColors.map(color => (
+                <option key={color} value={color}>
+                  {color}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">사이즈</label>
+            <select
+              value={selectedSize}
+              onChange={(e) => setSelectedSize(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+              disabled={!selectedColor}
+            >
+              <option value="">사이즈를 선택하세요</option>
+              {availableSizes.map(size => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">입고 수량</label>
+        <input
+          type="number"
+          min="1"
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="입고할 수량을 입력하세요"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">입고 사유</label>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          rows={3}
+          placeholder="입고 사유를 입력하세요"
+          required
+        />
+      </div>
+
+      <div className="flex space-x-2 pt-4">
+        <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
+          취소
+        </Button>
+        <Button type="submit" className="flex-1">
+          입고 등록
+        </Button>
+      </div>
+    </form>
   )
 }
