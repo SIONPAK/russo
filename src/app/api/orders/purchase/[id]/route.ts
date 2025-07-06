@@ -3,10 +3,10 @@ import { createClient } from '@/shared/lib/supabase/server'
 import { randomUUID } from 'crypto'
 
 // 발주서 수정
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id: orderId } = await params
     const supabase = await createClient()
-    const orderId = params.id
 
     const body = await request.json()
     const { items, shipping_address_id, shipping_address, shipping_postal_code, shipping_name, shipping_phone } = body
