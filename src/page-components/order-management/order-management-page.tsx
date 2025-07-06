@@ -42,6 +42,7 @@ interface ProductSearchResult {
   sizes: string[]
   price: number
   stock: number
+  inventory_options?: any[]
 }
 
 interface PurchaseOrder {
@@ -316,7 +317,8 @@ export function OrderManagementPage() {
             colors: colors.length > 0 ? colors : ['기본'],
             sizes: sizes.length > 0 ? sizes : ['기본'],
             price: product.price,
-            stock: product.stock_quantity || 0
+            stock: product.stock_quantity || 0,
+            inventory_options: product.inventory_options || []
           }
         })
         setSearchResults(products)
@@ -380,7 +382,14 @@ export function OrderManagementPage() {
         duplicateCount++
       } else {
         // 새로운 상품이면 행 추가
-        const supplyAmount = product.price
+        // 옵션별 추가 가격 계산
+        const matchingOption = product.inventory_options?.find(
+          (opt: any) => opt.color === color && opt.size === size
+        )
+        const additionalPrice = matchingOption?.additional_price || 0
+        const unitPrice = product.price + additionalPrice
+        
+        const supplyAmount = unitPrice
         const vat = Math.floor(supplyAmount * 0.1)
 
         const newItem = {
@@ -391,7 +400,7 @@ export function OrderManagementPage() {
           color,
           size,
           quantity: 1,
-          unitPrice: product.price,
+          unitPrice: unitPrice,
           supplyAmount,
           vat,
           availableColors: product.colors || [],
@@ -455,6 +464,78 @@ export function OrderManagementPage() {
 
     setOrderItems(finalItems)
     saveOrderItemsToStorage(finalItems)
+  }
+
+  // 옵션별 추가 가격을 반영한 단가 계산
+  const calculateUnitPriceWithOptions = async (productId: string, color: string, size: string, basePrice: number) => {
+    if (!productId || !color || !size) return basePrice
+
+    try {
+      const response = await fetch(`/api/products/${productId}`)
+      const result = await response.json()
+      
+      if (result.success && result.data && result.data.inventory_options) {
+        const matchingOption = result.data.inventory_options.find(
+          (opt: any) => opt.color === color && opt.size === size
+        )
+        
+        if (matchingOption && matchingOption.additional_price) {
+          return basePrice + matchingOption.additional_price
+        }
+      }
+    } catch (error) {
+      console.error('옵션별 가격 조회 오류:', error)
+    }
+    
+    return basePrice
+  }
+
+  // 색상/사이즈 변경 시 단가 업데이트
+  const updateItemOption = async (index: number, field: 'color' | 'size', value: string) => {
+    const updatedItems = [...orderItems]
+    const item = updatedItems[index]
+    
+    // 옵션 업데이트
+    updatedItems[index] = {
+      ...item,
+      [field]: value
+    }
+    
+    // 색상과 사이즈가 모두 선택된 경우 추가 가격 반영
+    const updatedItem = updatedItems[index]
+    if (updatedItem.productId && updatedItem.color && updatedItem.size) {
+      try {
+        const response = await fetch(`/api/products/${updatedItem.productId}`)
+        const result = await response.json()
+        
+        if (result.success && result.data) {
+          const product = result.data
+          const basePrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
+          
+          // 옵션별 추가 가격 찾기
+          const matchingOption = product.inventory_options?.find(
+            (opt: any) => opt.color === updatedItem.color && opt.size === updatedItem.size
+          )
+          const additionalPrice = matchingOption?.additional_price || 0
+          const newUnitPrice = basePrice + additionalPrice
+          
+          const supplyAmount = newUnitPrice * updatedItem.quantity
+          const vat = Math.floor(supplyAmount * 0.1)
+          
+          updatedItems[index] = {
+            ...updatedItem,
+            unitPrice: newUnitPrice,
+            supplyAmount,
+            vat
+          }
+        }
+      } catch (error) {
+        console.error('옵션별 가격 조회 오류:', error)
+      }
+    }
+    
+    setOrderItems(updatedItems)
+    saveOrderItemsToStorage(updatedItems)
   }
 
   // 발주서 저장
@@ -869,11 +950,7 @@ export function OrderManagementPage() {
                           {item.availableColors && item.availableColors.length > 0 ? (
                             <select
                               value={item.color}
-                              onChange={(e) => {
-                                const newItems = [...orderItems]
-                                newItems[index].color = e.target.value
-                                setOrderItems(newItems)
-                              }}
+                              onChange={(e) => updateItemOption(index, 'color', e.target.value)}
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
                               <option value="">색상 선택</option>
@@ -891,11 +968,7 @@ export function OrderManagementPage() {
                           {item.availableSizes && item.availableSizes.length > 0 ? (
                             <select
                               value={item.size}
-                              onChange={(e) => {
-                                const newItems = [...orderItems]
-                                newItems[index].size = e.target.value
-                                setOrderItems(newItems)
-                              }}
+                              onChange={(e) => updateItemOption(index, 'size', e.target.value)}
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
                               <option value="">사이즈 선택</option>
@@ -1160,6 +1233,13 @@ export function OrderManagementPage() {
                           {product.colors.map((color) =>
                             product.sizes.map((size) => {
                               const isSelected = isProductSelected(product, color, size)
+                              
+                              // 해당 옵션의 추가 가격 찾기
+                              const matchingOption = product.inventory_options?.find(
+                                (opt: any) => opt.color === color && opt.size === size
+                              )
+                              const additionalPrice = matchingOption?.additional_price || 0
+                              
                               return (
                                 <Button
                                   key={`${color}-${size}`}
@@ -1171,8 +1251,17 @@ export function OrderManagementPage() {
                                       : 'hover:bg-gray-50'
                                   }`}
                                 >
-                                  {isSelected && <span className="mr-2">✓</span>}
-                                  {color} / {size}
+                                  <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center">
+                                      {isSelected && <span className="mr-2">✓</span>}
+                                      <span>{color} / {size}</span>
+                                    </div>
+                                    {additionalPrice > 0 && (
+                                      <span className="text-xs font-medium">
+                                        +{additionalPrice.toLocaleString()}원
+                                      </span>
+                                    )}
+                                  </div>
                                 </Button>
                               )
                             })

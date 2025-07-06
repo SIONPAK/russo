@@ -80,22 +80,105 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: '주문 상품 생성에 실패했습니다.' }, { status: 500 })
     }
 
-    // 재고 이력 생성
+    // 자동 재고 할당
     for (const item of items) {
-      if (item.product_id && item.quantity !== 0) {
-        const adjustmentType = item.quantity > 0 ? 'outbound' : 'inbound'
-        
-        await supabase
-          .from('inventory_history')
-          .insert({
-            id: randomUUID(),
-            product_id: item.product_id,
-            quantity: item.quantity,
-            type: adjustmentType,
-            reason: `발주 생성 (${orderNumber})`,
-            reference_id: order.id,
-            reference_type: 'order_create'
-          })
+      if (item.product_id && item.quantity > 0) {
+        try {
+          // 상품 정보 조회
+          const { data: product, error: productError } = await supabase
+            .from('products')
+            .select('id, name, inventory_options, stock_quantity')
+            .eq('id', item.product_id)
+            .single()
+
+          if (productError || !product) {
+            console.error(`상품 조회 실패 - ID: ${item.product_id}`, productError)
+            continue
+          }
+
+          // 재고 할당 로직
+          let allocatedQuantity = 0
+          
+          if (product.inventory_options && Array.isArray(product.inventory_options)) {
+            // 옵션별 재고 관리
+            const inventoryOption = product.inventory_options.find(
+              (option: any) => option.color === item.color && option.size === item.size
+            )
+
+            if (inventoryOption) {
+              const availableStock = inventoryOption.stock_quantity || 0
+              allocatedQuantity = Math.min(item.quantity, availableStock)
+              
+              if (allocatedQuantity > 0) {
+                // 옵션별 재고 차감
+                const updatedOptions = product.inventory_options.map((option: any) => {
+                  if (option.color === item.color && option.size === item.size) {
+                    return {
+                      ...option,
+                      stock_quantity: option.stock_quantity - allocatedQuantity
+                    }
+                  }
+                  return option
+                })
+
+                // 전체 재고량 재계산
+                const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+
+                await supabase
+                  .from('products')
+                  .update({
+                    inventory_options: updatedOptions,
+                    stock_quantity: totalStock
+                  })
+                  .eq('id', item.product_id)
+              }
+            }
+          } else {
+            // 일반 재고 관리
+            const availableStock = product.stock_quantity || 0
+            allocatedQuantity = Math.min(item.quantity, availableStock)
+            
+            if (allocatedQuantity > 0) {
+              await supabase
+                .from('products')
+                .update({
+                  stock_quantity: availableStock - allocatedQuantity
+                })
+                .eq('id', item.product_id)
+            }
+          }
+
+          // 주문 아이템에 할당된 수량 업데이트
+          if (allocatedQuantity > 0) {
+            await supabase
+              .from('order_items')
+              .update({
+                allocated_quantity: allocatedQuantity
+              })
+              .eq('order_id', order.id)
+              .eq('product_id', item.product_id)
+              .eq('color', item.color)
+              .eq('size', item.size)
+
+            // 재고 변동 이력 기록
+            await supabase
+              .from('stock_movements')
+              .insert({
+                product_id: item.product_id,
+                movement_type: 'outbound',
+                quantity: -allocatedQuantity,
+                notes: `발주서 자동 재고 할당 (${orderNumber}) - ${item.color}/${item.size}`,
+                reference_id: order.id,
+                reference_type: 'order',
+                created_at: new Date().toISOString()
+              })
+          }
+
+          console.log(`재고 할당 완료 - 상품: ${item.product_name}, 요청: ${item.quantity}, 할당: ${allocatedQuantity}`)
+        } catch (allocationError) {
+          console.error(`재고 할당 오류 - 상품 ID: ${item.product_id}`, allocationError)
+          // 재고 할당 실패는 로그만 남기고 계속 진행
+        }
       }
     }
 
@@ -126,6 +209,15 @@ export async function POST(request: NextRequest) {
         console.error('반품명세서 생성 오류:', returnError)
       }
     }
+
+    // 자동 재고 할당 완료 후 주문 상태 변경
+    await supabase
+      .from('orders')
+      .update({
+        status: 'confirmed',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', order.id)
 
     return NextResponse.json({ success: true, data: order })
   } catch (error) {

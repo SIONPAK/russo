@@ -52,11 +52,33 @@ export async function GET(request: NextRequest) {
     // 추가 정보 조회 (주문 정보, 샘플 정보 등)
     const enrichedMovements = await Promise.all(
       (movements || []).map(async (movement) => {
+        // 현재 재고 수량 조회
+        const { data: currentProduct } = await supabase
+          .from('products')
+          .select('stock_quantity, inventory_options')
+          .eq('id', movement.product_id)
+          .single()
+
+        let currentStock = 0
+        if (currentProduct) {
+          if (movement.color && movement.size && currentProduct.inventory_options) {
+            // 옵션별 재고 조회
+            const option = currentProduct.inventory_options.find(
+              (opt: any) => opt.color === movement.color && opt.size === movement.size
+            )
+            currentStock = option?.stock_quantity || 0
+          } else {
+            // 전체 재고 조회
+            currentStock = currentProduct.stock_quantity || 0
+          }
+        }
+
         const enrichedMovement = {
           ...movement,
           product_name: movement.products?.name || '알 수 없음',
           product_code: movement.products?.code || '',
           quantity: Math.abs(movement.quantity), // 절댓값으로 표시
+          stock_quantity: currentStock, // 현재 재고 수량 (입고/출고 후 수량)
         }
 
         // 참조 타입에 따른 추가 정보 조회

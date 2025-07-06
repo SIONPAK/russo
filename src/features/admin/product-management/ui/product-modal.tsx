@@ -48,6 +48,7 @@ interface InventoryOption {
   color: string
   size: string
   stock_quantity: number
+  additional_price?: number
 }
 
 export function ProductModal({ isOpen, onClose, onSave, product, categories }: ProductModalProps) {
@@ -76,7 +77,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
 
   // 재고 관리 상태
   const [inventoryOptions, setInventoryOptions] = useState<InventoryOption[]>([])
-  const [newOption, setNewOption] = useState({ color: '', size: '', stock_quantity: 0 })
+  const [newOption, setNewOption] = useState({ color: '', size: '', stock_quantity: 0, additional_price: 0 })
 
   // 해시태그 입력 상태
   const [hashtagInput, setHashtagInput] = useState('')
@@ -85,6 +86,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
   const [bulkColorInput, setBulkColorInput] = useState('')
   const [bulkSizeInput, setBulkSizeInput] = useState('')
   const [bulkStockQuantity, setBulkStockQuantity] = useState(0)
+  const [bulkAdditionalPrice, setBulkAdditionalPrice] = useState(0)
 
   // 상품 데이터로 폼 초기화
   useEffect(() => {
@@ -155,7 +157,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
       setImages([])
       setInventoryOptions([])
     }
-    setNewOption({ color: '', size: '', stock_quantity: 0 })
+    setNewOption({ color: '', size: '', stock_quantity: 0, additional_price: 0 })
   }, [product, isOpen])
 
   const handleInputChange = (field: string, value: any) => {
@@ -240,7 +242,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
     }
 
     setInventoryOptions(prev => [...prev, { ...newOption }])
-    setNewOption({ color: '', size: '', stock_quantity: 0 })
+    setNewOption({ color: '', size: '', stock_quantity: 0, additional_price: 0 })
   }
 
   // 일괄 옵션 생성 함수
@@ -272,7 +274,8 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
           newOptions.push({
             color,
             size,
-            stock_quantity: bulkStockQuantity
+            stock_quantity: bulkStockQuantity,
+            additional_price: bulkAdditionalPrice
           })
         }
       })
@@ -290,6 +293,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
     setBulkColorInput('')
     setBulkSizeInput('')
     setBulkStockQuantity(0)
+    setBulkAdditionalPrice(0)
 
     alert(`${newOptions.length}개의 옵션이 생성되었습니다.`)
   }
@@ -559,7 +563,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                 <p className="text-sm text-gray-600 mb-3">
                   콤마(,)로 구분하여 입력하면 모든 조합이 자동으로 생성됩니다.
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       색상 (콤마로 구분)
@@ -595,6 +599,19 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                       className="border-blue-300 focus:border-blue-500"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      추가 가격 (원)
+                    </label>
+                    <Input
+                      type="number"
+                      value={bulkAdditionalPrice}
+                      onChange={(e) => setBulkAdditionalPrice(parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                      min="0"
+                      className="border-blue-300 focus:border-blue-500"
+                    />
+                  </div>
                   <div className="flex items-end">
                     <Button
                       type="button"
@@ -609,12 +626,14 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                   예시: 색상 "블랙,백메란지,그레이", 사이즈 "FREE" → 3개 옵션 생성
                   <br />
                   예시: 색상 "블랙,백메란지", 사이즈 "1번,2번" → 4개 옵션 생성
+                  <br />
+                  <strong>추가 가격:</strong> 3XL, 4XL 등 특정 사이즈의 추가 금액 (예: 500원, 1000원)
                 </div>
               </div>
 
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h4 className="text-md font-medium text-gray-900 mb-3">개별 옵션 추가</h4>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       색상
@@ -647,6 +666,18 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                       min="0"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      추가 가격 (원)
+                    </label>
+                    <Input
+                      type="number"
+                      value={newOption.additional_price || 0}
+                      onChange={(e) => setNewOption(prev => ({ ...prev, additional_price: parseInt(e.target.value) || 0 }))}
+                      placeholder="0"
+                      min="0"
+                    />
+                  </div>
                   <div className="flex items-end">
                     <Button
                       type="button"
@@ -672,6 +703,9 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                         </th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           수량
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          추가 가격 (원)
                         </th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           액션
@@ -700,6 +734,15 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                               type="number"
                               value={option.stock_quantity}
                               onChange={(e) => updateInventoryOption(index, 'stock_quantity', parseInt(e.target.value) || 0)}
+                              className="text-sm"
+                              min="0"
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <Input
+                              type="number"
+                              value={option.additional_price || 0}
+                              onChange={(e) => updateInventoryOption(index, 'additional_price', parseInt(e.target.value) || 0)}
                               className="text-sm"
                               min="0"
                             />

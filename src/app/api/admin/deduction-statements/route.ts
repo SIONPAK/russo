@@ -7,38 +7,20 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     
-    const yearMonth = searchParams.get('yearMonth') || new Date().toISOString().slice(0, 7)
+    const startDate = searchParams.get('startDate') || new Date().toISOString().slice(0, 10)
+    const endDate = searchParams.get('endDate') || new Date().toISOString().slice(0, 10)
     const companyName = searchParams.get('companyName')
     const deductionType = searchParams.get('deductionType')
     const status = searchParams.get('status')
 
-    // 월단위 조회를 위한 시작일/종료일 계산
-    const [year, month] = yearMonth.split('-').map(Number)
-    const startDate = `${year}-${month.toString().padStart(2, '0')}-01`
-    const endDate = `${year}-${month.toString().padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
-
     let query = supabase
       .from('deduction_statements')
-      .select(`
-        *,
-        orders!deduction_statements_order_id_fkey (
-          order_number,
-          users!orders_user_id_fkey (
-            company_name,
-            customer_grade
-          )
-        )
-      `)
+      .select('*')
       .order('created_at', { ascending: false })
 
-    // 월단위 날짜 필터
+    // 날짜 필터
     query = query.gte('created_at', startDate + 'T00:00:00+09:00')
     query = query.lte('created_at', endDate + 'T23:59:59+09:00')
-
-    // 회사명 필터
-    if (companyName) {
-      query = query.ilike('orders.users.company_name', `%${companyName}%`)
-    }
 
     // 차감 유형 필터
     if (deductionType && deductionType !== 'all') {
@@ -60,14 +42,35 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 데이터 변환
-    const statements = data?.map(statement => ({
+    // 회사명으로 필터링 (클라이언트 사이드)
+    let statements = data || []
+    if (companyName) {
+      statements = statements.filter(statement => {
+        // company_name 필드가 있는 경우 직접 검색
+        if (statement.company_name) {
+          return statement.company_name.toLowerCase().includes(companyName.toLowerCase())
+        }
+        return false
+      })
+    }
+
+    // 회사 정보 추가 조회 (customer_grade를 위해)
+    const companyNames = [...new Set(statements.map(s => s.company_name).filter(Boolean))]
+    const { data: companies } = await supabase
+      .from('users')
+      .select('company_name, customer_grade')
+      .in('company_name', companyNames)
+
+    const companyGradeMap = new Map(
+      companies?.map(c => [c.company_name, c.customer_grade]) || []
+    )
+
+    // 데이터 변환 (주문번호 제거)
+    const transformedStatements = statements.map(statement => ({
       id: statement.id,
       statement_number: statement.statement_number,
-      order_id: statement.order_id,
-      order_number: statement.orders?.order_number || '',
-      company_name: statement.orders?.users?.company_name || '',
-      customer_grade: statement.orders?.users?.customer_grade || 'BRONZE',
+      company_name: statement.company_name || '',
+      customer_grade: companyGradeMap.get(statement.company_name) || 'BRONZE',
       deduction_reason: statement.deduction_reason,
       deduction_type: statement.deduction_type,
       created_at: statement.created_at,
@@ -79,11 +82,11 @@ export async function GET(request: NextRequest) {
       total_amount: statement.total_amount,
       email_sent: statement.email_sent,
       email_sent_at: statement.email_sent_at
-    })) || []
+    }))
 
     return NextResponse.json({
       success: true,
-      data: statements
+      data: transformedStatements
     })
 
   } catch (error) {
@@ -102,41 +105,34 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     
     const {
-      orderId,
+      company_name,
       deductionReason,
       deductionType,
       items
     } = body
 
-    console.log('Received data:', { orderId, deductionReason, deductionType, items })
+    console.log('Received data:', { company_name, deductionReason, deductionType, items })
 
     // 입력 데이터 검증
-    if (!orderId || !deductionReason || !deductionType || !items || items.length === 0) {
+    if (!company_name || !deductionReason || !deductionType || !items || items.length === 0) {
       return NextResponse.json({
         success: false,
         error: '필수 정보가 누락되었습니다.'
       }, { status: 400 })
     }
 
-    // 주문 정보 확인
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        users!orders_user_id_fkey (
-          company_name,
-          customer_grade,
-          mileage_balance
-        )
-      `)
-      .eq('id', orderId)
+    // 회사 정보 확인
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id, company_name, customer_grade, mileage_balance')
+      .eq('company_name', company_name)
       .single()
 
-    if (orderError || !order) {
-      console.error('Order fetch error:', orderError)
+    if (userError || !user) {
+      console.error('User fetch error:', userError)
       return NextResponse.json({
         success: false,
-        error: '주문을 찾을 수 없습니다.'
+        error: '회사를 찾을 수 없습니다.'
       }, { status: 404 })
     }
 
@@ -150,24 +146,25 @@ export async function POST(request: NextRequest) {
 
     // 명세서 번호 생성
     const today = new Date()
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
+    const koreaTime = new Date(today.getTime() + (9 * 60 * 60 * 1000))
+    const dateStr = koreaTime.toISOString().slice(0, 10).replace(/-/g, '')
     
     // 당일 차감명세서 개수 조회
     const { count } = await supabase
       .from('deduction_statements')
       .select('*', { count: 'exact', head: true })
-      .gte('created_at', `${today.toISOString().slice(0, 10)}T00:00:00`)
-      .lt('created_at', `${today.toISOString().slice(0, 10)}T23:59:59`)
+      .gte('created_at', `${koreaTime.toISOString().slice(0, 10)}T00:00:00+09:00`)
+      .lt('created_at', `${koreaTime.toISOString().slice(0, 10)}T23:59:59+09:00`)
 
     const sequence = String((count || 0) + 1).padStart(4, '0')
     const statement_number = `DS-${dateStr}-${sequence}`
 
-    // 차감명세서 생성
+    // 차감명세서 생성 (company_name 직접 저장)
     const { data: statement, error: statementError } = await supabase
       .from('deduction_statements')
       .insert({
         statement_number,
-        order_id: orderId,
+        company_name,
         deduction_reason: deductionReason,
         deduction_type: deductionType,
         items,
@@ -175,7 +172,9 @@ export async function POST(request: NextRequest) {
         mileage_amount,
         status: 'pending',
         mileage_deducted: false,
-        email_sent: false
+        email_sent: false,
+        created_at: koreaTime.toISOString(),
+        updated_at: koreaTime.toISOString()
       })
       .select()
       .single()

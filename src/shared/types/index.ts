@@ -61,6 +61,7 @@ export interface InventoryOption {
   color: string
   size: string
   stock_quantity: number
+  additional_price?: number // 옵션별 추가 가격 (3XL, 4XL 등)
 }
 
 // 상품 관련 타입

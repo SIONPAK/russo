@@ -34,6 +34,7 @@ interface InventoryOption {
   color: string
   size: string
   stock_quantity: number
+  additional_price?: number
 }
 
 interface Product {
@@ -921,6 +922,9 @@ export function InventoryPage() {
                           단가
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          추가가격
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           재고가치
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -967,7 +971,10 @@ export function InventoryPage() {
                                 </td>
                               )}
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                                {formatCurrency((option.stock_quantity || 0) * product.price)}
+                                {option.additional_price ? formatCurrency(option.additional_price) : '-'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                                {formatCurrency((option.stock_quantity || 0) * (product.price + (option.additional_price || 0)))}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                                 <Button 
@@ -1021,6 +1028,9 @@ export function InventoryPage() {
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 {formatCurrency(product.price)}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                                -
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                                 {formatCurrency(product.stock_quantity * product.price)}
@@ -1104,6 +1114,9 @@ export function InventoryPage() {
                             입고수량
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            입고 후 수량
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             입고유형
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1129,6 +1142,11 @@ export function InventoryPage() {
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className="text-sm font-medium text-green-600">
                                 +{item.quantity}개
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm font-medium text-green-600">
+                                {item.stock_quantity}개
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -1198,6 +1216,9 @@ export function InventoryPage() {
                             출고수량
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            출고 후 수량
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             출고유형
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1223,6 +1244,11 @@ export function InventoryPage() {
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className="text-sm font-medium text-red-600">
                                 -{Math.abs(item.quantity)}개
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm font-medium text-green-600">
+                                {item.stock_quantity}개
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">

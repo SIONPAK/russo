@@ -14,27 +14,10 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 차감 명세서 정보 조회 (orders를 통해 users 정보 접근)
+    // 차감 명세서 정보 조회
     const { data: statements, error: statementsError } = await supabase
       .from('deduction_statements')
-      .select(`
-        id,
-        statement_number,
-        order_id,
-        total_amount,
-        mileage_amount,
-        status,
-        mileage_deducted,
-        orders!deduction_statements_order_id_fkey (
-          user_id,
-          order_number,
-          users!orders_user_id_fkey (
-            id,
-            company_name,
-            mileage_balance
-          )
-        )
-      `)
+      .select('id, statement_number, company_name, total_amount, mileage_amount, status, mileage_deducted')
       .in('id', statementIds)
       .eq('status', 'pending')
 
@@ -65,33 +48,38 @@ export async function PATCH(request: NextRequest) {
           continue
         }
 
-        const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
-        if (!order || !order.users) {
-          errors.push(`${statement.statement_number}: 주문 또는 사용자 정보 없음`)
+        if (!statement.company_name) {
+          errors.push(`${statement.statement_number}: 회사명 정보 없음`)
           continue
         }
 
-        const user = Array.isArray(order.users) ? order.users[0] : order.users
-        if (!user) {
+        // 회사명으로 사용자 정보 조회
+        const { data: user, error: userError } = await supabase
+          .from('users')
+          .select('id, company_name, mileage_balance')
+          .eq('company_name', statement.company_name)
+          .single()
+
+        if (userError || !user) {
+          console.error('사용자 조회 오류:', userError)
           errors.push(`${statement.statement_number}: 사용자 정보 없음`)
           continue
         }
 
         const currentMileage = user.mileage_balance || 0
         const deductionAmount = statement.mileage_amount || statement.total_amount
-        const newMileage = Math.max(0, currentMileage - deductionAmount)
+        const newMileage = currentMileage - deductionAmount // 음수 허용
 
         // 1. 마일리지 차감 기록을 mileage 테이블에 추가
         const { error: mileageRecordError } = await supabase
           .from('mileage')
           .insert({
-            user_id: order.user_id,
-            amount: deductionAmount,
+            user_id: user.id,
+            amount: -deductionAmount, // 차감이므로 음수
             type: 'spend',
             source: 'manual',
             description: `차감 명세서 처리 - ${statement.statement_number}`,
             status: 'completed',
-            order_id: statement.order_id,
             created_at: new Date().toISOString()
           })
 
@@ -108,7 +96,7 @@ export async function PATCH(request: NextRequest) {
             mileage_balance: newMileage,
             updated_at: new Date().toISOString()
           })
-          .eq('id', order.user_id)
+          .eq('id', user.id)
 
         if (mileageError) {
           console.error('마일리지 차감 오류:', mileageError)

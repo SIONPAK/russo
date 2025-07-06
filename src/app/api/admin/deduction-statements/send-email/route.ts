@@ -22,12 +22,7 @@ export async function POST(request: NextRequest) {
       .select(`
         *,
         orders!deduction_statements_order_id_fkey (
-          order_number,
-          users!orders_user_id_fkey (
-            email,
-            company_name,
-            representative_name
-          )
+          order_number
         )
       `)
       .in('id', statementIds)
@@ -46,9 +41,25 @@ export async function POST(request: NextRequest) {
     // 각 차감명세서에 대해 이메일 발송
     for (const statement of statements) {
       try {
-        const userEmail = statement.orders.users.email
-        const companyName = statement.orders.users.company_name
-        const representativeName = statement.orders.users.representative_name
+        // company_name으로 users 테이블에서 사용자 정보 조회
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('email, company_name, representative_name')
+          .eq('company_name', statement.company_name)
+          .single()
+
+        if (userError || !userData) {
+          console.error('User fetch error:', userError)
+          failedStatements.push({
+            id: statement.id,
+            reason: '사용자 정보를 찾을 수 없습니다.'
+          })
+          continue
+        }
+
+        const userEmail = userData.email
+        const companyName = userData.company_name
+        const representativeName = userData.representative_name
 
         if (!userEmail) {
           failedStatements.push({
@@ -86,7 +97,6 @@ export async function POST(request: NextRequest) {
               <h3 style="margin-top: 0; color: #495057;">차감명세서 정보</h3>
               <ul style="list-style: none; padding: 0;">
                 <li><strong>명세서 번호:</strong> ${statement.statement_number}</li>
-                <li><strong>주문 번호:</strong> ${statement.orders.order_number}</li>
                 <li><strong>차감 유형:</strong> ${getDeductionTypeText(statement.deduction_type)}</li>
                 <li><strong>차감 사유:</strong> ${statement.deduction_reason}</li>
                 <li><strong>차감 금액:</strong> ${statement.total_amount.toLocaleString()}원</li>

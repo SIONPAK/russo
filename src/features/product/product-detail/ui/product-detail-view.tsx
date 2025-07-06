@@ -193,14 +193,27 @@ export function ProductDetailView({ product }: ProductDetailViewProps) {
                 <div>
                   <h3 className="text-sm font-medium text-gray-900 mb-2">사이즈</h3>
                   <div className="flex flex-wrap gap-2">
-                    {[...new Set(product.inventory_options.map((opt: any) => opt.size))].map((size) => (
-                      <div
-                        key={size as string}
-                        className="px-4 py-2 rounded-lg border border-gray-300 bg-gray-50 text-gray-700"
-                      >
-                        {size as string}
-                      </div>
-                    ))}
+                    {[...new Set(product.inventory_options.map((opt: any) => opt.size))].map((size) => {
+                      // 해당 사이즈의 추가 가격 찾기
+                      const optionWithSize = product.inventory_options.find((opt: any) => opt.size === size)
+                      const additionalPrice = optionWithSize?.additional_price || 0
+                      
+                      return (
+                        <div
+                          key={size as string}
+                          className="px-4 py-2 rounded-lg border border-gray-300 bg-gray-50 text-gray-700"
+                        >
+                          <div className="flex flex-col items-center">
+                            <span>{size as string}</span>
+                            {additionalPrice > 0 && (
+                              <span className="text-xs text-red-600 font-medium">
+                                +{additionalPrice.toLocaleString()}원
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
