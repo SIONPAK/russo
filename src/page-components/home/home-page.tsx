@@ -148,8 +148,8 @@ export function HomePage() {
       <section className="bg-gray-50 py-16">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-paperlogy-bold mb-4 text-black">상품 갤러리</h2>
-            <p className="text-gray-600 font-paperlogy-regular">루소의 다양한 상품들을 만나보세요</p>
+            <h2 className="text-3xl font-paperlogy-bold mb-4 text-black">Products</h2>
+            
           </div>
           
           {/* 상품 그리드 */}
