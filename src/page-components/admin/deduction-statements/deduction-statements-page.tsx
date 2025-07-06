@@ -1183,11 +1183,12 @@ function DeductionStatementCreateModal({
                   <div className="space-y-4">
                     {productSearchResults.map((product) => {
                       // 색상과 사이즈 옵션 추출
-                      const colors: string[] = product.inventory_options 
-                        ? [...new Set(product.inventory_options.map((opt: any) => opt.color).filter(Boolean).map(String))]
+                      const inventoryOptions = product.inventory_options as any[] || []
+                      const colors: string[] = inventoryOptions.length > 0
+                        ? [...new Set(inventoryOptions.map((opt: any) => opt.color).filter(Boolean).map(String))]
                         : ['기본']
-                      const sizes: string[] = product.inventory_options 
-                        ? [...new Set(product.inventory_options.map((opt: any) => opt.size).filter(Boolean).map(String))]
+                      const sizes: string[] = inventoryOptions.length > 0
+                        ? [...new Set(inventoryOptions.map((opt: any) => opt.size).filter(Boolean).map(String))]
                         : ['FREE']
                       
                       return (
