@@ -58,12 +58,30 @@ export async function GET(request: NextRequest) {
 
     // 검색 조건
     if (search) {
-      query = query.or(
-        `order_number.ilike.%${search}%,` +
-        `users.company_name.ilike.%${search}%,` +
-        `users.representative_name.ilike.%${search}%,` +
-        `shipping_name.ilike.%${search}%`
-      )
+      // 1단계: 사용자 테이블에서 회사명/대표자명으로 검색
+      const { data: matchingUsers } = await supabase
+        .from('users')
+        .select('id')
+        .or(`company_name.ilike.%${search}%,representative_name.ilike.%${search}%`)
+      
+      const matchingUserIds = matchingUsers?.map(u => u.id) || []
+      
+      // 2단계: 주문 테이블에서 검색 조건 구성
+      const searchConditions = []
+      
+      // 주문번호로 검색
+      searchConditions.push(`order_number.ilike.%${search}%`)
+      
+      // 배송자명으로 검색
+      searchConditions.push(`shipping_name.ilike.%${search}%`)
+      
+      // 사용자 ID가 있으면 추가
+      if (matchingUserIds.length > 0) {
+        query = query.in('user_id', matchingUserIds)
+      } else {
+        // 사용자가 없으면 주문번호나 배송자명으로만 검색
+        query = query.or(searchConditions.join(','))
+      }
     }
 
     // 상태 필터

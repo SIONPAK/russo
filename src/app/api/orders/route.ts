@@ -223,12 +223,8 @@ export async function POST(request: NextRequest) {
     const totalQuantity = items.reduce((sum: number, item: any) => sum + item.quantity, 0)
     
     // 일반 주문: 20장 이상 무료배송
-    let finalTotalAmount = totalAmount
-    let finalShippingFee = shippingFee || 3000
-    
-    if (totalQuantity >= 20) {
-      finalShippingFee = 0
-    }
+    let finalShippingFee = totalQuantity >= 20 ? 0 : 3000
+    let finalTotalAmount = totalAmount + finalShippingFee
 
     // 재고 확인 및 차감
     for (const item of items) {
@@ -417,6 +413,21 @@ export async function POST(request: NextRequest) {
       total_price: item.totalPrice,
       options: item.options || null
     }))
+
+    // 배송비가 있는 경우 배송비 아이템 추가
+    if (finalShippingFee > 0) {
+      orderItems.push({
+        order_id: order.id,
+        product_id: null,
+        product_name: '배송비',
+        color: '-',
+        size: '-',
+        quantity: 1,
+        unit_price: finalShippingFee,
+        total_price: finalShippingFee,
+        options: null
+      })
+    }
 
     const { error: itemsError } = await supabase
       .from('order_items')

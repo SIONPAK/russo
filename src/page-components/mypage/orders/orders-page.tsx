@@ -440,40 +440,30 @@ export function OrdersPage() {
         return
       }
 
-      // 20장 이상 무료배송 확인
-      const totalShippedQuantity = shippedItems.reduce((sum, item) => sum + (item.shipped_quantity || 0), 0)
-      const actualShippingFee = totalShippedQuantity >= 20 ? 0 : (order.shipping_fee || 0)
+      // 거래명세서 다운로드 API 호출
+      const response = await fetch(`/api/admin/orders/${orderId}/statement`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
 
-      // 영수증 데이터 구성 (실제 출고 수량 기준)
-      const receiptData: ReceiptData = {
-        orderNumber: order.order_number,
-        orderDate: formatDate(order.created_at),
-        customerName: (user as any)?.company_name || order.shipping_name,
-        customerPhone: order.shipping_phone,
-        shippingName: order.shipping_name,
-        shippingPhone: order.shipping_phone,
-        shippingAddress: order.shipping_address,
-        shippingPostalCode: order.shipping_postal_code,
-        items: shippedItems.map((item: any) => ({
-          productName: item.product_name,
-          productCode: item.product_code || item.product_id,
-          quantity: item.shipped_quantity || 0, // 실제 출고 수량 사용
-          unitPrice: item.unit_price,
-          totalPrice: item.unit_price * (item.shipped_quantity || 0), // 출고 수량 기준 총액
-          options: `${item.color || ''} ${item.size || ''}`.trim()
-        })),
-        subtotal: shippedItems.reduce((sum, item) => sum + (item.unit_price * (item.shipped_quantity || 0)), 0),
-        shippingFee: actualShippingFee,
-        totalAmount: shippedItems.reduce((sum, item) => sum + (item.unit_price * (item.shipped_quantity || 0)), 0) + actualShippingFee,
-        notes: order.notes
+      if (!response.ok) {
+        throw new Error('거래명세서 생성 실패')
       }
 
-      const success = await generateReceipt(receiptData)
-      if (success) {
-        showSuccess('거래명세서가 다운로드되었습니다.')
-      } else {
-        showError('거래명세서 다운로드에 실패했습니다.')
-      }
+      // 파일 다운로드 처리
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `lusso_receipt_${order.order_number}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      showSuccess('거래명세서가 다운로드되었습니다.')
     } catch (error) {
       console.error('거래명세서 발급 실패:', error)
       showError('거래명세서 발급에 실패했습니다.')

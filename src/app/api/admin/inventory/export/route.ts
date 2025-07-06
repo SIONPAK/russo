@@ -16,14 +16,10 @@ export async function GET(request: NextRequest) {
         name,
         code,
         price,
-        category:categories(name),
-        inventory:inventory(
-          color,
-          size,
-          quantity,
-          reserved_quantity,
-          updated_at
-        )
+        stock_quantity,
+        inventory_options,
+        updated_at,
+        category:category_menus(name)
       `)
       .order('name')
 
@@ -40,30 +36,31 @@ export async function GET(request: NextRequest) {
     let rowIndex = 1
 
     products.forEach(product => {
-      if (product.inventory && product.inventory.length > 0) {
+      if (product.inventory_options && Array.isArray(product.inventory_options) && product.inventory_options.length > 0) {
         // 옵션별 재고가 있는 경우
-        product.inventory.forEach((inv: any) => {
-          const availableStock = inv.quantity - (inv.reserved_quantity || 0)
-          const stockValue = availableStock * product.price
+        product.inventory_options.forEach((option: any) => {
+          const stockQuantity = option.stock_quantity || 0
+          const stockValue = stockQuantity * product.price
           
           excelData.push({
             '번호': rowIndex++,
             '상품코드': product.code,
             '상품명': product.name,
             '카테고리': (product.category as any)?.name || '',
-            '색상': inv.color,
-            '사이즈': inv.size,
-            '총재고': inv.quantity,
-            '예약재고': inv.reserved_quantity || 0,
-            '가용재고': availableStock,
+            '색상': option.color,
+            '사이즈': option.size,
+            '재고수량': stockQuantity,
             '단가': product.price,
             '재고금액': stockValue,
-            '재고상태': availableStock === 0 ? '품절' : availableStock <= 10 ? '부족' : '정상',
-            '최종업데이트': inv.updated_at ? new Date(inv.updated_at).toLocaleDateString('ko-KR') : ''
+            '재고상태': stockQuantity === 0 ? '품절' : stockQuantity <= 10 ? '부족' : '정상',
+            '최종업데이트': product.updated_at ? new Date(product.updated_at).toLocaleDateString('ko-KR') : ''
           })
         })
       } else {
-        // 단일 재고인 경우 (기본값 0)
+        // 단일 재고인 경우
+        const stockQuantity = product.stock_quantity || 0
+        const stockValue = stockQuantity * product.price
+        
         excelData.push({
           '번호': rowIndex++,
           '상품코드': product.code,
@@ -71,13 +68,11 @@ export async function GET(request: NextRequest) {
           '카테고리': (product.category as any)?.name || '',
           '색상': '-',
           '사이즈': '-',
-          '총재고': 0,
-          '예약재고': 0,
-          '가용재고': 0,
+          '재고수량': stockQuantity,
           '단가': product.price,
-          '재고금액': 0,
-          '재고상태': '품절',
-          '최종업데이트': ''
+          '재고금액': stockValue,
+          '재고상태': stockQuantity === 0 ? '품절' : stockQuantity <= 10 ? '부족' : '정상',
+          '최종업데이트': product.updated_at ? new Date(product.updated_at).toLocaleDateString('ko-KR') : ''
         })
       }
     })
@@ -94,9 +89,7 @@ export async function GET(request: NextRequest) {
       { wch: 12 },  // 카테고리
       { wch: 10 },  // 색상
       { wch: 10 },  // 사이즈
-      { wch: 8 },   // 총재고
-      { wch: 8 },   // 예약재고
-      { wch: 8 },   // 가용재고
+      { wch: 10 },  // 재고수량
       { wch: 10 },  // 단가
       { wch: 12 },  // 재고금액
       { wch: 8 },   // 재고상태

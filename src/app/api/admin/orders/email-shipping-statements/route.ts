@@ -294,7 +294,7 @@ async function generateReceiptExcel(order: any, shippedItems: any[]): Promise<Bu
     const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => 
       sum + item.shipped_quantity, 0
     )
-    const actualShippingFee = totalShippedQuantity >= 20 ? 0 : (order.shipping_fee || 0)
+    const actualShippingFee = totalShippedQuantity >= 20 ? 0 : 3000
     
     // 총 금액 계산
     const totalAmount = shippedItems.reduce((sum: number, item: any) => 
@@ -324,10 +324,24 @@ async function generateReceiptExcel(order: any, shippedItems: any[]): Promise<Bu
     worksheet['C3'] = { t: 's', v: new Date().toLocaleDateString('ko-KR') }
     worksheet['C4'] = { t: 's', v: order.users.company_name || order.shipping_name }
     
+    // 배송비 항목 추가 (20장 미만일 때)
+    const itemsWithShipping = [...groupedItems]
+    if (actualShippingFee > 0) {
+      itemsWithShipping.push({
+        productName: '배송비',
+        color: '-',
+        totalQuantity: 1,
+        unitPrice: actualShippingFee,
+        totalPrice: actualShippingFee,
+        supplyAmount: actualShippingFee,
+        taxAmount: 0
+      })
+    }
+
     // 합계금액 (공급가액 + 세액)
-    const totalSupplyAmount = groupedItems.reduce((sum, item) => sum + item.supplyAmount, 0)
-    const totalTaxAmount = groupedItems.reduce((sum, item) => sum + item.taxAmount, 0)
-    const finalTotalAmount = totalSupplyAmount + totalTaxAmount + actualShippingFee
+    const totalSupplyAmount = itemsWithShipping.reduce((sum, item) => sum + item.supplyAmount, 0)
+    const totalTaxAmount = itemsWithShipping.reduce((sum, item) => sum + item.taxAmount, 0)
+    const finalTotalAmount = totalSupplyAmount + totalTaxAmount
     
     const totalAmountKorean = numberToKorean(finalTotalAmount)
     const totalAmountFormatted = finalTotalAmount.toLocaleString()
@@ -352,8 +366,8 @@ async function generateReceiptExcel(order: any, shippedItems: any[]): Promise<Bu
     for (let i = 0; i < 10; i++) {
       const row = 12 + i
       
-      if (i < groupedItems.length) {
-        const item = groupedItems[i]
+      if (i < itemsWithShipping.length) {
+        const item = itemsWithShipping[i]
         
         // 품명 (C열)
         worksheet[`C${row}`] = { 

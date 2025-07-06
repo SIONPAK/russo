@@ -13,16 +13,18 @@ import {
   Eye, 
   EyeOff,
   Image as ImageIcon,
-  Trash2
+  Trash2,
+  Package,
+  Plus,
+  Upload
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import { showSuccess, showError } from '@/shared/lib/toast'
 
 // TinyMCE 에디터를 동적으로 로드 (SSR 방지)
 const Editor = dynamic(() => import('@tinymce/tinymce-react').then(mod => ({ default: mod.Editor })), {
   ssr: false,
-  loading: () => <div className="h-32 bg-gray-100 animate-pulse rounded-lg flex items-center justify-center">
-    <span className="text-gray-500">에디터 로딩 중...</span>
-  </div>
+  loading: () => <div className="border border-gray-300 rounded-lg p-4 text-center">에디터 로딩 중...</div>
 })
 
 interface ProductModalProps {
@@ -78,6 +80,11 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
 
   // 해시태그 입력 상태
   const [hashtagInput, setHashtagInput] = useState('')
+
+  // 일괄 옵션 생성 상태
+  const [bulkColorInput, setBulkColorInput] = useState('')
+  const [bulkSizeInput, setBulkSizeInput] = useState('')
+  const [bulkStockQuantity, setBulkStockQuantity] = useState(0)
 
   // 상품 데이터로 폼 초기화
   useEffect(() => {
@@ -158,9 +165,9 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
   const handleImageUpload = async (files: File[]) => {
     if (files.length === 0) return
 
-    // 현재 이미지 개수 + 새로 업로드할 이미지 개수가 4개를 초과하는지 확인
-    if (images.length + files.length > 4) {
-      alert(`최대 4개의 이미지만 업로드할 수 있습니다. (현재: ${images.length}개)`)
+    // 현재 이미지 개수 + 새로 업로드할 이미지 개수가 10개를 초과하는지 확인
+    if (images.length + files.length > 10) {
+      alert(`최대 10개의 이미지만 업로드할 수 있습니다. (현재: ${images.length}개)`)
       return
     }
 
@@ -234,6 +241,57 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
 
     setInventoryOptions(prev => [...prev, { ...newOption }])
     setNewOption({ color: '', size: '', stock_quantity: 0 })
+  }
+
+  // 일괄 옵션 생성 함수
+  const generateBulkOptions = () => {
+    if (!bulkColorInput.trim() || !bulkSizeInput.trim()) {
+      alert('색상과 사이즈를 모두 입력해주세요.')
+      return
+    }
+
+    // 콤마로 구분하여 배열로 변환
+    const colors = bulkColorInput.split(',').map(c => c.trim()).filter(c => c.length > 0)
+    const sizes = bulkSizeInput.split(',').map(s => s.trim()).filter(s => s.length > 0)
+
+    if (colors.length === 0 || sizes.length === 0) {
+      alert('유효한 색상과 사이즈를 입력해주세요.')
+      return
+    }
+
+    // 모든 조합 생성
+    const newOptions: InventoryOption[] = []
+    colors.forEach(color => {
+      sizes.forEach(size => {
+        // 중복 체크
+        const exists = inventoryOptions.some(
+          opt => opt.color === color && opt.size === size
+        )
+        
+        if (!exists) {
+          newOptions.push({
+            color,
+            size,
+            stock_quantity: bulkStockQuantity
+          })
+        }
+      })
+    })
+
+    if (newOptions.length === 0) {
+      alert('생성할 새로운 옵션이 없습니다. (모든 조합이 이미 존재)')
+      return
+    }
+
+    // 기존 옵션에 추가
+    setInventoryOptions(prev => [...prev, ...newOptions])
+    
+    // 입력 필드 초기화
+    setBulkColorInput('')
+    setBulkSizeInput('')
+    setBulkStockQuantity(0)
+
+    alert(`${newOptions.length}개의 옵션이 생성되었습니다.`)
   }
 
   const removeInventoryOption = (index: number) => {
@@ -415,10 +473,11 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                 <Input
                   type="number"
                   value={formData.price}
-                  onChange={(e) => handleInputChange('price', Number(e.target.value))}
+                  onChange={(e) => handleInputChange('price', parseInt(e.target.value) || 0)}
                   placeholder="0"
                   className="h-12"
                   min="0"
+                  step="1"
                   required
                 />
               </div>
@@ -430,10 +489,11 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                 <Input
                   type="number"
                   value={formData.sale_price}
-                  onChange={(e) => handleInputChange('sale_price', Number(e.target.value))}
+                  onChange={(e) => handleInputChange('sale_price', parseInt(e.target.value) || 0)}
                   placeholder="0"
                   className="h-12"
                   min="0"
+                  step="1"
                 />
               </div>
             </div>
@@ -490,8 +550,70 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
             
             {/* 옵션별 재고 관리 */}
             <div className="space-y-4">
+              {/* 일괄 옵션 생성 */}
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center">
+                  <Package className="w-5 h-5 mr-2 text-blue-600" />
+                  일괄 옵션 생성
+                </h4>
+                <p className="text-sm text-gray-600 mb-3">
+                  콤마(,)로 구분하여 입력하면 모든 조합이 자동으로 생성됩니다.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      색상 (콤마로 구분)
+                    </label>
+                    <Input
+                      value={bulkColorInput}
+                      onChange={(e) => setBulkColorInput(e.target.value)}
+                      placeholder="예: 블랙,백메란지,그레이"
+                      className="border-blue-300 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      사이즈 (콤마로 구분)
+                    </label>
+                    <Input
+                      value={bulkSizeInput}
+                      onChange={(e) => setBulkSizeInput(e.target.value)}
+                      placeholder="예: FREE 또는 1번,2번"
+                      className="border-blue-300 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      기본 재고 수량
+                    </label>
+                    <Input
+                      type="number"
+                      value={bulkStockQuantity}
+                      onChange={(e) => setBulkStockQuantity(parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                      min="0"
+                      className="border-blue-300 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      onClick={generateBulkOptions}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
+                      자동 생성
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-gray-500">
+                  예시: 색상 "블랙,백메란지,그레이", 사이즈 "FREE" → 3개 옵션 생성
+                  <br />
+                  예시: 색상 "블랙,백메란지", 사이즈 "1번,2번" → 4개 옵션 생성
+                </div>
+              </div>
+
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="text-md font-medium text-gray-900 mb-3">새 옵션 추가</h4>
+                <h4 className="text-md font-medium text-gray-900 mb-3">개별 옵션 추가</h4>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -500,7 +622,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                     <Input
                       value={newOption.color}
                       onChange={(e) => setNewOption(prev => ({ ...prev, color: e.target.value }))}
-                      placeholder="예: 503 블랙, 503-1 카키그레이"
+                      placeholder="예: 503 블랙"
                     />
                   </div>
                   <div>
@@ -604,10 +726,10 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
 
           {/* 상품 이미지 */}
           <div className="border border-gray-200 rounded-xl p-6 space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">상품 이미지 (최대 4개)</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">상품 이미지 (최대 10개)</h3>
             
             {/* 이미지 업로드 영역 */}
-            {images.length < 4 && (
+            {images.length < 10 && (
               <div className="mb-4">
                 <div 
                   className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer"
@@ -615,7 +737,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                 >
                   <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-600 mb-2">이미지를 드래그하거나 클릭하여 업로드</p>
-                  <p className="text-sm text-gray-500">JPG, PNG, WebP (최대 5MB, {4 - images.length}개 추가 가능)</p>
+                  <p className="text-sm text-gray-500">JPG, PNG, WebP (최대 5MB, {10 - images.length}개 추가 가능)</p>
                   <input
                     id="image-upload"
                     type="file"
@@ -720,35 +842,30 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
             </div>
           </div>
 
-          {/* 상세 설명 (TinyMCE 에디터) */}
-          <div className="border border-gray-200 rounded-xl p-6 space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">상세 설명 (에디터)</h3>
-            <div className="border border-gray-300 rounded-lg">
-              <Editor
-                apiKey="0t68kcm68pz2n5zz8rrifdmdazpfevqcgfuysgy7ku94iut4"
-                value={formData.detailed_description}
-                onEditorChange={(content) => handleInputChange('detailed_description', content)}
-                init={{
-                  height: 300,
-                  menubar: false,
-                  language: 'ko_KR',
-                  plugins: [
-                    'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-                    'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-                    'insertdatetime', 'media', 'table', 'help', 'wordcount'
-                  ],
-                  toolbar: 'undo redo | blocks | ' +
-                    'bold italic forecolor | alignleft aligncenter ' +
-                    'alignright alignjustify | bullist numlist outdent indent | ' +
-                    'removeformat | image link | help',
-                  content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
-                  branding: false,
-                  placeholder: '상품에 대한 상세한 설명을 입력하세요...',
-                  editable_root: true,
-                  statusbar: false
-                }}
-              />
-            </div>
+          {/* 상세설명 */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">상세설명</label>
+            <Editor
+              apiKey="0t68kcm68pz2n5zz8rrifdmdazpfevqcgfuysgy7ku94iut4"
+              value={formData.description}
+              onEditorChange={(content) => setFormData({...formData, description: content})}
+              init={{
+                height: 400,
+                menubar: false,
+                plugins: [
+                  'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+                  'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+                  'insertdatetime', 'media', 'table', 'help', 'wordcount'
+                ],
+                toolbar: 'undo redo | blocks | ' +
+                  'bold italic forecolor | alignleft aligncenter ' +
+                  'alignright alignjustify | bullist numlist outdent indent | ' +
+                  'removeformat | help',
+                content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
+                branding: false,
+                promotion: false
+              }}
+            />
           </div>
 
           {/* 액션 버튼 */}

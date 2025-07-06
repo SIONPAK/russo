@@ -255,65 +255,56 @@ export async function POST(request: NextRequest) {
         // 3. 마일리지 차감 처리
         const currentMileage = order.users.mileage_balance || 0
         const newMileage = Math.max(0, currentMileage - totalAmount)  // 배송비 포함된 총액으로 차감
-        
-        // 3-1. 먼저 마일리지 테이블에 차감 기록
-        const { data: mileageRecord, error: mileageRecordError } = await supabase
-          .from('mileage')
-          .insert({
-            user_id: order.user_id,
-            amount: totalAmount,  // 배송비 포함된 총액으로 차감
-            type: 'spend',
-            source: 'order',
-            description: `최종 명세서 확정: ${order.order_number}${shippingFee > 0 ? ' (배송비 포함)' : ''}`,
-            status: 'completed',
-            order_id: order.id
-          })
-          .select()
-          .single()
 
-        if (mileageRecordError) {
-          console.error('마일리지 차감 기록 오류:', mileageRecordError)
-          results.push({
-            orderId: order.id,
-            orderNumber: order.order_number,
-            success: false,
-            error: '마일리지 차감 기록 실패'
-          })
-          continue
-        }
-
-        // 3-2. 그 다음에 사용자 마일리지 잔액 업데이트
-        const { error: mileageBalanceError } = await supabase
+        const { error: mileageError } = await supabase
           .from('users')
-          .update({ mileage_balance: newMileage })
+          .update({ 
+            mileage_balance: newMileage,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', order.user_id)
 
-        if (mileageBalanceError) {
-          console.error('마일리지 잔액 업데이트 오류:', mileageBalanceError)
-          
-          // 롤백: 방금 추가한 마일리지 기록 삭제
-          await supabase
-            .from('mileage')
-            .delete()
-            .eq('id', mileageRecord.id)
-          
+        if (mileageError) {
+          console.error('마일리지 차감 오류:', mileageError)
           results.push({
             orderId: order.id,
             orderNumber: order.order_number,
             success: false,
-            error: '마일리지 잔액 업데이트 실패'
+            error: '마일리지 차감 실패'
           })
           continue
         }
 
-        // 4. 주문 상태 업데이트 (명세서 확정됨)
-        await supabase
+        // 4. 마일리지 이력 기록
+        const { error: historyError } = await supabase
+          .from('mileage_history')
+          .insert({
+            user_id: order.user_id,
+            order_id: order.id,
+            amount: -totalAmount,
+            balance_after: newMileage,
+            type: 'deduction',
+            description: `최종 명세서 확정 - 주문번호: ${order.order_number}`,
+            created_at: new Date().toISOString()
+          })
+
+        if (historyError) {
+          console.error('마일리지 이력 기록 오류:', historyError)
+        }
+
+        // 5. 주문 상태를 confirmed로 업데이트 (출고명세서 관리에서 조회되도록)
+        const { error: orderUpdateError } = await supabase
           .from('orders')
           .update({ 
             status: 'confirmed',
             updated_at: new Date().toISOString()
           })
           .eq('id', order.id)
+
+        if (orderUpdateError) {
+          console.error('주문 상태 업데이트 오류:', orderUpdateError)
+          // 상태 업데이트 실패해도 성공으로 처리 (이미 명세서와 마일리지는 처리됨)
+        }
 
         results.push({
           orderId: order.id,

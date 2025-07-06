@@ -234,6 +234,62 @@ export function OrdersPage() {
     await allocateInventory(selectedOrders)
   }
 
+  // 일괄 출고 처리
+  const handleBulkShipping = async () => {
+    if (selectedOrders.length === 0) {
+      showInfo('출고 처리할 주문을 선택해주세요.')
+      return
+    }
+
+    const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
+    const hasUnallocatedOrders = selectedOrdersData.some(order => 
+      order.allocation_status !== 'allocated'
+    )
+
+    if (hasUnallocatedOrders) {
+      if (!confirm('재고가 할당되지 않은 주문이 포함되어 있습니다.\n할당된 수량만 출고 처리하시겠습니까?')) {
+        return
+      }
+    }
+
+    if (!confirm(`선택된 ${selectedOrders.length}건의 주문을 출고 처리하시겠습니까?\n\n⚠️ 출고 처리 시 다음 작업이 수행됩니다:\n• 재고 차감 처리\n• 주문 상태를 '배송중'으로 변경\n• 거래명세서 생성 가능\n\n이 작업은 신중히 검토 후 진행해주세요.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/orders/bulk-shipping', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderIds: selectedOrders
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        showSuccess(data.message)
+        
+        // 결과 상세 정보 표시
+        if (data.data.failed > 0) {
+          const failedOrders = data.data.results.filter((r: any) => !r.success)
+          const failedInfo = failedOrders.map((r: any) => `${r.orderNumber}: ${r.error}`).join('\n')
+          showError(`일부 주문 처리 실패:\n${failedInfo}`)
+        }
+        
+        // 주문 목록 새로고침
+        fetchTodayOrders()
+      } else {
+        showError(data.error || '일괄 출고 처리에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('일괄 출고 처리 오류:', error)
+      showError('일괄 출고 처리 중 오류가 발생했습니다.')
+    }
+  }
+
   // 최종 명세서 확정 처리
   const handleFinalizeStatements = async () => {
     if (selectedOrders.length === 0) {
@@ -438,6 +494,14 @@ export function OrdersPage() {
             >
               <Package className="w-4 h-4 mr-2" />
               재고 할당 ({selectedOrders.length})
+            </Button>
+            <Button
+              onClick={handleBulkShipping}
+              disabled={selectedOrders.length === 0 || updating}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Package className="w-4 h-4 mr-2" />
+              일괄 출고 ({selectedOrders.length})
             </Button>
             <Button
               onClick={handleFinalizeStatements}

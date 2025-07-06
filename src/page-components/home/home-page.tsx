@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
 import { useProducts } from '@/features/product/model/use-products'
@@ -8,12 +8,34 @@ import { useCategoryMenu } from '@/features/category-menu/model/use-category-men
 import { useCart } from '@/features/cart/model/use-cart'
 import { MainLayout } from '@/widgets/layout/main-layout'
 
+interface PopularProduct {
+  id: string
+  name: string
+  code: string
+  price: number
+  total_ordered: number
+  images?: Array<{
+    image_url: string
+    is_main: boolean
+  }>
+}
 
 export function HomePage() {
-
   const searchParams = useSearchParams()
   const { products, loading: productsLoading, error: productsError } = useProducts()
+  const [popularProducts, setPopularProducts] = useState<PopularProduct[]>([])
+  const [popularLoading, setPopularLoading] = useState(true)
+  const [showAllProducts, setShowAllProducts] = useState(false)
   
+  // 비디오 슬라이드 관련 상태
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  
+  const videos = [
+    '/video/0704_01.mp4',
+    '/video/0704_02.mp4',
+    '/video/0704_03.mp4'
+  ]
 
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -25,6 +47,42 @@ export function HomePage() {
     }
   }, [searchParams])
 
+  // 인기 상품 데이터 가져오기
+  useEffect(() => {
+    fetchPopularProducts()
+  }, [])
+
+  const fetchPopularProducts = async () => {
+    try {
+      setPopularLoading(true)
+      // 전체 상품을 가져와서 클라이언트에서 정렬
+      const response = await fetch('/api/products?limit=100')
+      const result = await response.json()
+      
+      if (result.success) {
+        setPopularProducts(result.data || [])
+      } else {
+        console.error('상품 조회 실패:', result.error)
+      }
+    } catch (error) {
+      console.error('상품 데이터 가져오기 실패:', error)
+    } finally {
+      setPopularLoading(false)
+    }
+  }
+
+  // 비디오가 끝났을 때 다음 비디오로 이동
+  const handleVideoEnded = () => {
+    setCurrentVideoIndex((prevIndex) => (prevIndex + 1) % videos.length)
+  }
+
+  // 비디오 인덱스가 변경될 때 새 비디오 로드
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.load()
+      videoRef.current.play().catch(console.error)
+    }
+  }, [currentVideoIndex])
 
   return (
     <MainLayout>
@@ -55,6 +113,105 @@ export function HomePage() {
               </div>
               <p className="text-xl font-paperlogy-semibold mt-6">거래처 대표님들<br />
               많은 관심 부탁드립니다.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 상품 섬네일 섹션 */}
+      <section className="bg-gray-50 py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-paperlogy-bold mb-4 text-black">상품 갤러리</h2>
+            <p className="text-gray-600 font-paperlogy-regular">루소의 다양한 상품들을 만나보세요</p>
+          </div>
+          
+          {/* 상품 그리드 */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            {popularProducts && popularProducts.length > 0 ? (
+              (showAllProducts ? popularProducts : popularProducts.slice(0, 6)).map((product, index) => (
+                <div key={product.id} className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow cursor-pointer group">
+                  <div className="aspect-square bg-gray-100 overflow-hidden">
+                    {product.images && product.images.length > 0 ? (
+                      <img
+                        src={product.images[0].image_url}
+                        alt={product.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          const target = e.currentTarget
+                          target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgNjVDMTA4LjI4NCA2NSAxMTUgNzEuNzE2IDExNSA4MEMxMTUgODguMjg0IDEwOC4yODQgOTUgMTAwIDk1QzkxLjcxNiA5NSA4NSA4OC4yODQgODUgODBDODUgNzEuNzE2IDkxLjcxNiA2NSAxMDAgNjVaIiBmaWxsPSIjOUNBM0FGIi8+CjxwYXRoIGQ9Ik03MCA5MEgxMzBDMTMyLjc2MSA5MCAxMzUgOTIuMjM4NiAxMzUgOTVWMTM1QzEzNSAxMzcuNzYxIDEzMi43NjEgMTQwIDEzMCAxNDBINzBDNjcuMjM4NiAxNDAgNjUgMTM3Ljc2MSA2NSAxMzVWOTVDNjUgOTIuMjM4NiA2Ny4yMzg2IDkwIDcwIDkwWiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K'
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* 상품 정보 제거 - 이미지만 표시 */}
+                </div>
+              ))
+            ) : (
+              // 로딩 중이거나 상품이 없을 때 플레이스홀더
+              Array.from({ length: 6 }, (_, index) => (
+                <div key={index} className="bg-white rounded-lg overflow-hidden shadow-md">
+                  <div className="aspect-square bg-gray-200 animate-pulse"></div>
+                  {/* 플레이스홀더도 이미지만 표시 */}
+                </div>
+              ))
+            )}
+          </div>
+          
+          {/* 더보기/접기 버튼 */}
+          {popularProducts && popularProducts.length > 6 && (
+            <div className="text-center mt-8">
+              <button
+                onClick={() => setShowAllProducts(!showAllProducts)}
+                className="bg-black text-white px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors font-paperlogy-medium"
+              >
+                {showAllProducts ? '접기' : `더보기 (+${popularProducts.length - 6}개)`}
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 비디오 슬라이드 섹션 */}
+      <section className="bg-white py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="text-center">
+            <h2 className="text-3xl font-paperlogy-bold mb-8 text-black">루소 프로모션</h2>
+            <div className="max-w-4xl mx-auto">
+              <div className="bg-black rounded-lg overflow-hidden shadow-lg">
+                <video
+                  ref={videoRef}
+                  className="w-full h-auto"
+                  autoPlay
+                  muted
+                  playsInline
+                  onEnded={handleVideoEnded}
+                  style={{ maxHeight: '500px' }}
+                >
+                  <source src={videos[currentVideoIndex]} type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+                
+                {/* 비디오 인디케이터 */}
+                <div className="flex justify-center space-x-2 py-4 bg-black">
+                  {videos.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentVideoIndex(index)}
+                      className={`w-3 h-3 rounded-full transition-colors ${
+                        index === currentVideoIndex ? 'bg-white' : 'bg-gray-500'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>

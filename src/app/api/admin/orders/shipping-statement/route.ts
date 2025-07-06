@@ -148,9 +148,13 @@ export async function GET(request: NextRequest) {
         item.shipped_quantity && item.shipped_quantity > 0
       )
 
+      const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => 
+        sum + item.shipped_quantity, 0
+      )
+      const shippingFee = totalShippedQuantity >= 20 ? 0 : 3000
       const totalAmount = shippedItems.reduce((sum: number, item: any) => 
         sum + (item.shipped_quantity * item.unit_price), 0
-      )
+      ) + shippingFee
 
       // 실제 이메일 발송 기록 확인
       const { data: emailLog } = await supabase
@@ -172,6 +176,7 @@ export async function GET(request: NextRequest) {
         order_number: order.order_number,
         company_name: (order.users as any).company_name,
         customer_grade: (order.users as any).customer_grade,
+        status: order.status,
         created_at: order.created_at,
         shipped_at: order.shipped_at,
         email_sent: emailSentStatus,
@@ -264,8 +269,9 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
       amounts: {
         originalTotal: order.total_amount,
         shippedTotal: shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0),
+        shippingFee: shippedItems.reduce((sum: number, item: any) => sum + item.shipped_quantity, 0) >= 20 ? 0 : 3000,
         difference: order.total_amount - shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0),
-        finalTotal: shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
+        finalTotal: shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0) + (shippedItems.reduce((sum: number, item: any) => sum + item.shipped_quantity, 0) >= 20 ? 0 : 3000)
       }
     }
     
@@ -331,6 +337,7 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
       ['💰 금액 정보'],
       ['원 주문 금액', statementData.amounts.originalTotal.toLocaleString() + '원'],
       ['실제 출고 금액', statementData.amounts.shippedTotal.toLocaleString() + '원'],
+      ['배송비', statementData.amounts.shippingFee.toLocaleString() + '원'],
       ['최종 결제 금액', statementData.amounts.finalTotal.toLocaleString() + '원']
     )
 

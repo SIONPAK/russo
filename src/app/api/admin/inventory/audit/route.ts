@@ -7,20 +7,15 @@ export async function POST(request: NextRequest) {
 
     // 권한 확인 제거 - 일반 클라이언트 사용
 
-    // 모든 재고 데이터 조회
+    // 모든 상품 및 재고 데이터 조회
     const { data: inventoryData, error: inventoryError } = await supabase
-      .from('inventory')
+      .from('products')
       .select(`
         id,
-        product_id,
-        color,
-        size,
-        quantity,
-        reserved_quantity,
-        products!inner(
-          name,
-          code
-        )
+        name,
+        code,
+        stock_quantity,
+        inventory_options
       `)
 
     if (inventoryError) {
@@ -36,56 +31,80 @@ export async function POST(request: NextRequest) {
     let discrepancies = 0
     const auditResults = []
 
-    for (const item of inventoryData) {
-      // 실제 재고 (임시로 시뮬레이션)
-      const systemStock = item.quantity
-      const actualStock = Math.max(0, systemStock + Math.floor(Math.random() * 21) - 10) // -10 ~ +10 범위
-      const difference = actualStock - systemStock
+    for (const product of inventoryData) {
+      if (product.inventory_options && Array.isArray(product.inventory_options) && product.inventory_options.length > 0) {
+        // 옵션별 재고가 있는 경우
+        for (const option of product.inventory_options) {
+          const systemStock = option.stock_quantity || 0
+          const actualStock = Math.max(0, systemStock + Math.floor(Math.random() * 21) - 10) // -10 ~ +10 범위
+          const difference = actualStock - systemStock
 
-      if (difference !== 0) {
-        discrepancies++
-        
-        // 차이가 있는 경우 재고 조정
-        const { error: updateError } = await supabase
-          .from('inventory')
-          .update({
-            quantity: actualStock,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', item.id)
+          if (difference !== 0) {
+            discrepancies++
+            
+            // 차이가 있는 경우 재고 조정 (inventory_options 업데이트)
+            const updatedOptions = product.inventory_options.map((opt: any) => 
+              opt.color === option.color && opt.size === option.size 
+                ? { ...opt, stock_quantity: actualStock }
+                : opt
+            )
+            
+            const { error: updateError } = await supabase
+              .from('products')
+              .update({
+                inventory_options: updatedOptions,
+                stock_quantity: updatedOptions.reduce((sum: number, opt: any) => sum + opt.stock_quantity, 0),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', product.id)
 
-        if (updateError) {
-          console.error('Inventory update error:', updateError)
+            if (updateError) {
+              console.error('Product update error:', updateError)
+            }
+
+            auditResults.push({
+              productCode: product.code,
+              productName: product.name,
+              color: option.color,
+              size: option.size,
+              systemStock,
+              actualStock,
+              difference
+            })
+          }
         }
+      } else {
+        // 단일 재고인 경우
+        const systemStock = product.stock_quantity || 0
+        const actualStock = Math.max(0, systemStock + Math.floor(Math.random() * 21) - 10) // -10 ~ +10 범위
+        const difference = actualStock - systemStock
 
-        // 재고 이력 기록
-        const { error: historyError } = await supabase
-          .from('inventory_history')
-          .insert({
-            product_id: item.product_id,
-            color: item.color,
-            size: item.size,
-            change_type: 'audit',
-            quantity_before: systemStock,
-            quantity_after: actualStock,
-            quantity_change: difference,
-            reason: '재고 실사',
-            created_at: new Date().toISOString()
+        if (difference !== 0) {
+          discrepancies++
+          
+          // 차이가 있는 경우 재고 조정
+          const { error: updateError } = await supabase
+            .from('products')
+            .update({
+              stock_quantity: actualStock,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', product.id)
+
+          if (updateError) {
+            console.error('Product update error:', updateError)
+          }
+
+          auditResults.push({
+            productCode: product.code,
+            productName: product.name,
+            color: '-',
+            size: '-',
+            systemStock,
+            actualStock,
+            difference
           })
-
-        if (historyError) {
-          console.error('History insert error:', historyError)
         }
-
-        auditResults.push({
-          productCode: (item.products as any).code,
-          productName: (item.products as any).name,
-          color: item.color,
-          size: item.size,
-          systemStock,
-          actualStock,
-          difference
-        })
       }
     }
 

@@ -25,8 +25,10 @@ import {
   Eye,
   ArrowUpDown,
   Truck,
-  ClipboardList
+  ClipboardList,
+  RefreshCw
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 interface InventoryOption {
   color: string
@@ -112,6 +114,8 @@ export function InventoryPage() {
     productId: '',
     productName: ''
   })
+  const [historyData, setHistoryData] = useState<any[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   // 입고 등록 모달 상태
   const [inboundModal, setInboundModal] = useState({
@@ -119,6 +123,10 @@ export function InventoryPage() {
     productId: '',
     productName: ''
   })
+
+  // 재고 이력 관련 상태 추가
+  const [stockHistoryData, setStockHistoryData] = useState<any[]>([])
+  const [stockHistoryLoading, setStockHistoryLoading] = useState(false)
 
   // 상품 데이터 가져오기
   useEffect(() => {
@@ -283,7 +291,7 @@ export function InventoryPage() {
   }
 
   // 재고 이력 모달 열기
-  const openHistoryModal = (productId: string, productName: string, color?: string, size?: string) => {
+  const openHistoryModal = async (productId: string, productName: string, color?: string, size?: string) => {
     setHistoryModal({
       isOpen: true,
       productId,
@@ -291,6 +299,32 @@ export function InventoryPage() {
       color,
       size
     })
+    
+    // 재고 이력 데이터 가져오기
+    try {
+      setHistoryLoading(true)
+      const params = new URLSearchParams({
+        ...(color && { color }),
+        ...(size && { size }),
+        limit: '20'
+      })
+      
+      const response = await fetch(`/api/admin/inventory/history/${productId}?${params}`)
+      const result = await response.json()
+      
+      if (result.success) {
+        setHistoryData(result.data.history || [])
+      } else {
+        showError('재고 이력을 불러오는데 실패했습니다.')
+        setHistoryData([])
+      }
+    } catch (error) {
+      console.error('재고 이력 조회 실패:', error)
+      showError('재고 이력을 불러오는데 실패했습니다.')
+      setHistoryData([])
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   // 재고 이력 모달 닫기
@@ -300,7 +334,69 @@ export function InventoryPage() {
       productId: '',
       productName: ''
     })
+    setHistoryData([])
   }
+
+  // 재고 이력 데이터 가져오기
+  const fetchStockHistory = async () => {
+    try {
+      setStockHistoryLoading(true)
+      
+      const response = await fetch('/api/admin/inventory/history/export')
+      const result = await response.json()
+      
+      if (result.success) {
+        // API에서 받은 데이터를 파싱하여 표시용 데이터로 변환
+        const parsedData = await parseStockHistoryData(result.data.fileData)
+        setStockHistoryData(parsedData)
+      } else {
+        showError('재고 이력을 불러오는데 실패했습니다.')
+        setStockHistoryData([])
+      }
+    } catch (error) {
+      console.error('재고 이력 조회 실패:', error)
+      showError('재고 이력을 불러오는데 실패했습니다.')
+      setStockHistoryData([])
+    } finally {
+      setStockHistoryLoading(false)
+    }
+  }
+
+  // Base64 엑셀 데이터를 파싱하여 배열로 변환
+  const parseStockHistoryData = async (base64Data: string): Promise<any[]> => {
+    try {
+      // Base64를 ArrayBuffer로 변환
+      const byteCharacters = atob(base64Data)
+      const byteNumbers = new Array(byteCharacters.length)
+      
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      
+      const byteArray = new Uint8Array(byteNumbers)
+      
+      // XLSX로 파싱
+      const workbook = XLSX.read(byteArray, { type: 'array' })
+      const sheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[sheetName]
+      
+      // JSON으로 변환
+      const jsonData = XLSX.utils.sheet_to_json(worksheet)
+      
+      // 빈 행 제거
+      return jsonData.filter((row: any) => row['번호'] && row['상품명'])
+    } catch (error) {
+      console.error('엑셀 데이터 파싱 실패:', error)
+      return []
+    }
+  }
+
+  // 재고 이력 탭이 선택될 때 데이터 로드
+  useEffect(() => {
+    if (currentTab === 'history') {
+      fetchStockHistory()
+    }
+  }, [currentTab])
 
   // 엑셀 다운로드 함수들
   const downloadInventoryExcel = async () => {
@@ -417,7 +513,10 @@ export function InventoryPage() {
         
         const result = await response.json()
         if (result.success) {
-          showSuccess(`${result.data.updatedCount}개의 재고가 업데이트되었습니다.`)
+          showSuccess(`${result.data.successCount}개의 재고가 업데이트되었습니다.`)
+          if (result.data.errorCount > 0) {
+            showError(`${result.data.errorCount}개의 오류가 발생했습니다.`)
+          }
           await fetchProducts() // 목록 새로고침
         } else {
           throw new Error(result.error)
@@ -430,6 +529,53 @@ export function InventoryPage() {
       }
     }
     input.click()
+  }
+
+  const downloadStockTemplate = async () => {
+    try {
+      setLoading(true)
+      
+      const response = await fetch('/api/admin/inventory/template')
+      if (!response.ok) {
+        throw new Error('양식 다운로드에 실패했습니다.')
+      }
+      
+      const result = await response.json()
+      if (result.success) {
+        // Base64 데이터를 Blob으로 변환
+        const base64Data = result.data.fileData
+        const byteCharacters = atob(base64Data)
+        const byteNumbers = new Array(byteCharacters.length)
+        
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i)
+        }
+        
+        const byteArray = new Uint8Array(byteNumbers)
+        const blob = new Blob([byteArray], { 
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        })
+        
+        // 파일 다운로드
+        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        link.href = url
+        link.download = result.data.fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        
+        showSuccess('재고 업로드 양식이 다운로드되었습니다.')
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('양식 다운로드 실패:', error)
+      showError(error instanceof Error ? error.message : '양식 다운로드 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const performStockAudit = async () => {
@@ -614,6 +760,10 @@ export function InventoryPage() {
                   <Button variant="outline" onClick={downloadInventoryExcel}>
                     <Download className="h-4 w-4 mr-2" />
                     재고 현황 다운로드
+                  </Button>
+                  <Button variant="outline" onClick={downloadStockTemplate}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    업로드 양식 다운로드
                   </Button>
                   <Button variant="outline" onClick={uploadStockData}>
                     <Upload className="h-4 w-4 mr-2" />
@@ -851,15 +1001,117 @@ export function InventoryPage() {
           )}
 
           {currentTab === 'history' && (
-            <div className="text-center py-12">
-              <History className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">재고 이력</h3>
-              <p className="text-gray-600 mb-4">모든 재고 변동 이력을 조회합니다.</p>
-              <Button onClick={downloadStockHistory}>
-                <Download className="h-4 w-4 mr-2" />
-                이력 다운로드
-              </Button>
-            </div>
+            <>
+              {/* 액션 버튼 */}
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">재고 이력</h3>
+                <div className="flex space-x-2">
+                  <Button variant="outline" onClick={fetchStockHistory} disabled={stockHistoryLoading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${stockHistoryLoading ? 'animate-spin' : ''}`} />
+                    새로고침
+                  </Button>
+                  <Button onClick={downloadStockHistory}>
+                    <Download className="h-4 w-4 mr-2" />
+                    이력 다운로드
+                  </Button>
+                </div>
+              </div>
+
+              {/* 재고 이력 목록 */}
+              <div className="bg-gray-50 rounded-lg">
+                <div className="px-6 py-4 border-b border-gray-200 bg-white rounded-t-lg">
+                  <h4 className="text-md font-medium text-gray-900">
+                    재고 변동 이력 ({stockHistoryData.length}건)
+                  </h4>
+                </div>
+                
+                {stockHistoryLoading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">재고 이력을 불러오는 중...</p>
+                  </div>
+                ) : stockHistoryData.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            번호
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            상품정보
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            옵션
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            변경유형
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            수량
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            주문정보
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            변경일시
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {stockHistoryData.map((item, index) => (
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {item['번호']}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">{item['상품명']}</div>
+                                <div className="text-sm text-gray-500">{item['상품코드']}</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {item['색상']} / {item['사이즈']}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                item['변경유형'] === '출고' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                              }`}>
+                                {item['변경유형']}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <div>
+                                <div>주문: {item['주문수량']}개</div>
+                                <div>출고: {item['출고수량']}개</div>
+                                {item['변경수량'] !== '-' && (
+                                  <div className="text-red-600 font-medium">변경: {item['변경수량']}개</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <div>
+                                <div className="font-medium">{item['주문번호']}</div>
+                                <div>{item['고객사']}</div>
+                                <div className="text-xs">{item['주문상태']}</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {item['변경일시']}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <History className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>재고 변동 이력이 없습니다.</p>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -979,13 +1231,59 @@ export function InventoryPage() {
               )}
             </div>
             
-            <div className="text-center py-12 text-gray-500">
-              <History className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>재고 이력 기능을 준비 중입니다.</p>
-            </div>
+            {historyLoading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">재고 이력을 불러오는 중...</p>
+              </div>
+            ) : historyData.length > 0 ? (
+              <div className="space-y-4">
+                <div className="max-h-96 overflow-y-auto">
+                  {historyData.map((item, index) => (
+                    <div key={index} className="border-b border-gray-200 pb-3 mb-3 last:border-b-0">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              item.quantity < 0 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                            }`}>
+                              {item.quantity < 0 ? '출고' : '입고'}
+                            </span>
+                            <span className="text-sm text-gray-600">{item.description}</span>
+                          </div>
+                          <div className="mt-1 text-sm text-gray-500">
+                            주문번호: {item.order_number || 'N/A'} | 상태: {item.order_status || 'N/A'}
+                          </div>
+                          {(item.color || item.size) && (
+                            <div className="mt-1 text-sm text-gray-500">
+                              옵션: {item.color || '-'} / {item.size || '-'}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-sm font-medium ${
+                            item.quantity < 0 ? 'text-red-600' : 'text-green-600'
+                          }`}>
+                            {item.quantity > 0 ? '+' : ''}{item.quantity}개
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {item.created_at ? new Date(item.created_at).toLocaleDateString('ko-KR') : ''}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500">
+                <History className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>재고 변동 이력이 없습니다.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
   )
-} 
+}

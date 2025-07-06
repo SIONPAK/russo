@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     // 상품 정보 조회
     const { data: product, error: productError } = await supabase
       .from('products')
-      .select('id, name, stock_quantity, reserved_quantity')
+      .select('id, name, stock_quantity, inventory_options')
       .eq('id', product_id)
       .single()
 
@@ -27,8 +27,30 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // 가용 재고 계산
-    const availableStock = product.stock_quantity - (product.reserved_quantity || 0)
+    // 가용 재고 계산 (예약된 수량 계산)
+    const { data: reservedItems } = await supabase
+      .from('order_items')
+      .select(`
+        quantity, 
+        shipped_quantity,
+        orders!order_items_order_id_fkey (
+          status
+        )
+      `)
+      .eq('product_id', product_id)
+
+    const reservedQuantity = reservedItems?.reduce((sum: number, item: any) => {
+      const order = Array.isArray(item.orders) ? item.orders[0] : item.orders
+      const isPendingOrder = order && ['pending', 'confirmed', 'processing'].includes(order.status)
+      
+      if (isPendingOrder) {
+        const pendingQuantity = item.quantity - (item.shipped_quantity || 0)
+        return sum + Math.max(0, pendingQuantity)
+      }
+      return sum
+    }, 0) || 0
+
+    const availableStock = Math.max(0, product.stock_quantity - reservedQuantity)
 
     // 대기 중인 주문들 조회 (재고 할당 대기)
     const { data: pendingOrders, error: ordersError } = await supabase
@@ -197,21 +219,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 재고 할당 이력 기록
-    if (allocatedOrders.length > 0) {
-      const allocationRecords = allocatedOrders.map(order => ({
-        product_id,
-        order_id: order.order_id,
-        allocated_quantity: order.allocated_quantity,
-        allocation_type,
-        allocated_at: new Date().toISOString(),
-        notes: `${allocation_type === 'priority_based' ? '우선순위' : '주문순서'} 기반 할당`
-      }))
+    // 재고 할당 이력 기록 (현재는 생략 - 추후 로그 테이블 추가 시 구현)
+    // if (allocatedOrders.length > 0) {
+    //   const allocationRecords = allocatedOrders.map(order => ({
+    //     product_id,
+    //     order_id: order.order_id,
+    //     allocated_quantity: order.allocated_quantity,
+    //     allocation_type,
+    //     allocated_at: new Date().toISOString(),
+    //     notes: `${allocation_type === 'priority_based' ? '우선순위' : '주문순서'} 기반 할당`
+    //   }))
 
-      await supabase
-        .from('inventory_allocations')
-        .insert(allocationRecords)
-    }
+    //   await supabase
+    //     .from('inventory_allocations')
+    //     .insert(allocationRecords)
+    // }
 
     return NextResponse.json({
       success: true,
@@ -243,16 +265,22 @@ export async function GET(request: NextRequest) {
     
     const supabase = createClient()
 
+    // 현재는 주문 아이템 기반으로 할당 현황 조회
     let query = supabase
-      .from('inventory_allocations')
+      .from('order_items')
       .select(`
-        *,
-        products!inventory_allocations_product_id_fkey (
+        id,
+        product_id,
+        quantity,
+        shipped_quantity,
+        allocated_quantity,
+        created_at,
+        products!inner (
           id,
           name,
           stock_quantity
         ),
-        orders!inventory_allocations_order_id_fkey (
+        orders!order_items_order_id_fkey (
           id,
           status,
           users!orders_user_id_fkey (
@@ -261,7 +289,8 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .order('allocated_at', { ascending: false })
+      .gt('allocated_quantity', 0)
+      .order('created_at', { ascending: false })
 
     if (product_id) {
       query = query.eq('product_id', product_id)

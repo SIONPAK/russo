@@ -39,7 +39,43 @@
   }
 }
 
-/* 페이퍼로지 폰트 임포트 */
+/* SpoqaHanSans 폰트 임포트 */
+@font-face {
+  font-family: 'SpoqaHanSansNeo-Thin';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2108@1.1/SpoqaHanSansNeo-Thin.woff') format('woff');
+  font-weight: 100;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SpoqaHanSansNeo-Light';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2108@1.1/SpoqaHanSansNeo-Light.woff') format('woff');
+  font-weight: 300;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SpoqaHanSansNeo-Regular';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2108@1.1/SpoqaHanSansNeo-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SpoqaHanSansNeo-Medium';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2108@1.1/SpoqaHanSansNeo-Medium.woff') format('woff');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SpoqaHanSansNeo-Bold';
+  src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2108@1.1/SpoqaHanSansNeo-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* 페이퍼로지 폰트 임포트 (호환성을 위해 유지) */
 @font-face {
   font-family: 'Paperlogy-1Thin';
   src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-1Thin.woff2') format('woff2');
@@ -114,14 +150,31 @@ body {
   min-height: 100vh;
   background-color: #ffffff;
   color: #000000;
-  font-family: 'Paperlogy-4Regular', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'SpoqaHanSansNeo-Regular', 'Paperlogy-4Regular', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   font-size: 16px;
   line-height: 1.6;
 }
 
 /* 기본 텍스트 크기 설정 */
 * {
-  font-family: 'Paperlogy-4Regular', 'Paperlogy-5Medium', 'Paperlogy-6SemiBold', 'Paperlogy-7Bold', 'Paperlogy-8ExtraBold', 'Paperlogy-9Black', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'SpoqaHanSansNeo-Regular', 'Paperlogy-4Regular', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* 모든 요소에 폰트 강제 적용 */
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed, 
+figure, figcaption, footer, header, hgroup, 
+menu, nav, output, ruby, section, summary,
+time, mark, audio, video, button, input, textarea, select {
+  font-family: 'SpoqaHanSansNeo-Regular', 'Paperlogy-4Regular', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 
 /* 모든 텍스트 요소 기본 크기 설정 */
@@ -147,7 +200,14 @@ h6 { font-size: 1rem; }
 .text-3xl { font-size: 30px !important; }
 .text-4xl { font-size: 36px !important; }
 
-/* 페이퍼로지 폰트를 전체 사이트에 적용 */
+/* SpoqaHanSans 폰트 클래스 */
+.font-spoqa-thin { font-family: 'SpoqaHanSansNeo-Thin', sans-serif; font-weight: 100; }
+.font-spoqa-light { font-family: 'SpoqaHanSansNeo-Light', sans-serif; font-weight: 300; }
+.font-spoqa-regular { font-family: 'SpoqaHanSansNeo-Regular', sans-serif; font-weight: 400; }
+.font-spoqa-medium { font-family: 'SpoqaHanSansNeo-Medium', sans-serif; font-weight: 500; }
+.font-spoqa-bold { font-family: 'SpoqaHanSansNeo-Bold', sans-serif; font-weight: 700; }
+
+/* 페이퍼로지 폰트를 전체 사이트에 적용 (호환성을 위해 유지) */
 .font-paperlogy-thin { font-family: 'Paperlogy-1Thin', sans-serif; font-weight: 100; }
 .font-paperlogy-extralight { font-family: 'Paperlogy-2ExtraLight', sans-serif; font-weight: 200; }
 .font-paperlogy-light { font-family: 'Paperlogy-3Light', sans-serif; font-weight: 300; }

@@ -84,7 +84,7 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl p-6 mb-8 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-sm text-gray-500 mb-1">의류사업자의 전용플랫폼</p>
+              <p className="text-sm text-gray-500 mb-1">루소 전용 ERP프로그램 입니다.</p>
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
                 루소 로그인
               </h2>

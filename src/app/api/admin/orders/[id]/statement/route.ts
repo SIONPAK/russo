@@ -174,7 +174,7 @@ export async function GET(
     const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => 
       sum + item.shipped_quantity, 0
     )
-    const actualShippingFee = totalShippedQuantity >= 20 ? 0 : (order.shipping_fee || 0)
+    const actualShippingFee = totalShippedQuantity >= 20 ? 0 : 3000
     
     // 총 금액 계산
     const totalAmount = shippedItems.reduce((sum: number, item: any) => 
@@ -228,12 +228,26 @@ export async function GET(
       }
     }
     
+    // 배송비 항목 추가 (20장 미만일 때)
+    const itemsWithShipping = [...groupedItems]
+    if (actualShippingFee > 0) {
+      itemsWithShipping.push({
+        productName: '배송비',
+        color: '-',
+        totalQuantity: 1,
+        unitPrice: actualShippingFee,
+        totalPrice: actualShippingFee,
+        supplyAmount: actualShippingFee,
+        taxAmount: 0
+      })
+    }
+
     // 상품 정보 입력 (12행부터 21행까지)
     for (let i = 0; i < 10; i++) {
       const row = 12 + i
       
-      if (i < groupedItems.length) {
-        const item = groupedItems[i]
+      if (i < itemsWithShipping.length) {
+        const item = itemsWithShipping[i]
         
         // 품명 (C열)
         worksheet[`C${row}`] = { 
@@ -309,6 +323,9 @@ export async function GET(
     
     // 합계 행 (22행)
     const summaryRow = 22
+    const finalSupplyAmount = totalSupplyAmount + actualShippingFee
+    const finalTaxAmount = totalTaxAmount
+    
     worksheet[`B${summaryRow}`] = {
       t: 's',
       v: '합    계',
@@ -319,7 +336,7 @@ export async function GET(
     }
     worksheet[`G${summaryRow}`] = {
       t: 'n',
-      v: totalSupplyAmount,
+      v: finalSupplyAmount,
       z: '#,##0',
       s: {
         alignment: { horizontal: 'center' },
@@ -328,7 +345,7 @@ export async function GET(
     }
     worksheet[`H${summaryRow}`] = {
       t: 'n',
-      v: totalTaxAmount,
+      v: finalTaxAmount,
       z: '#,##0',
       s: {
         alignment: { horizontal: 'center' },
