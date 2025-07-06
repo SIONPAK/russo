@@ -351,61 +351,79 @@ export function OrderManagementPage() {
   const addSelectedProductsToRows = () => {
     if (selectedProducts.length === 0) return
 
-    const newItems = selectedProducts.map(({ product, color, size }) => {
-      const supplyAmount = product.price
-      const vat = Math.floor(supplyAmount * 0.1)
+    const updatedItems = [...orderItems]
+    let duplicateCount = 0
 
-      return {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        productId: product.id,
-        productCode: product.code,
-        productName: product.name,
-        color,
-        size,
-        quantity: 1,  // 기본 수량 1
-        unitPrice: product.price,
-        supplyAmount,
-        vat,
-        availableColors: product.colors || [],
-        availableSizes: product.sizes || []
+    selectedProducts.forEach(({ product, color, size }) => {
+      // 같은 상품이 이미 있는지 확인 (상품명, 컬러, 사이즈가 모두 동일)
+      const existingItemIndex = updatedItems.findIndex(item => 
+        item.productName === product.name &&
+        item.color === color &&
+        item.size === size
+      )
+
+      if (existingItemIndex !== -1) {
+        // 기존 상품이 있으면 수량 증가
+        const existingItem = updatedItems[existingItemIndex]
+        const newQuantity = existingItem.quantity + 1
+        const supplyAmount = existingItem.unitPrice * newQuantity
+        const vat = Math.floor(supplyAmount * 0.1)
+
+        updatedItems[existingItemIndex] = {
+          ...existingItem,
+          quantity: newQuantity,
+          supplyAmount,
+          vat
+        }
+        duplicateCount++
+      } else {
+        // 새로운 상품이면 행 추가
+        const supplyAmount = product.price
+        const vat = Math.floor(supplyAmount * 0.1)
+
+        const newItem = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          productId: product.id,
+          productCode: product.code,
+          productName: product.name,
+          color,
+          size,
+          quantity: 1,
+          unitPrice: product.price,
+          supplyAmount,
+          vat,
+          availableColors: product.colors || [],
+          availableSizes: product.sizes || []
+        }
+
+        // 기존 행이 선택되어 있으면 해당 행 업데이트, 아니면 새 행 추가
+        if (selectedRowIndex !== null && updatedItems[selectedRowIndex] && 
+            !updatedItems[selectedRowIndex].productName) {
+          // 선택된 행이 빈 행이면 해당 행을 업데이트
+          updatedItems[selectedRowIndex] = newItem
+        } else {
+          // 새 행으로 추가
+          updatedItems.push(newItem)
+        }
       }
     })
 
-    // 기존 행이 선택되어 있다면 첫 번째 선택된 상품으로 해당 행 업데이트, 나머지는 새 행으로 추가
-    if (selectedRowIndex !== null && selectedProducts.length > 0) {
-      const updatedItems = [...orderItems]
-      const firstProduct = selectedProducts[0]
-      const supplyAmount = firstProduct.product.price
-      const vat = Math.floor(supplyAmount * 0.1)
+    // 빈 행들 제거 (상품명이 없는 행들)
+    const finalItems = updatedItems.filter(item => item.productName && item.productName.trim() !== '')
 
-      updatedItems[selectedRowIndex] = {
-        ...updatedItems[selectedRowIndex],
-        productId: firstProduct.product.id,
-        productCode: firstProduct.product.code,
-        productName: firstProduct.product.name,
-        color: firstProduct.color,
-        size: firstProduct.size,
-        quantity: 1,
-        unitPrice: firstProduct.product.price,
-        supplyAmount,
-        vat,
-        availableColors: firstProduct.product.colors || [],
-        availableSizes: firstProduct.product.sizes || []
-      }
-
-      // 나머지 상품들은 새 행으로 추가
-      const remainingItems = newItems.slice(1)
-      setOrderItems([...updatedItems, ...remainingItems])
-    } else {
-      // 모든 상품을 새 행으로 추가
-      setOrderItems(prev => [...prev, ...newItems])
-    }
+    setOrderItems(finalItems)
+    saveOrderItemsToStorage(finalItems) // 로컬 스토리지에 저장
 
     // 팝업 닫기 및 상태 초기화
     setIsProductSearchOpen(false)
     setSelectedRowIndex(null)
     setSelectedProducts([])
-    showSuccess(`${selectedProducts.length}개 상품이 추가되었습니다.`)
+    
+    if (duplicateCount > 0) {
+      showSuccess(`${selectedProducts.length}개 상품 처리 완료 (${duplicateCount}개 중복 상품 수량 증가)`)
+    } else {
+      showSuccess(`${selectedProducts.length}개 상품이 추가되었습니다.`)
+    }
   }
 
   // 선택된 상품인지 확인
@@ -430,7 +448,11 @@ export function OrderManagementPage() {
       vat
     }
 
-    setOrderItems(updatedItems)
+    // 빈 행들 제거 (상품명이 없는 행들)
+    const finalItems = updatedItems.filter(item => item.productName && item.productName.trim() !== '')
+
+    setOrderItems(finalItems)
+    saveOrderItemsToStorage(finalItems)
   }
 
   // 발주서 저장
