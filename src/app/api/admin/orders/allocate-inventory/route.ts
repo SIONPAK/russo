@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 
+// ⚠️ 주의: 이 API는 더 이상 사용되지 않습니다.
+// 주문 생성 시 자동으로 재고 할당이 처리됩니다.
+// - 일반 주문: /api/orders (POST)
+// - 발주 주문: /api/orders/purchase (POST)
+// - 샘플 주문: /api/orders/sample (POST)
+
 type OrderWithUser = {
   id: string
   order_number: string
@@ -169,116 +175,163 @@ async function allocateItemInventory(supabase: any, item: any) {
       return { success: true, allocated: 0, reason: 'already_allocated' }
     }
 
-    // 색상/사이즈별 재고 확인 (JSON 형태)
+    console.log(`🔍 아이템 재고 할당 시작:`, {
+      productId: product.id,
+      productName: item.product_name,
+      color: item.color,
+      size: item.size,
+      required: remainingQuantity,
+      currentInventoryOptions: product.inventory_options
+    })
+
     let availableStock = 0
     let stockToAllocate = 0
 
+    // inventory_options에서 해당 색상/사이즈의 재고 찾기
     if (product.inventory_options && Array.isArray(product.inventory_options)) {
       const matchingOption = product.inventory_options.find((opt: any) => 
         opt.color === item.color && opt.size === item.size
       )
 
       if (matchingOption) {
-        // 옵션별 재고
         availableStock = matchingOption.stock_quantity || 0
         stockToAllocate = Math.min(availableStock, remainingQuantity)
 
+        console.log(`📦 옵션별 재고 확인:`, {
+          color: item.color,
+          size: item.size,
+          availableStock,
+          stockToAllocate
+        })
+
         if (stockToAllocate > 0) {
-          // JSON 배열에서 해당 옵션의 재고 업데이트
-          const updatedOptions = product.inventory_options.map((opt: any) => {
+          // 현재 상품 정보를 다시 조회하여 최신 재고 상태 확인
+          const { data: currentProduct, error: fetchError } = await supabase
+            .from('products')
+            .select('inventory_options')
+            .eq('id', product.id)
+            .single()
+
+          if (fetchError || !currentProduct) {
+            console.error('상품 조회 실패:', fetchError)
+            return { success: false, reason: 'product_fetch_error' }
+          }
+
+          // 최신 inventory_options에서 해당 옵션 찾기
+          const currentOptions = currentProduct.inventory_options || []
+          const currentOptionIndex = currentOptions.findIndex((opt: any) => 
+            opt.color === item.color && opt.size === item.size
+          )
+
+          if (currentOptionIndex === -1) {
+            console.error('해당 옵션을 찾을 수 없음:', { color: item.color, size: item.size })
+            return { success: false, reason: 'option_not_found' }
+          }
+
+          // 최신 재고 확인
+          const currentStock = currentOptions[currentOptionIndex].stock_quantity || 0
+          const finalStockToAllocate = Math.min(currentStock, remainingQuantity)
+
+          if (finalStockToAllocate <= 0) {
+            console.log(`❌ 재고 부족:`, {
+              currentStock,
+              required: remainingQuantity
+            })
+            return { success: false, reason: 'insufficient_stock' }
+          }
+
+          // inventory_options 업데이트 (해당 옵션의 재고 차감)
+          const updatedOptions = currentOptions.map((opt: any) => {
             if (opt.color === item.color && opt.size === item.size) {
-              return { ...opt, stock_quantity: (opt.stock_quantity || 0) - stockToAllocate }
+              return { ...opt, stock_quantity: opt.stock_quantity - finalStockToAllocate }
             }
             return opt
           })
 
           // 전체 재고량 재계산
           const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-          
-          await supabase
+
+          console.log(`🔄 재고 업데이트:`, {
+            previousStock: currentStock,
+            allocated: finalStockToAllocate,
+            newStock: currentStock - finalStockToAllocate,
+            totalStock
+          })
+
+          // 데이터베이스 업데이트
+          const { error: updateError } = await supabase
             .from('products')
             .update({ 
               inventory_options: updatedOptions,
-              stock_quantity: totalStock
+              stock_quantity: totalStock,
+              updated_at: new Date().toISOString()
             })
             .eq('id', product.id)
+
+          if (updateError) {
+            console.error('재고 업데이트 실패:', updateError)
+            return { success: false, reason: 'update_error' }
+          }
+
+          stockToAllocate = finalStockToAllocate
+          availableStock = currentStock
         }
       } else {
-        // 해당 색상/사이즈 옵션이 없는 경우 기본 재고 사용
-        availableStock = product.stock_quantity || 0
-        stockToAllocate = Math.min(availableStock, remainingQuantity)
-
-        if (stockToAllocate > 0) {
-          await supabase
-            .from('products')
-            .update({ 
-              stock_quantity: availableStock - stockToAllocate 
-            })
-            .eq('id', product.id)
-        }
+        console.log(`❌ 해당 옵션을 찾을 수 없음:`, { color: item.color, size: item.size })
+        return { success: false, reason: 'option_not_found' }
       }
     } else {
-      // inventory_options가 없는 경우 기본 재고 사용
-      availableStock = product.stock_quantity || 0
-      stockToAllocate = Math.min(availableStock, remainingQuantity)
-
-      if (stockToAllocate > 0) {
-        await supabase
-          .from('products')
-          .update({ 
-            stock_quantity: availableStock - stockToAllocate 
-          })
-          .eq('id', product.id)
-      }
+      console.log(`❌ inventory_options가 없음`)
+      return { success: false, reason: 'no_inventory_options' }
     }
 
     // 출고 수량 업데이트
     if (stockToAllocate > 0) {
-      await supabase
+      const { error: itemUpdateError } = await supabase
         .from('order_items')
         .update({ 
           shipped_quantity: alreadyShipped + stockToAllocate 
         })
         .eq('id', item.id)
 
+      if (itemUpdateError) {
+        console.error('주문 아이템 업데이트 실패:', itemUpdateError)
+        return { success: false, reason: 'item_update_error' }
+      }
+
       // 재고 변동 이력 기록 (출고)
       const movementData = {
         product_id: product.id,
         movement_type: 'order_shipment',
         quantity: -stockToAllocate, // 출고는 음수
-        notes: `주문 출고 처리 (주문 재고 할당)`,
+        notes: `주문 재고 할당 (${item.color}/${item.size}) - 시간순 자동 할당`,
         reference_id: item.order_id,
         reference_type: 'order',
         created_at: new Date().toISOString()
       }
       
-      console.log(`재고 변동 이력 기록 시도:`, movementData)
+      console.log(`📝 재고 변동 이력 기록:`, movementData)
       
-      const { data: movementResult, error: movementError } = await supabase
+      const { error: movementError } = await supabase
         .from('stock_movements')
         .insert(movementData)
-        .select()
       
       if (movementError) {
         console.error(`재고 변동 이력 기록 실패:`, movementError)
-      } else {
-        console.log(`재고 변동 이력 기록 성공:`, movementResult)
+        // 이력 기록 실패는 경고만 하고 계속 진행
       }
     }
 
-    console.log(`아이템 ${item.id} 할당:`, {
-      required: remainingQuantity,
-      available: availableStock,
-      allocated: stockToAllocate
-    })
-
-    return {
+    const result = {
       success: stockToAllocate === remainingQuantity,
       allocated: stockToAllocate,
       available: availableStock,
       required: remainingQuantity,
       reason: stockToAllocate === remainingQuantity ? 'allocated' : 'insufficient_stock'
     }
+
+    console.log(`✅ 아이템 할당 완료:`, result)
+    return result
 
   } catch (error) {
     console.error('아이템 할당 오류:', error)

@@ -341,6 +341,59 @@ export async function PATCH(request: NextRequest) {
       }, { status: 500 })
     }
 
+    // 재고 변동 이력 기록 (회수완료 시)
+    if (action === 'mark_returned' && updatedSamples.length > 0) {
+      try {
+        const stockMovements = updatedSamples.map(sample => ({
+          product_id: sample.product_id,
+          movement_type: 'sample_in',
+          quantity: sample.quantity, // 양수 (입고)
+          reference_id: sample.id,
+          reference_type: 'sample',
+          notes: `샘플 회수: ${sample.sample_number} (촬영용 샘플 반납)`,
+          created_at: new Date().toISOString()
+        }))
+
+        const { error: stockError } = await supabase
+          .from('stock_movements')
+          .insert(stockMovements)
+
+        if (stockError) {
+          console.error('Stock movements insert error:', stockError)
+          // 재고 이력 실패는 경고만 하고 계속 진행
+        }
+
+        // 상품 재고 수량도 업데이트
+        for (const sample of updatedSamples) {
+          // 현재 재고 조회
+          const { data: product, error: productError } = await supabase
+            .from('products')
+            .select('stock_quantity')
+            .eq('id', sample.product_id)
+            .single()
+
+          if (productError) {
+            console.error(`Product fetch error for ${sample.product_id}:`, productError)
+            continue
+          }
+
+          // 재고 증가
+          const newStockQuantity = (product.stock_quantity || 0) + sample.quantity
+          const { error: stockUpdateError } = await supabase
+            .from('products')
+            .update({ stock_quantity: newStockQuantity })
+            .eq('id', sample.product_id)
+
+          if (stockUpdateError) {
+            console.error(`Product stock update error for ${sample.product_id}:`, stockUpdateError)
+          }
+        }
+      } catch (error) {
+        console.error('Stock movement recording error:', error)
+        // 재고 이력 실패는 경고만 하고 계속 진행
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: `${updatedSamples.length}개의 샘플이 업데이트되었습니다.`,

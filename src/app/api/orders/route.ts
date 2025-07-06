@@ -264,18 +264,25 @@ export async function POST(request: NextRequest) {
 
         console.log(`옵션 재고 확인 - 색상: ${item.color}, 사이즈: ${item.size}, 현재 재고: ${inventoryOption.stock_quantity}`)
 
-        if (inventoryOption.stock_quantity < item.quantity) {
-          console.error(`재고 부족 - 요청: ${item.quantity}, 재고: ${inventoryOption.stock_quantity}`)
+        // 가용 재고만큼만 할당 (부족해도 주문 접수)
+        const availableStock = inventoryOption.stock_quantity
+        const allocatedQuantity = Math.min(item.quantity, availableStock)
+        
+        console.log(`재고 할당 - 요청: ${item.quantity}, 재고: ${availableStock}, 할당: ${allocatedQuantity}`)
+        
+        // 할당할 재고가 없는 경우에만 에러
+        if (allocatedQuantity <= 0) {
+          console.error(`재고 없음 - 상품: ${item.productName} (${item.color}/${item.size})`)
           return NextResponse.json(
-            { success: false, error: `재고가 부족합니다: ${item.productName} (${item.color}/${item.size}) - 요청: ${item.quantity}개, 재고: ${inventoryOption.stock_quantity}개` },
+            { success: false, error: `재고가 없습니다: ${item.productName} (${item.color}/${item.size})` },
             { status: 400 }
           )
         }
 
-        // 재고 차감
+        // 재고 차감 (할당된 수량만)
         const updatedOptions = product.inventory_options.map((option: any) => {
           if (option.color === item.color && option.size === item.size) {
-            const newQuantity = option.stock_quantity - item.quantity
+            const newQuantity = option.stock_quantity - allocatedQuantity
             console.log(`재고 차감 - ${option.color}/${option.size}: ${option.stock_quantity} → ${newQuantity}`)
             return {
               ...option,
@@ -305,21 +312,52 @@ export async function POST(request: NextRequest) {
           )
         }
 
+                 // 재고 변동 이력 기록 (옵션별, 할당된 수량만)
+         try {
+           const movementData = {
+             product_id: item.productId,
+             movement_type: 'order_reserve',
+             quantity: -allocatedQuantity, // 음수 (출고 예약)
+             notes: `주문 생성 시 재고 예약 (${item.color}/${item.size}) - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개`,
+             created_at: new Date().toISOString()
+           }
+          
+          const { error: movementError } = await supabase
+            .from('stock_movements')
+            .insert(movementData)
+          
+          if (movementError) {
+            console.error('재고 변동 이력 기록 실패:', movementError)
+            // 이력 기록 실패는 경고만 하고 계속 진행
+          } else {
+            console.log(`재고 변동 이력 기록 성공 - 상품 ID: ${item.productId}`)
+          }
+        } catch (movementRecordError) {
+          console.error('재고 변동 이력 기록 오류:', movementRecordError)
+        }
+
         console.log(`재고 업데이트 성공 - 상품 ID: ${item.productId}`)
       } else {
         // 일반 재고 관리인 경우
         console.log(`일반 재고 관리 - 현재 재고: ${product.stock_quantity}`)
         
-        if (product.stock_quantity < item.quantity) {
-          console.error(`재고 부족 - 요청: ${item.quantity}, 재고: ${product.stock_quantity}`)
+        // 가용 재고만큼만 할당 (부족해도 주문 접수)
+        const availableStock = product.stock_quantity
+        const allocatedQuantity = Math.min(item.quantity, availableStock)
+        
+        console.log(`일반재고 할당 - 요청: ${item.quantity}, 재고: ${availableStock}, 할당: ${allocatedQuantity}`)
+        
+        // 할당할 재고가 없는 경우에만 에러
+        if (allocatedQuantity <= 0) {
+          console.error(`재고 없음 - 상품: ${item.productName}`)
           return NextResponse.json(
-            { success: false, error: `재고가 부족합니다: ${item.productName} - 요청: ${item.quantity}개, 재고: ${product.stock_quantity}개` },
+            { success: false, error: `재고가 없습니다: ${item.productName}` },
             { status: 400 }
           )
         }
 
-        // 재고 차감
-        const newQuantity = product.stock_quantity - item.quantity
+        // 재고 차감 (할당된 수량만)
+        const newQuantity = product.stock_quantity - allocatedQuantity
         console.log(`재고 차감 - ${product.stock_quantity} → ${newQuantity}`)
 
         const { error: updateError } = await supabase
@@ -335,6 +373,30 @@ export async function POST(request: NextRequest) {
             { success: false, error: '재고 업데이트에 실패했습니다.' },
             { status: 500 }
           )
+        }
+
+                 // 재고 변동 이력 기록 (일반 재고, 할당된 수량만)
+         try {
+           const movementData = {
+             product_id: item.productId,
+             movement_type: 'order_reserve',
+             quantity: -allocatedQuantity, // 음수 (출고 예약)
+             notes: `주문 생성 시 재고 예약 - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개`,
+             created_at: new Date().toISOString()
+           }
+          
+          const { error: movementError } = await supabase
+            .from('stock_movements')
+            .insert(movementData)
+          
+          if (movementError) {
+            console.error('재고 변동 이력 기록 실패:', movementError)
+            // 이력 기록 실패는 경고만 하고 계속 진행
+          } else {
+            console.log(`재고 변동 이력 기록 성공 - 상품 ID: ${item.productId}`)
+          }
+        } catch (movementRecordError) {
+          console.error('재고 변동 이력 기록 오류:', movementRecordError)
         }
 
         console.log(`재고 업데이트 성공 - 상품 ID: ${item.productId}`)

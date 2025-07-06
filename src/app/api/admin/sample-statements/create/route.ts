@@ -180,6 +180,57 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
+    // 재고 변동 이력 기록 (샘플 출고)
+    try {
+      const stockMovements = createdSamples.flat().map(sample => ({
+        product_id: sample.product_id,
+        movement_type: 'sample_out',
+        quantity: -sample.quantity, // 음수 (출고)
+        reference_id: sample.id,
+        reference_type: 'sample',
+        notes: `샘플 출고: ${sample.sample_number} (촬영용 샘플 발송)`,
+        created_at: new Date().toISOString()
+      }))
+
+      const { error: stockError } = await supabase
+        .from('stock_movements')
+        .insert(stockMovements)
+
+      if (stockError) {
+        console.error('Stock movements insert error:', stockError)
+        // 재고 이력 실패는 경고만 하고 계속 진행
+      }
+
+      // 상품 재고 수량도 차감
+      for (const sample of createdSamples.flat()) {
+        // 현재 재고 조회
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('stock_quantity')
+          .eq('id', sample.product_id)
+          .single()
+
+        if (productError) {
+          console.error(`Product fetch error for ${sample.product_id}:`, productError)
+          continue
+        }
+
+        // 재고 차감
+        const newStockQuantity = Math.max(0, (product.stock_quantity || 0) - sample.quantity)
+        const { error: stockUpdateError } = await supabase
+          .from('products')
+          .update({ stock_quantity: newStockQuantity })
+          .eq('id', sample.product_id)
+
+        if (stockUpdateError) {
+          console.error(`Product stock update error for ${sample.product_id}:`, stockUpdateError)
+        }
+      }
+    } catch (error) {
+      console.error('Stock movement recording error:', error)
+      // 재고 이력 실패는 경고만 하고 계속 진행
+    }
+
     // 명세서 총액은 0원 (무료 제공)
     const { error: updateError } = await supabase
       .from('sample_statements')

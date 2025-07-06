@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     // 상품 정보 확인
     const { data: product, error: productError } = await supabase
       .from('products')
-      .select('id, name, price, stock_quantity')
+      .select('id, name, price, stock_quantity, inventory_options')
       .eq('id', product_id)
       .single()
 
@@ -53,12 +53,24 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // 재고 확인
-    if (product.stock_quantity < quantity) {
-      return NextResponse.json({
-        success: false,
-        error: `재고가 부족합니다. 현재 재고: ${product.stock_quantity}개`
-      }, { status: 400 })
+    // 재고 확인 (옵션별 재고 고려)
+    if (product.inventory_options && Array.isArray(product.inventory_options)) {
+      // 옵션별 재고 관리인 경우 - 첫 번째 옵션 사용
+      const firstOption = product.inventory_options[0]
+      if (!firstOption || firstOption.stock_quantity < quantity) {
+        return NextResponse.json({
+          success: false,
+          error: `재고가 부족합니다. 현재 재고: ${firstOption?.stock_quantity || 0}개`
+        }, { status: 400 })
+      }
+    } else {
+      // 일반 재고 관리인 경우
+      if (product.stock_quantity < quantity) {
+        return NextResponse.json({
+          success: false,
+          error: `재고가 부족합니다. 현재 재고: ${product.stock_quantity}개`
+        }, { status: 400 })
+      }
     }
 
     // 샘플 번호 생성 (SP-YYYYMMDD-XXXX)
@@ -113,22 +125,57 @@ export async function POST(request: NextRequest) {
     }
 
     // 재고 차감
-    const { error: stockError } = await supabase
-      .from('products')
-      .update({ 
-        stock_quantity: product.stock_quantity - quantity,
-        updated_at: new Date().toISOString()
+    if (product.inventory_options && Array.isArray(product.inventory_options)) {
+      // 옵션별 재고 관리인 경우 - 첫 번째 옵션에서 차감
+      const updatedOptions = product.inventory_options.map((option: any, index: number) => {
+        if (index === 0) { // 첫 번째 옵션에서 차감
+          return {
+            ...option,
+            stock_quantity: option.stock_quantity - quantity
+          }
+        }
+        return option
       })
-      .eq('id', product_id)
 
-    if (stockError) {
-      console.error('Stock update error:', stockError)
-      // 샘플 주문 롤백
-      await supabase.from('samples').delete().eq('id', sample.id)
-      return NextResponse.json({
-        success: false,
-        error: '재고 업데이트에 실패했습니다.'
-      }, { status: 500 })
+      const totalStock = updatedOptions.reduce((sum: number, option: any) => sum + option.stock_quantity, 0)
+
+      const { error: stockError } = await supabase
+        .from('products')
+        .update({ 
+          inventory_options: updatedOptions,
+          stock_quantity: totalStock,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', product_id)
+
+      if (stockError) {
+        console.error('Stock update error:', stockError)
+        // 샘플 주문 롤백
+        await supabase.from('samples').delete().eq('id', sample.id)
+        return NextResponse.json({
+          success: false,
+          error: '재고 업데이트에 실패했습니다.'
+        }, { status: 500 })
+      }
+    } else {
+      // 일반 재고 관리인 경우
+      const { error: stockError } = await supabase
+        .from('products')
+        .update({ 
+          stock_quantity: product.stock_quantity - quantity,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', product_id)
+
+      if (stockError) {
+        console.error('Stock update error:', stockError)
+        // 샘플 주문 롤백
+        await supabase.from('samples').delete().eq('id', sample.id)
+        return NextResponse.json({
+          success: false,
+          error: '재고 업데이트에 실패했습니다.'
+        }, { status: 500 })
+      }
     }
 
     // 재고 변동 이력 기록
