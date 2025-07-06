@@ -67,22 +67,20 @@ export function OrderManagementPage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [selectedProducts, setSelectedProducts] = useState<Array<{product: ProductSearchResult, color: string, size: string}>>([])  // 다중 선택된 상품들
+  const [selectedProducts, setSelectedProducts] = useState<{product: ProductSearchResult, color: string, size: string}[]>([])
   const [shippingAddresses, setShippingAddresses] = useState<any[]>([])
   const [selectedShippingAddress, setSelectedShippingAddress] = useState<any>(null)
   const [isShippingModalOpen, setIsShippingModalOpen] = useState(false)
-  
-  // 발주 내역 관련 상태
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    // 한국 시간 기준으로 오늘 날짜
-    const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
-    return koreaTime.toISOString().split('T')[0]
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = new Date()
+    return today.toISOString().split('T')[0]
   })
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [isLoadingOrders, setIsLoadingOrders] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
   
   // 로컬 스토리지 키
   const STORAGE_KEY = 'order-management-items'
@@ -437,71 +435,70 @@ export function OrderManagementPage() {
 
   // 발주서 저장
   const saveOrder = async () => {
-    if (!isAuthenticated || !user) {
-      showError('로그인이 필요합니다.')
+    if (orderItems.length === 0) {
+      showError('발주 상품을 추가해주세요.')
       return
     }
 
-    const validItems = orderItems.filter(item => 
-      item.productId && item.productCode && item.productName && item.quantity !== 0
-    )
-
-    if (validItems.length === 0) {
-      showError('발주할 상품을 추가해주세요.')
+    if (!selectedShippingAddress) {
+      showError('배송지를 선택해주세요.')
       return
-    }
-
-    // 음수 수량이 있는지 확인 (반품 요청)
-    const hasNegativeQuantity = validItems.some(item => item.quantity < 0)
-    if (hasNegativeQuantity) {
-      const isConfirmed = confirm('음수 수량이 포함되어 있습니다. 반품 요청으로 처리하시겠습니까?')
-      if (!isConfirmed) {
-        return
-      }
     }
 
     try {
-      const requestData = {
-        userId: user.id,
-        items: validItems,
-        totalAmount: validItems.reduce((sum, item) => sum + item.supplyAmount + item.vat, 0),
-        shippingInfo: selectedShippingAddress ? {
-          shipping_name: selectedShippingAddress.recipient_name,
-          shipping_phone: selectedShippingAddress.phone,
-          shipping_address: selectedShippingAddress.address,
-          shipping_postal_code: selectedShippingAddress.postal_code
-        } : {
-          shipping_name: (user as any).company_name || (user as any).representative_name || '',
-          shipping_phone: (user as any).phone || '',
-          shipping_address: (user as any).address || '',
-          shipping_postal_code: (user as any).postal_code || ''
-        }
+      const orderData = {
+        user_id: user?.id,
+        items: orderItems.map(item => ({
+          product_id: item.productId,
+          product_code: item.productCode,
+          product_name: item.productName,
+          color: item.color,
+          size: item.size,
+          quantity: item.quantity,
+          unit_price: item.unitPrice
+        })),
+        shipping_address_id: selectedShippingAddress.id,
+        shipping_address: selectedShippingAddress.address,
+        shipping_postal_code: selectedShippingAddress.postal_code,
+        shipping_name: selectedShippingAddress.recipient_name,
+        shipping_phone: selectedShippingAddress.phone
       }
 
-      console.log('발주서 저장 요청 데이터:', requestData)
-      console.log('현재 배송지 상태:', selectedShippingAddress)
-
-      const response = await fetch('/api/orders/purchase', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
-      })
+      let response
+      if (editingOrderId) {
+        // 수정 모드: 기존 발주서 업데이트
+        response = await fetch(`/api/orders/purchase/${editingOrderId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(orderData)
+        })
+      } else {
+        // 새 발주서 생성
+        response = await fetch('/api/orders/purchase', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(orderData)
+        })
+      }
 
       const result = await response.json()
 
       if (result.success) {
-        showSuccess('발주서가 저장되었습니다.')
+        showSuccess(editingOrderId ? '발주서가 수정되었습니다.' : '발주서가 저장되었습니다.')
         setOrderItems([])
-        clearOrderItemsFromStorage() // 로컬 스토리지에서 발주 상품 삭제
+        setEditingOrderId(null) // 수정 모드 해제
+        clearOrderItemsFromStorage()
         setActiveTab('list')
         fetchPurchaseOrders(selectedDate)
       } else {
-        showError(result.error || '발주서 저장에 실패했습니다.')
+        showError(result.message || '발주서 저장에 실패했습니다.')
       }
     } catch (error) {
-      console.error('Save order error:', error)
+      console.error('발주서 저장 오류:', error)
       showError('발주서 저장 중 오류가 발생했습니다.')
     }
   }
@@ -576,6 +573,7 @@ export function OrderManagementPage() {
       if (result.success && result.data.order_items) {
         // 발주서 작성 탭으로 이동
         setActiveTab('create')
+        setEditingOrderId(order.id) // 수정 모드 설정
         
         // 기존 발주서 데이터를 발주서 작성 폼에 로드 (공급가액과 부가세 재계산, 배송비 제외)
         const filteredItems = result.data.order_items.filter((item: any) => 
@@ -775,11 +773,33 @@ export function OrderManagementPage() {
                 <X className="h-4 w-4 mr-2" />
                 전체 초기화
               </Button>
+              {editingOrderId && (
+                <Button 
+                  onClick={() => {
+                    setEditingOrderId(null)
+                    setOrderItems([])
+                    clearOrderItemsFromStorage()
+                    showInfo('수정 모드가 취소되었습니다.')
+                  }}
+                  variant="outline"
+                  className="text-gray-600 hover:text-gray-700"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  수정 취소
+                </Button>
+              )}
             </div>
-            <Button onClick={saveOrder} disabled={orderItems.length === 0} className="bg-green-600 hover:bg-green-700">
-              <Save className="h-4 w-4 mr-2" />
-              발주서 저장
-            </Button>
+            <div className="flex items-center space-x-3">
+              {editingOrderId && (
+                <span className="text-sm text-blue-600 font-medium">
+                  수정 모드
+                </span>
+              )}
+              <Button onClick={saveOrder} disabled={orderItems.length === 0} className="bg-green-600 hover:bg-green-700">
+                <Save className="h-4 w-4 mr-2" />
+                {editingOrderId ? '발주서 수정' : '발주서 저장'}
+              </Button>
+            </div>
           </div>
 
           <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
