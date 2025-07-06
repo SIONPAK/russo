@@ -19,10 +19,10 @@ export async function POST(request: NextRequest) {
     // 주문 번호 생성
     const orderNumber = `PO${Date.now()}`
 
-    // 총 수량 계산하여 배송비 결정
+    // 총 수량 계산하여 배송비 결정 - 발주는 배송비 없음
     const totalQuantity = items.reduce((sum: number, item: any) => sum + item.quantity, 0)
-    const shippingFee = totalQuantity >= 20 ? 0 : 3000
-    const finalTotalAmount = totalAmount + shippingFee
+    const shippingFee = 0 // 발주는 배송비 없음
+    const finalTotalAmount = totalAmount // 배송비 추가하지 않음
 
     // 재고 확인 및 차감 (발주 주문도 재고 차감 필요)
     const itemAllocationResults = [] // 할당 결과 저장

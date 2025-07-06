@@ -577,19 +577,50 @@ export function OrderManagementPage() {
         // 발주서 작성 탭으로 이동
         setActiveTab('create')
         
-        // 기존 발주서 데이터를 발주서 작성 폼에 로드
-        const editItems: OrderItem[] = result.data.order_items.map((item: any, index: number) => ({
-          id: `edit-${index}`,
-          productId: item.product_id,
-          productCode: item.product_code,
-          productName: item.product_name,
-          color: item.color,
-          size: item.size,
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          supplyAmount: item.supply_amount,
-          vat: item.vat
-        }))
+        // 기존 발주서 데이터를 발주서 작성 폼에 로드 (공급가액과 부가세 재계산, 배송비 제외)
+        const filteredItems = result.data.order_items.filter((item: any) => 
+          item.product_name !== '배송비' && 
+          !item.product_name?.includes('배송비') &&
+          item.product_code !== 'SHIPPING'
+        )
+        
+        // 각 상품의 정확한 품목코드를 가져오기 위해 상품 정보 조회
+        const editItems: OrderItem[] = await Promise.all(
+          filteredItems.map(async (item: any, index: number) => {
+            const unitPrice = item.unit_price || 0
+            const quantity = item.quantity || 0
+            const supplyAmount = unitPrice * quantity
+            const vat = Math.floor(supplyAmount * 0.1)
+            
+            let productCode = item.product_code || ''
+            
+            // product_id가 있으면 실제 상품 정보에서 품목코드 가져오기
+            if (item.product_id) {
+              try {
+                const productResponse = await fetch(`/api/products/${item.product_id}`)
+                const productResult = await productResponse.json()
+                if (productResult.success && productResult.data) {
+                  productCode = productResult.data.code || productCode
+                }
+              } catch (error) {
+                console.warn('상품 정보 조회 실패:', error)
+              }
+            }
+            
+            return {
+              id: `edit-${index}`,
+              productId: item.product_id || '',
+              productCode: productCode,
+              productName: item.product_name || item.products?.name || '',
+              color: item.color || '',
+              size: item.size || '',
+              quantity: quantity,
+              unitPrice: unitPrice,
+              supplyAmount: supplyAmount,
+              vat: vat
+            }
+          })
+        )
         
         setOrderItems(editItems)
         clearOrderItemsFromStorage() // 기존 로컬 스토리지 초기화
