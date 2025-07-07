@@ -1194,7 +1194,7 @@ export default function ReturnStatementsPage() {
 
       {/* 반품명세서 상세보기 모달 */}
       <ReturnStatementDetailModal
-        statement={selectedStatement}
+        statement={selectedStatement as ReturnStatement}
         isOpen={showDetailModal}
         onClose={() => {
           setShowDetailModal(false)
