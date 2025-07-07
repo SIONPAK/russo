@@ -648,17 +648,36 @@ export async function generateTradeStatement(data: TradeStatementData, fileName:
 // 출고 명세서 생성 함수
 export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
   try {
+    console.log('템플릿 파일 로드 시작')
     const workbook = new ExcelJS.Workbook()
     
     // 템플릿 파일 로드
     const templatePath = path.join(process.cwd(), 'src/shared/templates/루소_영수증.xlsx')
+    console.log('템플릿 파일 경로:', templatePath)
+    
+    // 파일 존재 여부 확인
+    if (!fs.existsSync(templatePath)) {
+      console.error('템플릿 파일이 존재하지 않습니다:', templatePath)
+      throw new Error('템플릿 파일을 찾을 수 없습니다.')
+    }
+
     await workbook.xlsx.readFile(templatePath)
+    console.log('템플릿 파일 로드 완료')
     
     const worksheet = workbook.getWorksheet(1) // 첫 번째 시트 사용
     
     if (!worksheet) {
       throw new Error('템플릿 시트를 찾을 수 없습니다.')
     }
+    console.log('워크시트 로드 완료')
+
+    // 데이터 입력 시작
+    console.log('데이터 입력 시작')
+    console.log('주문 데이터:', {
+      orderNumber: data.orderNumber,
+      companyName: data.companyName,
+      itemsCount: data.items.length
+    })
 
     // 기본 정보 입력
     worksheet.getCell('B4').value = data.orderNumber // 주문번호
@@ -673,9 +692,16 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
 
     // 상품 목록 시작 행
     let currentRow = 12
+    console.log('상품 목록 입력 시작, 시작 행:', currentRow)
 
     // 상품 목록 입력
     data.items.forEach((item, index) => {
+      console.log(`상품 ${index + 1} 입력:`, {
+        productName: item.productName,
+        color: item.color,
+        size: item.size
+      })
+
       worksheet.getCell(`A${currentRow}`).value = index + 1 // 번호
       worksheet.getCell(`B${currentRow}`).value = item.productName // 상품명
       worksheet.getCell(`C${currentRow}`).value = item.color // 색상
@@ -694,8 +720,11 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
       currentRow++
     })
 
+    console.log('상품 목록 입력 완료')
+
     // 합계 금액
     worksheet.getCell(`G${currentRow + 1}`).value = data.totalAmount
+    console.log('합계 금액 입력:', data.totalAmount)
 
     // 고객 등급 표시
     if (data.customerGrade === 'premium') {
@@ -703,13 +732,17 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
     } else if (data.customerGrade === 'vip') {
       worksheet.getCell(`A${currentRow + 3}`).value = '👑 VIP 고객'
     }
+    console.log('고객 등급 표시 완료:', data.customerGrade)
 
     // 파일 생성
+    console.log('엑셀 파일 생성 시작')
     const buffer = await workbook.xlsx.writeBuffer()
+    console.log('엑셀 파일 생성 완료')
+    
     return Buffer.from(buffer)
 
-  } catch (error) {
-    console.error('출고 명세서 생성 오류:', error)
-    throw new Error('출고 명세서 생성에 실패했습니다.')
+  } catch (error: any) {
+    console.error('출고 명세서 생성 상세 오류:', error)
+    throw new Error(`출고 명세서 생성에 실패했습니다: ${error.message}`)
   }
 } 
