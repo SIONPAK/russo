@@ -1,6 +1,8 @@
 import * as XLSX from 'xlsx-js-style'
 import { saveAs } from 'file-saver'
 import ExcelJS from 'exceljs'
+import path from 'path'
+import fs from 'fs'
 
 export interface ReceiptData {
   orderNumber: string
@@ -647,147 +649,59 @@ export async function generateTradeStatement(data: TradeStatementData, fileName:
 export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
   try {
     const workbook = new ExcelJS.Workbook()
-    const worksheet = workbook.addWorksheet('출고명세서')
-
-    // 컬럼 너비 설정
-    worksheet.columns = [
-      { width: 3 },   // A
-      { width: 12 },  // B
-      { width: 15 },  // C
-      { width: 12 },  // D
-      { width: 8 },   // E
-      { width: 8 },   // F
-      { width: 12 },  // G
-      { width: 15 },  // H
-      { width: 12 }   // I
-    ]
-
-    // 회사 로고 및 제목
-    worksheet.mergeCells('A1:I3')
-    const titleCell = worksheet.getCell('A1')
-    titleCell.value = '출고 명세서'
-    titleCell.font = { size: 24, bold: true }
-    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
-    titleCell.border = {
-      top: { style: 'thick' },
-      left: { style: 'thick' },
-      bottom: { style: 'thick' },
-      right: { style: 'thick' }
+    
+    // 템플릿 파일 로드
+    const templatePath = path.join(process.cwd(), 'src/shared/templates/루소_영수증.xlsx')
+    await workbook.xlsx.readFile(templatePath)
+    
+    const worksheet = workbook.getWorksheet(1) // 첫 번째 시트 사용
+    
+    if (!worksheet) {
+      throw new Error('템플릿 시트를 찾을 수 없습니다.')
     }
 
-    // 회사 정보
-    let row = 5
-    worksheet.mergeCells(`A${row}:C${row}`)
-    worksheet.getCell(`A${row}`).value = '공급자 정보'
-    worksheet.getCell(`A${row}`).font = { bold: true, size: 12 }
-    worksheet.getCell(`A${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } }
+    // 기본 정보 입력
+    worksheet.getCell('B4').value = data.orderNumber // 주문번호
+    worksheet.getCell('B5').value = new Date(data.shippedAt).toLocaleDateString('ko-KR') // 출고일자
+    
+    // 고객 정보 입력
+    worksheet.getCell('F4').value = data.companyName // 업체명
+    worksheet.getCell('F5').value = data.businessLicenseNumber || '-' // 사업자번호
+    worksheet.getCell('F6').value = data.phone // 연락처
+    worksheet.getCell('F7').value = data.email // 이메일
+    worksheet.getCell('F8').value = `${data.address} (${data.postalCode})` // 주소
 
-    row++
-    worksheet.getCell(`A${row}`).value = '상호명:'
-    worksheet.getCell(`B${row}`).value = '루소'
-    worksheet.getCell(`A${row + 1}`).value = '사업자번호:'
-    worksheet.getCell(`B${row + 1}`).value = '123-45-67890'
-    worksheet.getCell(`A${row + 2}`).value = '연락처:'
-    worksheet.getCell(`B${row + 2}`).value = '010-2131-7540'
+    // 상품 목록 시작 행
+    let currentRow = 12
 
-    // 고객 정보
-    worksheet.mergeCells(`E${row - 1}:G${row - 1}`)
-    worksheet.getCell(`E${row - 1}`).value = '공급받는자 정보'
-    worksheet.getCell(`E${row - 1}`).font = { bold: true, size: 12 }
-    worksheet.getCell(`E${row - 1}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } }
-
-    worksheet.getCell(`E${row}`).value = '상호명:'
-    worksheet.getCell(`F${row}`).value = data.companyName
-    worksheet.getCell(`E${row + 1}`).value = '사업자번호:'
-    worksheet.getCell(`F${row + 1}`).value = data.businessLicenseNumber || '-'
-    worksheet.getCell(`E${row + 2}`).value = '연락처:'
-    worksheet.getCell(`F${row + 2}`).value = data.phone
-
-    row += 4
-
-    // 주문 정보
-    worksheet.mergeCells(`A${row}:I${row}`)
-    worksheet.getCell(`A${row}`).value = '출고 정보'
-    worksheet.getCell(`A${row}`).font = { bold: true, size: 12 }
-    worksheet.getCell(`A${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } }
-
-    row++
-    worksheet.getCell(`A${row}`).value = '주문번호:'
-    worksheet.getCell(`B${row}`).value = data.orderNumber
-    worksheet.getCell(`D${row}`).value = '출고일자:'
-    worksheet.getCell(`E${row}`).value = new Date(data.shippedAt).toLocaleDateString('ko-KR')
-
-    row++
-    worksheet.getCell(`A${row}`).value = '배송지:'
-    worksheet.mergeCells(`B${row}:I${row}`)
-    worksheet.getCell(`B${row}`).value = `${data.address} (${data.postalCode})`
-
-    row += 2
-
-    // 상품 목록 헤더
-    const headers = ['번호', '상품명', '색상', '사이즈', '출고수량', '단가', '금액']
-    headers.forEach((header, index) => {
-      const cell = worksheet.getCell(row, index + 1)
-      cell.value = header
-      cell.font = { bold: true }
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6E6E6' } }
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      }
-      cell.alignment = { horizontal: 'center', vertical: 'middle' }
-    })
-
-    row++
-
-    // 상품 목록
+    // 상품 목록 입력
     data.items.forEach((item, index) => {
-      const cells = [
-        index + 1,
-        item.productName,
-        item.color,
-        item.size,
-        item.quantity,
-        item.unitPrice.toLocaleString(),
-        item.totalPrice.toLocaleString()
-      ]
-
-      cells.forEach((value, cellIndex) => {
-        const cell = worksheet.getCell(row, cellIndex + 1)
-        cell.value = value
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        }
-        cell.alignment = { 
-          horizontal: cellIndex === 1 ? 'left' : 'center', 
-          vertical: 'middle' 
-        }
-      })
-      row++
+      worksheet.getCell(`A${currentRow}`).value = index + 1 // 번호
+      worksheet.getCell(`B${currentRow}`).value = item.productName // 상품명
+      worksheet.getCell(`C${currentRow}`).value = item.color // 색상
+      worksheet.getCell(`D${currentRow}`).value = item.size // 사이즈
+      worksheet.getCell(`E${currentRow}`).value = item.quantity // 수량
+      worksheet.getCell(`F${currentRow}`).value = item.unitPrice // 단가
+      worksheet.getCell(`G${currentRow}`).value = item.totalPrice // 금액
+      
+      // 셀 스타일 복사 (템플릿의 스타일 유지)
+      for (const col of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
+        const cell = worksheet.getCell(`${col}${currentRow}`)
+        const templateCell = worksheet.getCell(`${col}12`) // 템플릿의 첫 번째 데이터 행
+        cell.style = JSON.parse(JSON.stringify(templateCell.style))
+      }
+      
+      currentRow++
     })
 
-    // 합계
-    row++
-    worksheet.getCell(`E${row}`).value = '총 출고금액:'
-    worksheet.getCell(`E${row}`).font = { bold: true }
-    worksheet.getCell(`F${row}`).value = data.totalAmount.toLocaleString()
-    worksheet.getCell(`F${row}`).font = { bold: true }
-    worksheet.getCell(`F${row}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+    // 합계 금액
+    worksheet.getCell(`G${currentRow + 1}`).value = data.totalAmount
 
     // 고객 등급 표시
     if (data.customerGrade === 'premium') {
-      row += 2
-      worksheet.getCell(`A${row}`).value = '⭐ 우수업체'
-      worksheet.getCell(`A${row}`).font = { bold: true, color: { argb: 'FF800080' } }
+      worksheet.getCell(`A${currentRow + 3}`).value = '⭐ 우수업체'
     } else if (data.customerGrade === 'vip') {
-      row += 2
-      worksheet.getCell(`A${row}`).value = '👑 VIP 고객'
-      worksheet.getCell(`A${row}`).font = { bold: true, color: { argb: 'FFFFA500' } }
+      worksheet.getCell(`A${currentRow + 3}`).value = '👑 VIP 고객'
     }
 
     // 파일 생성
