@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
-import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
+import { getCurrentKoreanDateTime, getKoreaTime } from '@/shared/lib/utils'
 import { sendShippingStatementEmail } from '@/shared/lib/email-utils'
 import * as XLSX from 'xlsx-js-style'
 
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
             customerEmail: order.users?.email,
             status: 'sent',
             messageId: emailResult.messageId,
-            sentAt: new Date().toISOString()
+            sentAt: getKoreaTime()
           })
 
           // 이메일 발송 성공 이력 기록 (PostgreSQL NOW() 사용)
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
               subject: `[루소](으)로부터 [거래명세서](이)가 도착했습니다. - ${order.order_number}`,
               status: 'sent',
               message_id: emailResult.messageId,
-              sent_at: new Date().toISOString()
+              sent_at: getKoreaTime()
             })
 
         } else {

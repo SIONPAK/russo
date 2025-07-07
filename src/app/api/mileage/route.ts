@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 사용자 마일리지 조회
 export async function GET(request: NextRequest) {
@@ -224,7 +225,8 @@ export async function POST(request: NextRequest) {
           type,
           description,
           source,
-          status: 'completed'
+          status: 'completed',
+          updated_at: getKoreaTime()
         }
       ])
       .select()
@@ -242,7 +244,7 @@ export async function POST(request: NextRequest) {
       .from('users')
       .update({ 
         mileage_balance: newBalance,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', userId)
       .select('id, mileage_balance')

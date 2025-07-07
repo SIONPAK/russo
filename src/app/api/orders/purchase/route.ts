@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import { randomUUID } from 'crypto'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,11 +38,21 @@ export async function POST(request: NextRequest) {
       return sum + supplyAmount + vat
     }, 0)
 
+    // 양수와 음수 항목 분리
+    const positiveItems = items.filter((item: any) => item.quantity > 0)
+    const negativeItems = items.filter((item: any) => item.quantity < 0)
+    
+    // 주문 타입 결정
+    let orderType = 'purchase'
+    if (positiveItems.length === 0 && negativeItems.length > 0) {
+      orderType = 'return_only'
+    }
+
     // 주문 생성
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
-        user_id: user_id || null,
+        user_id: user_id,
         order_number: orderNumber,
         total_amount: totalAmount,
         shipping_address: shipping_address,
@@ -49,7 +60,7 @@ export async function POST(request: NextRequest) {
         shipping_name: shipping_name,
         shipping_phone: shipping_phone,
         status: 'pending',
-        order_type: 'purchase'
+        order_type: orderType
       })
       .select()
       .single()
@@ -59,29 +70,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: '주문 생성에 실패했습니다.' }, { status: 500 })
     }
 
-    // 주문 상품 생성
-    const orderItems = items.map((item: any) => ({
-      order_id: order.id,
-      product_id: item.product_id,
-      product_name: item.product_name,
-      color: item.color,
-      size: item.size,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      total_price: item.unit_price * item.quantity
-    }))
+    // 주문 상품 생성 (양수 수량만)
+    if (positiveItems.length > 0) {
+      const orderItems = positiveItems.map((item: any) => ({
+        order_id: order.id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        color: item.color,
+        size: item.size,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        total_price: item.unit_price * item.quantity
+      }))
 
-    const { error: itemsError } = await supabase
-      .from('order_items')
-      .insert(orderItems)
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems)
 
-    if (itemsError) {
-      console.error('주문 상품 생성 오류:', itemsError)
-      return NextResponse.json({ success: false, message: '주문 상품 생성에 실패했습니다.' }, { status: 500 })
+      if (itemsError) {
+        console.error('주문 상품 생성 오류:', itemsError)
+        return NextResponse.json({ success: false, message: '주문 상품 생성에 실패했습니다.' }, { status: 500 })
+      }
     }
 
-    // 자동 재고 할당
-    for (const item of items) {
+    // 자동 재고 할당 (양수 수량만)
+    for (const item of positiveItems) {
       if (item.product_id && item.quantity > 0) {
         try {
           // 상품 정보 조회
@@ -167,10 +180,12 @@ export async function POST(request: NextRequest) {
                 product_id: item.product_id,
                 movement_type: 'outbound',
                 quantity: -allocatedQuantity,
+                color: item.color || null,
+                size: item.size || null,
                 notes: `발주서 자동 재고 할당 (${orderNumber}) - ${item.color}/${item.size}`,
                 reference_id: order.id,
                 reference_type: 'order',
-                created_at: new Date().toISOString()
+                created_at: getKoreaTime()
               })
           }
 
@@ -183,8 +198,19 @@ export async function POST(request: NextRequest) {
     }
 
     // 음수 수량 항목이 있으면 반품명세서 생성
-    const negativeItems = items.filter((item: any) => item.quantity < 0)
+    console.log(`🔍 반품 처리 시작 - 전체 아이템 수: ${items.length}, 음수 아이템 수: ${negativeItems.length}`)
+    console.log(`🔍 음수 아이템 상세:`, negativeItems)
+    
     if (negativeItems.length > 0) {
+      console.log(`✅ 반품명세서 생성 시작 - 음수 아이템 ${negativeItems.length}개`)
+      
+      // 반품명세서 번호 생성 (RO-YYYYMMDD-XXXX)
+      const now = new Date()
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
+      const randomStr = Math.random().toString(36).substr(2, 4).toUpperCase()
+      const returnStatementNumber = `RO-${dateStr}-${randomStr}`
+      console.log(`📋 반품명세서 번호 생성: ${returnStatementNumber}`)
+
       const returnItems = negativeItems.map((item: any) => ({
         product_name: item.product_name,
         color: item.color,
@@ -193,31 +219,75 @@ export async function POST(request: NextRequest) {
         unit_price: item.unit_price,
         total_amount: Math.abs(item.unit_price * item.quantity)
       }))
+      console.log(`📦 반품 아이템 변환 완료:`, returnItems)
+
+      // 사용자 정보 조회
+      console.log(`👤 사용자 정보 조회 시작 - user_id: ${user_id}`)
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('company_name')
+        .eq('id', user_id)
+        .single()
+
+      if (userError) {
+        console.error('❌ 사용자 정보 조회 오류:', userError)
+      } else {
+        console.log(`✅ 사용자 정보 조회 성공:`, userData)
+      }
+
+      const companyName = userData?.company_name || shipping_name || ''
+      console.log(`🏢 회사명 결정: ${companyName}`)
+
+      const returnStatementData = {
+        id: randomUUID(),
+        statement_number: returnStatementNumber,
+        order_id: order.id,
+        company_name: companyName,
+        return_reason: '발주서 반품 요청',
+        return_type: 'customer_change',
+        items: returnItems,
+        total_amount: returnItems.reduce((sum: number, item: any) => sum + item.total_amount, 0),
+        refund_amount: returnItems.reduce((sum: number, item: any) => sum + item.total_amount, 0),
+        status: 'pending',
+        created_at: getKoreaTime()
+      }
+      console.log(`💾 반품명세서 데이터 준비 완료:`, returnStatementData)
 
       const { error: returnError } = await supabase
         .from('return_statements')
-        .insert({
-          id: randomUUID(),
-          user_id: user_id || null,
-          company_name: userData?.company_name || userData?.shipping_name || shipping_name || '',
-          items: returnItems,
-          total_amount: returnItems.reduce((sum: number, item: any) => sum + item.total_amount, 0),
-          status: 'pending'
-        })
+        .insert(returnStatementData)
 
       if (returnError) {
-        console.error('반품명세서 생성 오류:', returnError)
+        console.error('❌ 반품명세서 생성 오류:', returnError)
+        console.error('❌ 반품명세서 생성 실패 데이터:', returnStatementData)
+        return NextResponse.json({ success: false, message: '반품명세서 생성에 실패했습니다.' }, { status: 500 })
       }
+
+      console.log(`✅ 반품명세서 생성 완료 - 번호: ${returnStatementNumber}, 항목 수: ${negativeItems.length}`)
+    } else {
+      console.log(`ℹ️ 반품 아이템 없음 - 반품명세서 생성 건너뜀`)
     }
 
     // 자동 재고 할당 완료 후 주문 상태 변경
-    await supabase
-      .from('orders')
-      .update({
-        status: 'confirmed',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', order.id)
+    if (positiveItems.length > 0) {
+      // 일반 발주가 있는 경우
+      await supabase
+        .from('orders')
+        .update({
+          status: 'confirmed',
+          updated_at: getKoreaTime()
+        })
+        .eq('id', order.id)
+    } else if (negativeItems.length > 0) {
+      // 반품만 있는 경우
+      await supabase
+        .from('orders')
+        .update({
+          status: 'pending', // 반품은 pending 상태 유지
+          updated_at: getKoreaTime()
+        })
+        .eq('id', order.id)
+    }
 
     return NextResponse.json({ success: true, data: order })
   } catch (error) {

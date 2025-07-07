@@ -521,8 +521,7 @@ export function SamplesPage() {
       return
     }
 
-    console.log('Creating sample statement with items:', sampleItems)
-    console.log('Selected customer:', selectedCustomer)
+    
 
     try {
       const response = await fetch('/api/admin/sample-statements/create', {

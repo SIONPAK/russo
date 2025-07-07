@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
                 .from('order_items')
                 .update({
                   shipped_quantity: shippableQuantity,
-                  updated_at: new Date().toISOString()
+                  updated_at: getKoreaTime()
                 })
                 .eq('id', item.id)
             )
@@ -116,10 +117,12 @@ export async function POST(request: NextRequest) {
               product_id: item.product_id,
               movement_type: 'order_shipment',
               quantity: -shippableQuantity, // 출고는 음수
-              notes: `주문 벌크 출고 처리`,
+              color: item.color || null,
+              size: item.size || null,
+              notes: `주문 벌크 출고 처리 (${item.color}/${item.size}) - 주문번호: ${order.order_number}`,
               reference_id: orderId,
               reference_type: 'order',
-              created_at: new Date().toISOString()
+              created_at: getKoreaTime()
             }
             
             console.log('재고 변동 이력 기록 시도:', movementData)
@@ -152,7 +155,7 @@ export async function POST(request: NextRequest) {
                   .update({
                     inventory_options: updatedOptions,
                     stock_quantity: totalStock,
-                    updated_at: new Date().toISOString()
+                    updated_at: getKoreaTime()
                   })
                   .eq('id', item.product_id)
               )
@@ -163,7 +166,7 @@ export async function POST(request: NextRequest) {
                   .from('products')
                   .update({
                     stock_quantity: Math.max(0, ((product && product.stock_quantity) || 0) - shippableQuantity),
-                    updated_at: new Date().toISOString()
+                    updated_at: getKoreaTime()
                   })
                   .eq('id', item.product_id)
               )
@@ -202,7 +205,7 @@ export async function POST(request: NextRequest) {
           .from('orders')
           .update({
             status: 'shipped',
-            updated_at: new Date().toISOString()
+            updated_at: getKoreaTime()
           })
           .eq('id', orderId)
 

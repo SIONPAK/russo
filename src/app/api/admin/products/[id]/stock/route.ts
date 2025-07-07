@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 interface StockAdjustmentRequest {
   adjustment: number
@@ -76,7 +77,7 @@ export async function PATCH(
         .update({
           inventory_options: inventoryOptions,
           stock_quantity: totalStock,
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('id', productId)
 
@@ -94,7 +95,7 @@ export async function PATCH(
         movement_type: 'adjustment',
         quantity: adjustment,
         notes: `옵션별 재고 조정 (${color}/${size}) - ${reason || '수동 재고 조정'}`,
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       }
       
       console.log('재고 변동 이력 기록 시도:', movementData)
@@ -129,7 +130,7 @@ export async function PATCH(
         .from('products')
         .update({
           stock_quantity: newQuantity,
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('id', productId)
 
@@ -147,7 +148,7 @@ export async function PATCH(
         movement_type: 'adjustment',
         quantity: adjustment,
         notes: `전체 재고 조정 - ${reason || '수동 재고 조정'}`,
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       }
       
       console.log('재고 변동 이력 기록 시도:', movementData)

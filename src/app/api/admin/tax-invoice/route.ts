@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/shared/lib/supabase/server';
+import { getKoreaDate } from '@/shared/lib/utils';
 
 interface CompanySummary {
   businessName: string;
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     
-    const yearMonth = searchParams.get('yearMonth') || new Date().toISOString().slice(0, 7); // YYYY-MM
+    const yearMonth = searchParams.get('yearMonth') || getKoreaDate().slice(0, 7); // YYYY-MM
     
     console.log(`세금계산서 월별 집계 조회: ${yearMonth}`);
 

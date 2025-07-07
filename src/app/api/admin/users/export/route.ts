@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
 import * as XLSX from 'xlsx'
-import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
+import { getCurrentKoreanDateTime, getKoreaDate } from '@/shared/lib/utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
     const base64Data = Buffer.from(excelBuffer).toString('base64')
 
     // 파일명 생성
-    const currentDate = new Date().toISOString().split('T')[0]
+    const currentDate = getKoreaDate()
     const fileName = `회원목록_${currentDate}.xlsx`
 
     return NextResponse.json({

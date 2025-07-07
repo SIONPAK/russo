@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // PATCH - 반품 명세서 처리 (마일리지 증가)
 export async function PATCH(request: NextRequest) {
@@ -80,8 +81,8 @@ export async function PATCH(request: NextRequest) {
             .update({
               status: 'refunded',
               refunded: true,
-              processed_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
+              processed_at: getKoreaTime(),
+              updated_at: getKoreaTime()
             })
             .eq('id', statement.id)
 
@@ -111,7 +112,7 @@ export async function PATCH(request: NextRequest) {
             description: `반품 명세서 처리 - ${statement.statement_number} (루소 실수로 인한 환불)`,
             status: 'completed',
             order_id: statement.order_id,
-            created_at: new Date().toISOString()
+            created_at: getKoreaTime()
           })
 
         if (mileageRecordError) {
@@ -125,7 +126,7 @@ export async function PATCH(request: NextRequest) {
           .from('users')
           .update({
             mileage_balance: newMileage,
-            updated_at: new Date().toISOString()
+            updated_at: getKoreaTime()
           })
           .eq('id', order.user_id)
 
@@ -141,8 +142,8 @@ export async function PATCH(request: NextRequest) {
           .update({
             status: 'refunded',
             refunded: true,
-            processed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            processed_at: getKoreaTime(),
+            updated_at: getKoreaTime()
           })
           .eq('id', statement.id)
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
+import { getKoreaTime, getKoreaDate } from '@/shared/lib/utils'
 
 // GET - 주문 목록 엑셀 다운로드
 export async function GET(request: NextRequest) {
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: excelData,
-      filename: `주문목록_${new Date().toISOString().split('T')[0]}`
+      filename: `주문목록_${getKoreaDate()}`
     })
 
   } catch (error) {
@@ -138,8 +139,8 @@ export async function POST(request: NextRequest) {
             tracking_number: 운송장번호,
             courier: 택배사 || 'CJ대한통운',
             status: order.status === 'confirmed' ? 'shipped' : order.status,
-            shipped_at: order.status === 'confirmed' ? new Date().toISOString() : null,
-            updated_at: new Date().toISOString()
+            shipped_at: order.status === 'confirmed' ? getKoreaTime() : null,
+            updated_at: getKoreaTime()
           })
           .eq('id', order.id)
 
@@ -149,10 +150,9 @@ export async function POST(request: NextRequest) {
         }
 
         results.push({
-          orderNumber: 주문번호,
-          trackingNumber: 운송장번호,
-          courier: 택배사 || 'CJ대한통운',
-          status: 'success'
+          order_number: 주문번호,
+          tracking_number: 운송장번호,
+          success: true
         })
 
       } catch (error) {
@@ -163,17 +163,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        totalProcessed: trackingData.length,
-        successCount: results.length,
-        errorCount: errors.length,
+        total: trackingData.length,
+        success: results.length,
+        failed: errors.length,
         results,
         errors
       },
-      message: `총 ${trackingData.length}건 중 ${results.length}건 성공, ${errors.length}건 실패`
+      message: `${results.length}건 성공, ${errors.length}건 실패`
     })
 
   } catch (error) {
-    console.error('Tracking upload API error:', error)
+    console.error('Tracking upload error:', error)
     return NextResponse.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -181,14 +181,18 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 헬퍼 함수
-const getOrderStatusText = (status: string) => {
+// 주문 상태 텍스트 변환 함수
+function getOrderStatusText(status: string): string {
   const statusMap: { [key: string]: string } = {
-    pending: '주문접수',
-    confirmed: '주문확인',
-    shipped: '배송중',
-    delivered: '배송완료',
-    cancelled: '주문취소'
+    'pending': '주문접수',
+    'confirmed': '주문확인',
+    'processing': '처리중',
+    'shipped': '배송중',
+    'delivered': '배송완료',
+    'cancelled': '주문취소',
+    'returned': '반품',
+    'refunded': '환불완료'
   }
+  
   return statusMap[status] || status
-} 
+}

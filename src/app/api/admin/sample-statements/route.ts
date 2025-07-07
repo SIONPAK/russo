@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 샘플 명세서 목록 조회 (업체별 그룹화)
 export async function GET(request: NextRequest) {
@@ -208,7 +209,7 @@ export async function POST(request: NextRequest) {
       case 'mark_shipped':
         updateData = {
           status: 'shipped',
-          outgoing_date: new Date().toISOString()
+          outgoing_date: getKoreaTime()
         }
         successMessage = '출고완료 처리되었습니다.'
         break
@@ -240,7 +241,7 @@ export async function POST(request: NextRequest) {
       .from('samples')
       .update({
         ...updateData,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .in('id', sampleIds)
 
@@ -286,15 +287,15 @@ export async function PATCH(request: NextRequest) {
     }
 
     let updateData: any = {
-      updated_at: new Date().toISOString()
+      updated_at: getKoreaTime()
     }
 
     // 액션에 따른 업데이트 데이터 설정
     switch (action) {
       case 'mark_shipped':
         updateData.status = 'shipped'
-        updateData.shipped_at = new Date().toISOString()
-        updateData.outgoing_date = new Date().toISOString()
+        updateData.shipped_at = getKoreaTime()
+        updateData.outgoing_date = getKoreaTime()
         updateData.due_date = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString() // 21일 후
         if (data?.tracking_number) {
           updateData.tracking_number = data.tracking_number
@@ -303,14 +304,14 @@ export async function PATCH(request: NextRequest) {
 
       case 'mark_returned':
         updateData.status = 'returned'
-        updateData.return_date = new Date().toISOString()
-        updateData.delivered_at = new Date().toISOString()
+        updateData.return_date = getKoreaTime()
+        updateData.delivered_at = getKoreaTime()
         break
 
       case 'mark_charged':
         updateData.status = 'charged'
-        updateData.charge_date = new Date().toISOString()
-        updateData.delivered_at = new Date().toISOString()
+        updateData.charge_date = getKoreaTime()
+        updateData.delivered_at = getKoreaTime()
         if (data?.charge_amount) {
           updateData.charge_amount = data.charge_amount
         }
@@ -351,7 +352,7 @@ export async function PATCH(request: NextRequest) {
           reference_id: sample.id,
           reference_type: 'sample',
           notes: `샘플 회수: ${sample.sample_number} (촬영용 샘플 반납)`,
-          created_at: new Date().toISOString()
+          created_at: getKoreaTime()
         }))
 
         const { error: stockError } = await supabase

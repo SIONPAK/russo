@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime, getKoreaDate } from '@/shared/lib/utils'
 
 // 반품명세서 조회 API
 export async function GET(request: NextRequest) {
@@ -7,7 +8,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     
-    const yearMonth = searchParams.get('yearMonth') || new Date().toISOString().slice(0, 7)
+    const yearMonth = searchParams.get('yearMonth') || getKoreaDate().slice(0, 7)
     const companyName = searchParams.get('companyName')
     const returnType = searchParams.get('returnType')
     const status = searchParams.get('status')
@@ -21,9 +22,9 @@ export async function GET(request: NextRequest) {
       .from('return_statements')
       .select(`
         *,
-        orders!return_statements_order_id_fkey (
+        orders!left (
           order_number,
-          users!orders_user_id_fkey (
+          users!left (
             company_name,
             customer_grade
           )
@@ -35,9 +36,9 @@ export async function GET(request: NextRequest) {
     query = query.gte('created_at', startDate + 'T00:00:00+09:00')
     query = query.lte('created_at', endDate + 'T23:59:59+09:00')
 
-    // 회사명 필터
+    // 회사명 필터 (반품명세서 직접 저장된 회사명과 주문 연결된 회사명 모두 검색)
     if (companyName) {
-      query = query.ilike('orders.users.company_name', `%${companyName}%`)
+      query = query.or(`company_name.ilike.%${companyName}%,orders.users.company_name.ilike.%${companyName}%`)
     }
 
     // 반품 유형 필터
@@ -231,7 +232,7 @@ export async function PATCH(request: NextRequest) {
       .from('return_statements')
       .update({
         status: 'approved',
-        processed_at: new Date().toISOString()
+        processed_at: getKoreaTime()
       })
       .in('id', statementIds)
       .select()

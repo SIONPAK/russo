@@ -11,9 +11,7 @@ export async function PUT(
     const supabase = await createClient()
     const { items } = await request.json()
 
-    console.log('=== 출고 수량 업데이트 시작 ===')
-    console.log('주문 ID:', id)
-    console.log('업데이트할 항목들:', items)
+   
 
     // 주문 정보 조회 (주문 수량 확인용)
     const { data: orderData, error: orderError } = await supabase
@@ -36,7 +34,7 @@ export async function PUT(
 
     // 각 주문 아이템의 출고 수량 업데이트
     const updatePromises = items.map(async (item: { id: string; shipped_quantity: number }) => {
-      console.log(`아이템 ${item.id} 출고 수량을 ${item.shipped_quantity}로 업데이트 중...`)
+      
       
       const { data, error } = await supabase
         .from('order_items')
@@ -49,12 +47,12 @@ export async function PUT(
         throw error
       }
 
-      console.log(`아이템 ${item.id} 업데이트 완료:`, data)
+    
       return data
     })
 
     const results = await Promise.all(updatePromises)
-    console.log('모든 아이템 업데이트 완료:', results)
+    
 
     // 전체 출고 수량 확인하여 주문 상태 업데이트
     const { data: updatedOrderItems, error: itemsError } = await supabase
@@ -91,7 +89,7 @@ export async function PUT(
       return NextResponse.json({ success: false, error: '주문 상태 업데이트에 실패했습니다.' }, { status: 500 })
     }
 
-    console.log('=== 출고 수량 업데이트 완료 ===')
+    
 
     return NextResponse.json({
       success: true,

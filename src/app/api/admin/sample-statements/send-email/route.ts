@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import { sendEmail } from '@/shared/lib/email-utils'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // 샘플 명세서 이메일 발송 API
 export async function POST(request: NextRequest) {
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
           .from('sample_statements')
           .update({
             email_sent: true,
-            email_sent_at: new Date().toISOString()
+            email_sent_at: getKoreaTime()
           })
           .eq('id', statement.id)
 

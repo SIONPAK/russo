@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
-import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
+import { getKoreaTime, getKoreaDate, getKoreaDateFormatted } from '@/shared/lib/utils'
 import * as XLSX from 'xlsx'
 
 // 유저용 거래명세서 조회 API
@@ -82,7 +82,7 @@ export async function GET(
     const excelBuffer = await generateUserStatementExcel(statementData)
     
     // 파일명 생성
-    const fileName = `거래명세서_${order.order_number}_${new Date().toISOString().split('T')[0]}.xlsx`
+    const fileName = `거래명세서_${order.order_number}_${getKoreaDate()}.xlsx`
     
     // 엑셀 파일을 Base64로 인코딩하여 직접 다운로드 제공
     const base64 = Buffer.from(excelBuffer).toString('base64')
@@ -154,9 +154,9 @@ async function generateUserStatementData(order: any) {
 
   return {
     // 기본 정보
-    statementNumber: `TXN-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${order.order_number}`,
+    statementNumber: `TXN-${getKoreaDateFormatted()}-${order.order_number}`,
     orderNumber: order.order_number,
-    issueDate: new Date().toISOString().split('T')[0],
+    issueDate: getKoreaDate(),
     statementType: 'user_transaction', // 유저 거래명세서
     
     // 고객 정보
@@ -325,7 +325,7 @@ async function generateUserStatementExcel(statementData: any): Promise<Buffer> {
     ['1. 본 거래명세서는 실제 출고된 상품만을 기준으로 작성되었습니다.'],
     ['2. 문의사항은 고객센터(010-2131-7540)로 연락 주시기 바랍니다.'],
     [''],
-    ['발행일시', getCurrentKoreanDateTime()],
+    ['발행일시', getKoreaTime()],
     ['발행업체', '(주) 루소 | 010-2131-7540 | bsion5185@gmail.com']
   )
 

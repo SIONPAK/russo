@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaDate } from '@/shared/lib/utils'
 
 // GET - 사용자 세금계산서 조회
 export async function GET(request: NextRequest) {
@@ -7,7 +8,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     
-    const yearMonth = searchParams.get('yearMonth') || new Date().toISOString().slice(0, 7) // YYYY-MM
+    const yearMonth = searchParams.get('yearMonth') || getKoreaDate().slice(0, 7) // YYYY-MM
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 

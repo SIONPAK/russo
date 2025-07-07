@@ -103,4 +103,20 @@ export function getCurrentKoreanDateTimeISO(): string {
   const now = new Date()
   const koreanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
   return koreanTime.toISOString()
+}
+
+// 한국 시간 헬퍼 함수
+export function getKoreaTime(): string {
+  const koreaTime = new Date(Date.now() + (9 * 60 * 60 * 1000)) // UTC + 9시간
+  return koreaTime.toISOString()
+}
+
+export function getKoreaDate(): string {
+  const koreaTime = new Date(Date.now() + (9 * 60 * 60 * 1000)) // UTC + 9시간
+  return koreaTime.toISOString().split('T')[0]
+}
+
+export function getKoreaDateFormatted(): string {
+  const koreaTime = new Date(Date.now() + (9 * 60 * 60 * 1000)) // UTC + 9시간
+  return koreaTime.toISOString().split('T')[0].replace(/-/g, '')
 } 

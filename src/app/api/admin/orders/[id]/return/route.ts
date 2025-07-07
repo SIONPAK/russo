@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // POST - 반품 처리
 export async function POST(
@@ -71,7 +72,7 @@ export async function POST(
         .from('order_items')
         .update({ 
           shipped_quantity: newShippedQuantity,
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('id', item.order_item_id)
 
@@ -114,7 +115,7 @@ export async function POST(
       .from('orders')
       .update({ 
         status: newStatus,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', id)
 
@@ -168,7 +169,7 @@ async function generateReturnStatement(
         reason: reason,
         notes: notes,
         status: 'issued',
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       })
       .select()
       .single()

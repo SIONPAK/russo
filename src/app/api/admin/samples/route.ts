@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 샘플 목록 조회
 export async function GET(request: NextRequest) {
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest) {
               sample_type: 'photography',
               charge_amount: 0, // 샘플 주문은 항상 0원
               status: 'pending',
-              created_at: new Date().toISOString()
+              created_at: getKoreaTime()
             })
             .select()
             .single()
@@ -201,7 +202,7 @@ export async function POST(request: NextRequest) {
             .from('products')
             .update({
               stock_quantity: product.stock_quantity - quantity,
-              updated_at: new Date().toISOString()
+              updated_at: getKoreaTime()
             })
             .eq('id', productId)
 
@@ -217,16 +218,30 @@ export async function POST(request: NextRequest) {
           }
 
           // 재고 변동 이력 기록
+          // 색상/사이즈 정보 파싱
+          const parseOptionsForStock = (options: string) => {
+            const colorMatch = options.match(/색상:\s*([^,]+)/);
+            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+            return {
+              color: colorMatch ? colorMatch[1].trim() : null,
+              size: sizeMatch ? sizeMatch[1].trim() : null
+            };
+          };
+
+          const { color: stockColor, size: stockSize } = parseOptionsForStock(sample.product_options || '');
+
           await supabase
             .from('stock_movements')
             .insert({
               product_id: productId,
               movement_type: 'sample_out',
               quantity: -quantity,
+              color: stockColor,
+              size: stockSize,
               reference_id: sample.id,
               reference_type: 'sample',
-              notes: `샘플 출고: ${sampleNumber}`,
-              created_at: new Date().toISOString()
+              notes: `샘플 출고: ${sampleNumber} (${sample.sample_type === 'photography' ? '촬영용' : '판매용'})`,
+              created_at: getKoreaTime()
             })
 
           results.push({
@@ -330,12 +345,13 @@ export async function POST(request: NextRequest) {
         product_name: product.name,
         product_options: product_options || '',
         quantity,
-        outgoing_date: new Date().toISOString(),
+        outgoing_date: getKoreaTime(),
         status: 'pending',
         sample_type,
         charge_amount: finalChargeAmount,
         notes,
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30일 후
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30일 후
+        created_at: getKoreaTime()
       })
       .select(`
         *,
@@ -368,7 +384,7 @@ export async function POST(request: NextRequest) {
       .from('products')
       .update({
         stock_quantity: product.stock_quantity - quantity,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', product_id)
 
@@ -384,16 +400,30 @@ export async function POST(request: NextRequest) {
     }
 
     // 재고 변동 이력 기록
+    // 색상/사이즈 정보 파싱
+    const parseOptionsForSingle = (options: string) => {
+      const colorMatch = options.match(/색상:\s*([^,]+)/);
+      const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+      return {
+        color: colorMatch ? colorMatch[1].trim() : null,
+        size: sizeMatch ? sizeMatch[1].trim() : null
+      };
+    };
+
+    const { color: singleColor, size: singleSize } = parseOptionsForSingle(product_options || '');
+
     await supabase
       .from('stock_movements')
       .insert({
         product_id,
         movement_type: 'sample_out',
         quantity: -quantity,
+        color: singleColor,
+        size: singleSize,
         reference_id: sample.id,
         reference_type: 'sample',
         notes: `샘플 출고: ${sampleNumber} (${sample_type === 'photography' ? '촬영용' : '판매용'})`,
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       })
 
     return NextResponse.json({
@@ -434,7 +464,7 @@ export async function PUT(request: NextRequest) {
         try {
           const updateData: any = {
             status,
-            updated_at: new Date().toISOString()
+            updated_at: getKoreaTime()
           }
 
           // 운송장 데이터가 있는 경우
@@ -447,7 +477,7 @@ export async function PUT(request: NextRequest) {
 
           // 배송 시작 시 출고일 설정
           if (status === 'shipped') {
-            updateData.outgoing_date = new Date().toISOString()
+            updateData.outgoing_date = getKoreaTime()
           }
 
           const { error: updateError } = await supabase
@@ -507,7 +537,7 @@ export async function PUT(request: NextRequest) {
 
       const updateData: any = {
         status,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       }
 
       if (trackingNumber) {
@@ -569,6 +599,18 @@ export async function PUT(request: NextRequest) {
           }
           updateData.return_date = now
           
+          // 색상/사이즈 정보 파싱
+          const parseOptions = (options: string) => {
+            const colorMatch = options.match(/색상:\s*([^,]+)/);
+            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+            return {
+              color: colorMatch ? colorMatch[1].trim() : null,
+              size: sizeMatch ? sizeMatch[1].trim() : null
+            };
+          };
+
+          const { color: sampleColor, size: sampleSize } = parseOptions(currentSample.product_options || '');
+
           // 반납 시 재고 복구
           const { data: productData, error: productError } = await supabase
             .from('products')
@@ -584,24 +626,38 @@ export async function PUT(request: NextRequest) {
                 updated_at: now
               })
               .eq('id', currentSample.product_id)
-
-            // 재고 복구 이력 기록
-            await supabase
-              .from('stock_movements')
-              .insert({
-                product_id: currentSample.product_id,
-                movement_type: 'sample_return',
-                quantity: currentSample.quantity,
-                reason: `샘플 반납 (${currentSample.sample_number})`,
-                reference_id: currentSample.id,
-                reference_type: 'sample',
-                created_at: now
-              })
           }
+
+          // 재고 복구 이력 기록
+          await supabase
+            .from('stock_movements')
+            .insert({
+              product_id: currentSample.product_id,
+              movement_type: 'sample_return',
+              quantity: currentSample.quantity,
+              color: sampleColor,
+              size: sampleSize,
+              reason: `샘플 반납 (${currentSample.sample_number})`,
+              reference_id: currentSample.id,
+              reference_type: 'sample',
+              created_at: now
+            })
           break
           
         case 'rejected':
           updateData.rejected_at = now
+          
+          // 색상/사이즈 정보 파싱
+          const parseOptionsReject = (options: string) => {
+            const colorMatch = options.match(/색상:\s*([^,]+)/);
+            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+            return {
+              color: colorMatch ? colorMatch[1].trim() : null,
+              size: sizeMatch ? sizeMatch[1].trim() : null
+            };
+          };
+
+          const { color: rejectColor, size: rejectSize } = parseOptionsReject(currentSample.product_options || '');
           
           // 거절 시 재고 복구
           const { data: rejectedProductData, error: rejectedProductError } = await supabase
@@ -626,6 +682,8 @@ export async function PUT(request: NextRequest) {
                 product_id: currentSample.product_id,
                 movement_type: 'sample_reject',
                 quantity: currentSample.quantity,
+                color: rejectColor,
+                size: rejectSize,
                 reason: `샘플 거절 (${currentSample.sample_number})`,
                 reference_id: currentSample.id,
                 reference_type: 'sample',
@@ -717,12 +775,24 @@ export async function PUT(request: NextRequest) {
             .from('samples')
             .update({
               status: 'recovered',
-              return_date: new Date().toISOString(),
-              updated_at: new Date().toISOString()
+              return_date: getKoreaTime(),
+              updated_at: getKoreaTime()
             })
             .eq('id', sample.id)
 
           if (!updateError) {
+            // 색상/사이즈 정보 파싱
+            const parseOptionsRecover = (options: string) => {
+              const colorMatch = options.match(/색상:\s*([^,]+)/);
+              const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+              return {
+                color: colorMatch ? colorMatch[1].trim() : null,
+                size: sizeMatch ? sizeMatch[1].trim() : null
+              };
+            };
+
+            const { color: recoverColor, size: recoverSize } = parseOptionsRecover(sample.product_options || '');
+
             // 재고 복구
             await supabase
               .from('products')
@@ -738,10 +808,12 @@ export async function PUT(request: NextRequest) {
                 product_id: sample.product_id,
                 movement_type: 'sample_return',
                 quantity: sample.quantity,
+                color: recoverColor,
+                size: recoverSize,
                 reference_id: sample.id,
                 reference_type: 'sample',
                 notes: `샘플 회수: ${sample.sample_number}`,
-                created_at: new Date().toISOString()
+                created_at: getKoreaTime()
               })
 
             results.push({
@@ -781,7 +853,7 @@ export async function PUT(request: NextRequest) {
                   reference_id: sample.id,
                   reference_type: 'sample',
                   description: `샘플 미반납 차감: ${sample.sample_number} (${diffDays}일 경과)`,
-                  created_at: new Date().toISOString()
+                  created_at: getKoreaTime()
                 })
 
               // 샘플 상태 업데이트
@@ -789,8 +861,8 @@ export async function PUT(request: NextRequest) {
                 .from('samples')
                 .update({
                   status: 'charged',
-                  charge_date: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
+                  charge_date: getKoreaTime(),
+                  updated_at: getKoreaTime()
                 })
                 .eq('id', sample.id)
 

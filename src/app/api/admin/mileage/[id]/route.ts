@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function PUT(
   request: NextRequest,
@@ -41,7 +42,7 @@ export async function PUT(
         type,
         amount: type === 'earn' ? Math.abs(amount) : -Math.abs(amount),
         description,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', mileageId)
 

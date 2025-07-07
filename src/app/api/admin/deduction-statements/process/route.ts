@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // PATCH - 차감 명세서 처리 (마일리지 차감)
 export async function PATCH(request: NextRequest) {
@@ -80,7 +81,7 @@ export async function PATCH(request: NextRequest) {
             source: 'manual',
             description: `차감 명세서 처리 - ${statement.statement_number}`,
             status: 'completed',
-            created_at: new Date().toISOString()
+            created_at: getKoreaTime()
           })
 
         if (mileageRecordError) {
@@ -94,7 +95,7 @@ export async function PATCH(request: NextRequest) {
           .from('users')
           .update({
             mileage_balance: newMileage,
-            updated_at: new Date().toISOString()
+            updated_at: getKoreaTime()
           })
           .eq('id', user.id)
 
@@ -110,8 +111,8 @@ export async function PATCH(request: NextRequest) {
           .update({
             status: 'completed',
             mileage_deducted: true,
-            processed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            processed_at: getKoreaTime(),
+            updated_at: getKoreaTime()
           })
           .eq('id', statement.id)
 

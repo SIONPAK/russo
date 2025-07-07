@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // POST - 샘플 테스트 데이터 생성
 export async function POST(request: NextRequest) {
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
         charge_method: chargeAmount > 0 ? 'mileage' : null,
         notes: `테스트 샘플 ${i + 1}`,
         created_at: createdDate.toISOString(),
-        updated_at: new Date().toISOString(),
+        updated_at: getKoreaTime(),
         sample_type: sampleType,
         due_date: outgoingDate ? new Date(outgoingDate.getTime() + 21 * 24 * 60 * 60 * 1000).toISOString() : null,
         return_date: returnDate?.toISOString(),

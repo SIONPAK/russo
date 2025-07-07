@@ -21,21 +21,21 @@ interface AuthState {
 // 쿠키에서 값 읽기 헬퍼 함수
 const getCookie = (name: string): string | null => {
   if (typeof document === 'undefined') {
-    console.log('❌ Document is undefined (SSR)')
+  
     return null
   }
   
-  console.log(`🍪 Getting cookie: ${name}`)
+  
   const value = `; ${document.cookie}`
   const parts = value.split(`; ${name}=`)
-  console.log(`🍪 Cookie parts for ${name}:`, parts)
+  
   
   if (parts.length === 2) {
     const result = parts.pop()?.split(';').shift() || null
-    console.log(`🍪 Cookie ${name} result:`, result)
+  
     return result
   }
-  console.log(`🍪 Cookie ${name} not found`)
+  
   return null
 }
 
@@ -57,7 +57,7 @@ export const useAuthStore = create<AuthState>()(
 
       // 액션들
       setUser: (user, userType) => {
-        console.log('Auth Store - setUser called:', { user, userType })
+        
         set({
           user,
           userType,
@@ -67,7 +67,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       clearUser: () => {
-        console.log('Auth Store - clearUser called')
+        
         set({
           user: null,
           userType: null,
@@ -77,7 +77,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        console.log('Auth Store - logout called')
+        
         
         try {
           // 서버 로그아웃 API 호출
@@ -102,13 +102,12 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setLoading: (isLoading) => {
-        console.log('Auth Store - setLoading:', isLoading)
+  
         set({ isLoading })
       },
 
       updateUser: (userData) => {
         const { user } = get()
-        console.log('Auth Store - updateUser called:', { currentUser: user, userData })
         if (user) {
           set({
             user: { ...user, ...userData },
@@ -118,18 +117,17 @@ export const useAuthStore = create<AuthState>()(
 
       // 쿠키 기반 로그인 상태 초기화
       initializeAuth: async () => {
-        console.log('Auth Store - initializeAuth called')
-        console.log('Current document.cookie:', document.cookie)
+        
         set({ isLoading: true })
 
         try {
           const userId = getCookie('user_id')
           const userType = getCookie('user_type')
 
-          console.log('Parsed cookies:', { userId, userType })
+          
 
           if (!userId || !userType) {
-            console.log('❌ No auth cookies found, clearing user state')
+            
             set({
               user: null,
               userType: null,
@@ -139,12 +137,12 @@ export const useAuthStore = create<AuthState>()(
             return
           }
 
-          console.log('✅ Auth cookies found, proceeding with user restoration')
+          
 
           // 이미 로그인 상태인 경우 쿠키와 동기화 확인
           const { user: currentUser, userType: currentUserType } = get()
           if (currentUser && currentUserType === userType) {
-            console.log('User already authenticated, skipping initialization')
+            
             set({ isLoading: false })
             return
           }
@@ -158,7 +156,7 @@ export const useAuthStore = create<AuthState>()(
           if (response.ok) {
             const result = await response.json()
             if (result.success && result.data) {
-              console.log('Successfully restored user from server:', result.data)
+              
               set({
                 user: result.data,
                 userType: userType as 'customer' | 'admin',
@@ -170,7 +168,7 @@ export const useAuthStore = create<AuthState>()(
           }
 
           // 서버에서 사용자 정보를 가져올 수 없는 경우 쿠키 삭제 및 로그아웃
-          console.log('Failed to restore user from server, clearing cookies')
+          
           deleteCookie('user_id')
           deleteCookie('user_type')
           
@@ -206,7 +204,7 @@ export const useAuthStore = create<AuthState>()(
       }),
       // 스토리지에서 복원 후 쿠키와 동기화 (AuthProvider가 이미 초기화했으므로 건너뛰기)
       onRehydrateStorage: () => (state) => {
-        console.log('🔄 Zustand rehydration completed')
+
         // AuthProvider에서 이미 초기화를 하므로 여기서는 하지 않음
         return state
       },

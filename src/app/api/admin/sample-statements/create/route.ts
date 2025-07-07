@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // POST - 샘플 명세서 생성
 export async function POST(request: NextRequest) {
@@ -141,8 +142,8 @@ export async function POST(request: NextRequest) {
         total_amount: 0,
         admin_notes,
         items: items || [],
-        created_at: koreaTime.toISOString(),
-        updated_at: koreaTime.toISOString()
+        created_at: getKoreaTime(),
+        updated_at: getKoreaTime()
       })
       .select()
       .single()
@@ -199,8 +200,8 @@ export async function POST(request: NextRequest) {
           admin_notes: admin_notes || `샘플 그룹 ${mainSampleNumber} (${index + 1}/${items.length}) - 반납기한: ${dueDate.toISOString().split('T')[0]} (미반납시 ₩${penaltyAmount.toLocaleString()} 차감)`,
           // 그룹 정보를 notes에 추가하여 그룹 관리
           notes: `GROUP:${mainSampleNumber}|ITEM:${index + 1}|TOTAL:${items.length}|PENALTY:${penaltyAmount}`,
-          created_at: koreaTime.toISOString(),
-          updated_at: koreaTime.toISOString()
+          created_at: getKoreaTime(),
+          updated_at: getKoreaTime()
         })
         .select()
 
@@ -236,7 +237,7 @@ export async function POST(request: NextRequest) {
         reference_id: sample.id,
         reference_type: 'sample',
         notes: `샘플 출고: ${sample.sample_number} (촬영용 샘플 발송)`,
-        created_at: koreaTime.toISOString()
+        created_at: getKoreaTime()
       }))
 
       const { error: stockError } = await supabase

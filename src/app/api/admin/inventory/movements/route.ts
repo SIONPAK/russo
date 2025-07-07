@@ -62,13 +62,13 @@ export async function GET(request: NextRequest) {
         let currentStock = 0
         if (currentProduct) {
           if (movement.color && movement.size && currentProduct.inventory_options) {
-            // 옵션별 재고 조회
+            // 옵션별 재고 조회 (해당 색상/사이즈의 현재 재고)
             const option = currentProduct.inventory_options.find(
               (opt: any) => opt.color === movement.color && opt.size === movement.size
             )
             currentStock = option?.stock_quantity || 0
           } else {
-            // 전체 재고 조회
+            // 전체 재고 조회 (색상/사이즈가 없는 경우)
             currentStock = currentProduct.stock_quantity || 0
           }
         }
@@ -77,6 +77,8 @@ export async function GET(request: NextRequest) {
           ...movement,
           product_name: movement.products?.name || '알 수 없음',
           product_code: movement.products?.code || '',
+          color: movement.color || '-',
+          size: movement.size || '-',
           quantity: Math.abs(movement.quantity), // 절댓값으로 표시
           stock_quantity: currentStock, // 현재 재고 수량 (입고/출고 후 수량)
         }

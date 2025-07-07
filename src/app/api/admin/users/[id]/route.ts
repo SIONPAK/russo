@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 특정 사용자 조회
 export async function GET(
@@ -113,7 +114,7 @@ export async function PUT(
         approval_status,
         is_active,
         customer_grade,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', id)
       .select()
@@ -166,7 +167,7 @@ export async function DELETE(
         .from('users')
         .update({
           is_active: false,
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('id', id)
 

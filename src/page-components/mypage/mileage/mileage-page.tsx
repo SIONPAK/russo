@@ -62,13 +62,12 @@ export function MileagePage() {
   // 마일리지 데이터 조회
   const fetchMileageData = async () => {
     if (!user?.id) {
-      console.log('🔍 사용자 정보 없음 - 로딩 상태 해제')
+    
       setLoading(false)
       return
     }
 
-    console.log('🔍 현재 로그인 사용자 ID:', user.id)
-    console.log('🔍 사용자 전체 정보:', user)
+    
 
     setLoading(true)
     try {
@@ -105,13 +104,13 @@ export function MileagePage() {
         searchParams.append('endDate', endDate.toISOString().split('T')[0])
       }
 
-      console.log('🔍 API 요청 URL:', `/api/mileage?${searchParams}`)
+      
       const response = await fetch(`/api/mileage?${searchParams}`)
       const result = await response.json()
-      console.log('🔍 API 전체 응답:', JSON.stringify(result, null, 2))
+      
 
       if (result.success) {
-        console.log('🔍 받은 마일리지 내역:', result.data.mileages)
+        
         setTransactions(result.data.mileages || [])
         setSummary(result.data.summary || {
           currentBalance: 0,

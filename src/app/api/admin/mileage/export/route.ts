@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
 import * as XLSX from 'xlsx'
+import { getKoreaDate } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="mileage_${new Date().toISOString().split('T')[0]}.xlsx"`
+        'Content-Disposition': `attachment; filename="mileage_${getKoreaDate()}.xlsx"`
       }
     })
 

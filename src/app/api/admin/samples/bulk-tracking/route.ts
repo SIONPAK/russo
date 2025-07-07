@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,8 +98,8 @@ export async function POST(request: NextRequest) {
           .update({
             tracking_number: data.trackingNumber,
             status: 'shipped',
-            shipped_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            shipped_at: getKoreaTime(),
+            updated_at: getKoreaTime()
           })
           .eq('id', targetSample.id)
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime, getKoreaDate } from '@/shared/lib/utils'
 
 // 차감명세서 조회 API
 export async function GET(request: NextRequest) {
@@ -7,8 +8,8 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     
-    const startDate = searchParams.get('startDate') || new Date().toISOString().slice(0, 10)
-    const endDate = searchParams.get('endDate') || new Date().toISOString().slice(0, 10)
+    const startDate = searchParams.get('startDate') || getKoreaDate()
+    const endDate = searchParams.get('endDate') || getKoreaDate()
     const companyName = searchParams.get('companyName')
     const deductionType = searchParams.get('deductionType')
     const status = searchParams.get('status')
@@ -173,8 +174,8 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         mileage_deducted: false,
         email_sent: false,
-        created_at: koreaTime.toISOString(),
-        updated_at: koreaTime.toISOString()
+        created_at: getKoreaTime(),
+        updated_at: getKoreaTime()
       })
       .select()
       .single()
@@ -303,7 +304,7 @@ export async function PATCH(request: NextRequest) {
             .from('users')
             .update({
               mileage_balance: currentBalance - mileageAmount,
-              updated_at: new Date().toISOString()
+              updated_at: getKoreaTime()
             })
             .eq('id', userId)
 
@@ -318,7 +319,7 @@ export async function PATCH(request: NextRequest) {
             .from('deduction_statements')
             .update({
               status: 'completed',
-              processed_at: new Date().toISOString(),
+              processed_at: getKoreaTime(),
               mileage_deducted: true
             })
             .eq('id', statement.id)

@@ -1,10 +1,11 @@
-import { supabase } from '@/shared/lib/supabase'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function GET() {
   try {
-    
-    const now = new Date().toISOString()
+    const supabase = await createClient()
+    const now = getKoreaTime()
 
     const { data, error } = await supabase
       .from('popups')

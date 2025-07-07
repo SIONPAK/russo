@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime, getKoreaDateFormatted } from '@/shared/lib/utils'
 
 // POST - 최종 명세서 확정 (마일리지 차감 + 거래명세서 생성)
 export async function POST(request: NextRequest) {
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest) {
         const totalAmount = shippedAmount + shippingFee
 
         // 1. 거래명세서 생성
-        const statementNumber = `TXN-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${order.order_number}`
+        const statementNumber = `TXN-${getKoreaDateFormatted()}-${order.order_number}`
         
         const { data: statement, error: statementError } = await supabase
           .from('statements')
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest) {
             reason: '최종 명세서 확정',
             notes: `실제 출고 금액: ${shippedAmount.toLocaleString()}원${shippingFee > 0 ? ` + 배송비: ${shippingFee.toLocaleString()}원` : ''}`,
             status: 'issued',
-            created_at: new Date().toISOString()
+            created_at: getKoreaTime()
           })
           .select()
           .single()
@@ -260,7 +261,7 @@ export async function POST(request: NextRequest) {
           .from('users')
           .update({ 
             mileage_balance: newMileage,
-            updated_at: new Date().toISOString()
+            updated_at: getKoreaTime()
           })
           .eq('id', order.user_id)
 
@@ -285,7 +286,7 @@ export async function POST(request: NextRequest) {
             balance_after: newMileage,
             type: 'deduction',
             description: `최종 명세서 확정 - 주문번호: ${order.order_number}`,
-            created_at: new Date().toISOString()
+            created_at: getKoreaTime()
           })
 
         if (historyError) {
@@ -297,7 +298,7 @@ export async function POST(request: NextRequest) {
           .from('orders')
           .update({ 
             status: 'confirmed',
-            updated_at: new Date().toISOString()
+            updated_at: getKoreaTime()
           })
           .eq('id', order.id)
 

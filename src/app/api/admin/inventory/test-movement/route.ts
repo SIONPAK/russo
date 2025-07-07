@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       movement_type: 'test',
       quantity: 1,
       notes: '테스트 데이터 삽입',
-      created_at: new Date().toISOString()
+      created_at: getKoreaTime()
     }
 
     console.log('테스트 데이터 삽입 시도:', testData)

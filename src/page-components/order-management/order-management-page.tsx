@@ -145,16 +145,16 @@ export function OrderManagementPage() {
         const response = await fetch(`/api/shipping-addresses?userId=${user.id}`)
         const result = await response.json()
 
-        console.log('배송지 API 응답:', result)
+        
 
         if (result.success && result.data.length > 0) {
           setShippingAddresses(result.data)
           // 기본 배송지를 선택된 배송지로 설정
           const defaultAddress = result.data.find((addr: any) => addr.is_default) || result.data[0]
           setSelectedShippingAddress(defaultAddress)
-          console.log('선택된 기본 배송지:', defaultAddress)
+          
         } else {
-          console.log('배송지 정보 없음')
+          
           setShippingAddresses([])
           setSelectedShippingAddress(null)
         }
@@ -631,16 +631,31 @@ export function OrderManagementPage() {
 
   // 오후 3시 이전인지 확인하는 함수
   const isEditableTime = (orderDate: string) => {
-    const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    // 현재 한국시간 직접 계산
+    const nowKorea = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+    const [datePart, timePart] = nowKorea.split(' ')
+    const [year, month, day] = datePart.split('.').map(s => parseInt(s.trim()))
+    const [hourMinSec, ampm] = timePart.split(' ')
+    const [hour, minute, second] = hourMinSec.split(':').map(s => parseInt(s))
+    
+    // 24시간 형식으로 변환
+    let hour24 = hour
+    if (ampm === '오후' && hour !== 12) hour24 += 12
+    if (ampm === '오전' && hour === 12) hour24 = 0
+    
+    // 주문일 파싱
     const orderTime = new Date(orderDate)
-    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
+    const orderYear = orderTime.getFullYear()
+    const orderMonth = orderTime.getMonth()
+    const orderDay = orderTime.getDate()
     
-    // 주문일의 오후 3시 (한국 시간)
-    const cutoffTime = new Date(orderKoreaTime)
-    cutoffTime.setHours(15, 0, 0, 0)
+    // 오늘 날짜와 주문일이 같은지 확인
+    const today = new Date(year, month - 1, day)
+    const orderDay2 = new Date(orderYear, orderMonth, orderDay)
+    const isSameDay = today.getTime() === orderDay2.getTime()
     
-    return koreaTime < cutoffTime
+    // 같은 날이고 15시(오후 3시) 이전인 경우만 수정 가능
+    return isSameDay && hour24 < 15
   }
 
   // 발주서 삭제

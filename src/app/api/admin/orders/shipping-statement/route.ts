@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import * as XLSX from 'xlsx'
-import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
+import { getKoreaTime, getKoreaDate, getKoreaDateFormatted } from '@/shared/lib/utils'
 
 // 최종 명세서 엑셀 다운로드 API (거래명세서 형식)
 export async function POST(request: NextRequest) {
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     // 모든 주문의 거래명세서를 하나의 엑셀 파일로 생성
     const excelBuffer = await generateMultipleStatementsExcel(orders)
-    const fileName = `최종명세서_${new Date().toISOString().split('T')[0]}.xlsx`
+    const fileName = `최종명세서_${getKoreaDate()}.xlsx`
 
     // 엑셀 파일을 직접 반환
     return new NextResponse(excelBuffer, {
@@ -232,9 +232,9 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
     
     // 거래명세서 데이터 생성
     const statementData = {
-      statementNumber: `STMT-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${order.order_number}`,
+      statementNumber: `STMT-${getKoreaDateFormatted()}-${order.order_number}`,
       orderNumber: order.order_number,
-      issueDate: new Date().toISOString().split('T')[0],
+      issueDate: getKoreaDate(),
       
       // 고객 정보
       customer: {
@@ -357,7 +357,7 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
       ['1. 본 거래명세서는 실제 출고된 상품만을 기준으로 작성되었습니다.'],
       ['2. 문의사항은 고객센터(010-2131-7540)로 연락 주시기 바랍니다.'],
       [''],
-      ['발행일시', getCurrentKoreanDateTime()],
+      ['발행일시', getKoreaTime()],
       ['발행업체', '(주) 루소 | 010-2131-7540 | bsion5185@gmail.com']
     )
 

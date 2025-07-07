@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // ⚠️ 주의: 이 API는 더 이상 사용되지 않습니다.
 // 주문 생성 시 자동으로 재고 할당이 처리됩니다.
@@ -142,7 +143,7 @@ async function allocateInventoryForOrder(supabase: any, orderId: string) {
       .from('orders')
       .update({ 
         status: newStatus,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', orderId)
 
@@ -264,7 +265,7 @@ async function allocateItemInventory(supabase: any, item: any) {
             .update({ 
               inventory_options: updatedOptions,
               stock_quantity: totalStock,
-              updated_at: new Date().toISOString()
+              updated_at: getKoreaTime()
             })
             .eq('id', product.id)
 
@@ -307,7 +308,7 @@ async function allocateItemInventory(supabase: any, item: any) {
         notes: `주문 재고 할당 (${item.color}/${item.size}) - 시간순 자동 할당`,
         reference_id: item.order_id,
         reference_type: 'order',
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       }
       
       console.log(`📝 재고 변동 이력 기록:`, movementData)

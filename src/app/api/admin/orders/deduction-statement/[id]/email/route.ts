@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import nodemailer from 'nodemailer'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // POST - 차감명세서 이메일 발송
 export async function POST(
@@ -75,7 +76,7 @@ export async function POST(
         email_type: 'deduction_statement',
         subject: `[루소] 차감명세서 발송 - ${statement.statement_number}`,
         status: 'sent',
-        sent_at: new Date().toISOString()
+        sent_at: getKoreaTime()
       })
 
     return NextResponse.json({

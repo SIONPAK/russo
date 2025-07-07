@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       .from('order_items')
       .update({ 
         shipped_quantity: newShippedQuantity,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', orderItemId)
 
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
       notes: `미출고 수동 처리`,
       reference_id: orderItem.order_id,
       reference_type: 'order',
-      created_at: new Date().toISOString()
+      created_at: getKoreaTime()
     }
     
     console.log('재고 변동 이력 기록 시도:', movementData)
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
         .from('orders')
         .update({ 
           status: 'shipped',
-          shipped_at: new Date().toISOString()
+          shipped_at: getKoreaTime()
         })
         .eq('id', orderItem.order_id)
     } else {
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
         .from('orders')
         .update({ 
           status: 'partial_shipped',
-          shipped_at: new Date().toISOString()
+          shipped_at: getKoreaTime()
         })
         .eq('id', orderItem.order_id)
     }

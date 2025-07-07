@@ -1,37 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/shared/lib/supabase/server';
 import { logMileageFailure, MILEAGE_FAILURE_REASONS } from '@/shared/utils/mileage-failure-logger';
+import { getKoreaTime, getKoreaDate } from '@/shared/lib/utils';
 const axios = require('axios');
 const FormData = require('form-data');
 
 // Vercel Cron Job용 GET 엔드포인트 - 5분마다 자동 실행
 export async function GET(request: NextRequest) {
   try {
-    console.log(`[${new Date().toISOString()}] 뱅크다 자동 동기화 크론 실행`);
+    console.log(`[${getKoreaTime()}] 뱅크다 자동 동기화 크론 실행`);
     
     // 1. 먼저 활성화 상태 확인
     const isEnabled = await checkBankdaAutoSyncStatus();
     
     if (!isEnabled) {
-      console.log(`[${new Date().toISOString()}] 뱅크다 자동 동기화가 비활성화되어 있습니다. 실행하지 않습니다.`);
+      console.log(`[${getKoreaTime()}] 뱅크다 자동 동기화가 비활성화되어 있습니다. 실행하지 않습니다.`);
       return NextResponse.json({
         success: true,
         message: `뱅크다 자동 동기화가 비활성화되어 있습니다.`,
-        cronTime: new Date().toISOString(),
+        cronTime: getKoreaTime(),
         enabled: false
       });
     }
     
     // 2. 활성화되어 있으면 뱅크다 동기화 실행
-    console.log(`[${new Date().toISOString()}] 뱅크다 자동 동기화 시작 (활성화됨)`);
+    console.log(`[${getKoreaTime()}] 뱅크다 자동 동기화 시작 (활성화됨)`);
     const result = await performBankdaSync();
     
-    console.log(`[${new Date().toISOString()}] 뱅크다 자동 동기화 완료: ${result.message}`);
+    console.log(`[${getKoreaTime()}] 뱅크다 자동 동기화 완료: ${result.message}`);
     
     return NextResponse.json({
       success: true,
       message: `자동 뱅크다 동기화가 완료되었습니다.`,
-      cronTime: new Date().toISOString(),
+      cronTime: getKoreaTime(),
       enabled: true,
       processed: result.processed,
       total: result.total
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
         success: false,
         error: '자동 뱅크다 동기화 중 오류가 발생했습니다.',
         details: error instanceof Error ? error.message : '알 수 없는 오류',
-        cronTime: new Date().toISOString()
+        cronTime: getKoreaTime()
       },
       { status: 500 }
     );
@@ -205,7 +206,7 @@ async function performBankdaSync() {
             reason: MILEAGE_FAILURE_REASONS.MEMBER_NOT_FOUND,
             error_details: `뱅크다 자동 매칭 실패: ${transaction.bkjukyo} → ${extractedNames.join(', ')}`,
             settlement_type: "bankda_auto_cron",
-            settlement_date: transaction.bkdate || new Date().toISOString().split('T')[0],
+            settlement_date: transaction.bkdate || getKoreaDate(),
             original_data: transaction,
           });
           
@@ -267,7 +268,7 @@ async function performBankdaSync() {
             reason: MILEAGE_FAILURE_REASONS.API_ERROR,
             error_details: `자동 뱅크다 등록 실패: ${error.message}`,
             settlement_type: "bankda_auto_cron",
-            settlement_date: transaction.bkdate || new Date().toISOString().split('T')[0],
+            settlement_date: transaction.bkdate || getKoreaDate(),
             original_data: { transaction, error: error.message },
           });
         } else {
@@ -292,7 +293,7 @@ async function performBankdaSync() {
           reason: MILEAGE_FAILURE_REASONS.UNKNOWN_ERROR,
           error_details: `뱅크다 자동 처리 오류: ${error instanceof Error ? error.message : String(error)} (${transaction.bkjukyo})`,
           settlement_type: "bankda_auto_cron",
-          settlement_date: transaction.bkdate || new Date().toISOString().split('T')[0],
+          settlement_date: transaction.bkdate || getKoreaDate(),
           original_data: transaction,
         });
       }
@@ -640,7 +641,7 @@ async function findMatchingCompany(supabase: any, extractedNames: string[]): Pro
 // POST - 수동 뱅크다 동기화 (날짜 범위 지정 가능)
 export async function POST(request: NextRequest) {
   try {
-    console.log(`[${new Date().toISOString()}] 수동 뱅크다 동기화 시작`);
+    console.log(`[${getKoreaTime()}] 수동 뱅크다 동기화 시작`);
     
     const body = await request.json();
     const { startDate, endDate } = body;
@@ -659,12 +660,12 @@ export async function POST(request: NextRequest) {
     
     const result = await performBankdaSyncWithDateRange(datefrom, dateto);
     
-    console.log(`[${new Date().toISOString()}] 수동 뱅크다 동기화 완료: ${result.message}`);
+    console.log(`[${getKoreaTime()}] 수동 뱅크다 동기화 완료: ${result.message}`);
     
     return NextResponse.json({
       success: true,
       message: `수동 뱅크다 동기화가 완료되었습니다.`,
-      syncTime: new Date().toISOString(),
+      syncTime: getKoreaTime(),
       dateRange: { from: datefrom, to: dateto },
       processed: result.processed,
       total: result.total,
@@ -679,7 +680,7 @@ export async function POST(request: NextRequest) {
         success: false,
         error: '수동 뱅크다 동기화 중 오류가 발생했습니다.',
         details: error instanceof Error ? error.message : '알 수 없는 오류',
-        syncTime: new Date().toISOString()
+        syncTime: getKoreaTime()
       },
       { status: 500 }
     );
@@ -803,7 +804,7 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
             reason: MILEAGE_FAILURE_REASONS.MEMBER_NOT_FOUND,
             error_details: `수동 뱅크다 매칭 실패: ${transaction.bkjukyo} → ${extractedNames.join(', ')}`,
             settlement_type: "bankda_manual_sync",
-            settlement_date: transaction.bkdate || new Date().toISOString().split('T')[0],
+            settlement_date: transaction.bkdate || getKoreaDate(),
             original_data: transaction,
           });
           
@@ -874,7 +875,7 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
             reason: MILEAGE_FAILURE_REASONS.API_ERROR,
             error_details: `수동 뱅크다 등록 실패: ${error.message}`,
             settlement_type: "bankda_manual_sync",
-            settlement_date: transaction.bkdate || new Date().toISOString().split('T')[0],
+            settlement_date: transaction.bkdate || getKoreaDate(),
             original_data: { transaction, error: error.message },
           });
         } else {

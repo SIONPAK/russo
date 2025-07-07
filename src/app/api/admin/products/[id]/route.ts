@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
 import { UpdateProductData } from '@/shared/types'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 특정 상품 조회
 export async function GET(
@@ -127,7 +128,7 @@ export async function PUT(
         tags: tags || [],
         meta_title,
         meta_description,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', id)
       .select()

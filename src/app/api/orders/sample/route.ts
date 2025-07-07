@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // POST - 샘플 주문 생성 (기존 samples 테이블 사용)
 export async function POST(request: NextRequest) {
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
         outgoing_date: null, // 배송 시에만 설정
         delivery_address: delivery_address, // 배송 주소
         notes: notes || null, // 기타 특이사항
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       })
       .select(`
         *,
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
         .update({ 
           inventory_options: updatedOptions,
           stock_quantity: totalStock,
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('id', product_id)
 
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
         .from('products')
         .update({ 
           stock_quantity: product.stock_quantity - quantity,
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('id', product_id)
 
@@ -188,7 +189,7 @@ export async function POST(request: NextRequest) {
         reason: `샘플 출고 (${sampleNumber})`,
         reference_id: sample.id,
         reference_type: 'sample',
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       })
 
     return NextResponse.json({

@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import * as XLSX from 'xlsx'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
+  console.log('=== 엑셀 업로드 API 시작 ===')
+  
   try {
     const supabase = await createClient()
     const formData = await request.formData()
     const file = formData.get('file') as File
 
+    console.log('업로드된 파일:', file?.name)
+
     if (!file) {
+      console.log('파일이 없음')
       return NextResponse.json({
         success: false,
         error: '업로드할 파일이 없습니다.'
@@ -93,22 +99,22 @@ export async function POST(request: NextRequest) {
           // 기존 재고량 저장
           const previousStock = inventoryOptions[optionIndex].stock_quantity || 0
           
-          // 재고 변경량 계산 (음수 허용)
-          const changeAmount = stockQuantity
-          const newStock = Math.max(0, previousStock + changeAmount) // 음수 결과도 0으로 처리
+          // 엑셀에서 입력한 값은 절대값(설정할 재고 수량)
+          const newStock = Math.max(0, stockQuantity)
+          const changeAmount = newStock - previousStock // 실제 변경량 계산
 
-          // 옵션 재고 업데이트 (누적)
+          // 옵션 재고 업데이트 (절대값으로 설정)
           inventoryOptions[optionIndex].stock_quantity = newStock
 
           // 전체 재고량 재계산
-          const totalStock = inventoryOptions.reduce((sum: number, option: any) => sum + option.stock_quantity, 0)
+          const totalStock = inventoryOptions.reduce((sum: number, option: any) => sum + (option.stock_quantity || 0), 0)
 
           const { error: updateError } = await supabase
             .from('products')
             .update({
               inventory_options: inventoryOptions,
               stock_quantity: totalStock,
-              updated_at: new Date().toISOString()
+              updated_at: getKoreaTime()
             })
             .eq('id', product.id)
 
@@ -124,11 +130,13 @@ export async function POST(request: NextRequest) {
               product_id: product.id,
               movement_type: changeAmount > 0 ? 'inbound' : 'adjustment',
               quantity: changeAmount,
-              notes: `${color}/${size} 옵션 재고 변경 (엑셀 일괄 업로드) - 이전: ${previousStock}, 변경: ${changeAmount}, 결과: ${newStock}`,
-              created_at: new Date().toISOString()
+              color: color || null,
+              size: size || null,
+              notes: `${color}/${size} 옵션 재고 설정 (엑셀 일괄 업로드) - 이전: ${previousStock}, 설정: ${newStock}, 변경: ${changeAmount}`,
+              created_at: getKoreaTime()
             }
             
-            console.log(`재고 변동 이력 기록 시도:`, movementData)
+            console.log(`[${productCode}] 재고 변동 이력 기록 시도:`, JSON.stringify(movementData, null, 2))
             
             const { data: movementResult, error: movementError } = await supabase
               .from('stock_movements')
@@ -136,24 +144,31 @@ export async function POST(request: NextRequest) {
               .select()
             
             if (movementError) {
-              console.error(`재고 변동 이력 기록 실패 (${productCode}):`, movementError)
-              // 이력 기록 실패는 경고만 하고 계속 진행
-              console.warn(`재고 변동 이력 기록 실패하지만 계속 진행: ${movementError.message}`)
+              console.error(`[${productCode}] 재고 변동 이력 기록 실패:`, movementError)
+              console.error(`[${productCode}] Movement data:`, movementData)
+              // 이력 기록 실패는 오류로 처리하지만 전체 업로드를 중단하지는 않음
+              errors.push(`${i + 2}행: 재고 변동 이력 기록 실패 - ${movementError.message}`)
+              errorCount++
+              continue
             } else {
-              console.log(`재고 변동 이력 기록 성공:`, movementResult)
+              console.log(`[${productCode}] 재고 변동 이력 기록 성공:`, movementResult)
             }
+          } else {
+            console.log(`[${productCode}] 재고 변경량이 0이므로 이력 기록 생략`)
           }
         } else {
           // 전체 재고 업데이트 (옵션이 없는 경우)
           const previousStock = product.stock_quantity || 0
-          const changeAmount = stockQuantity
-          const newStock = Math.max(0, previousStock + changeAmount) // 음수 결과도 0으로 처리
+          
+          // 엑셀에서 입력한 값은 절대값(설정할 재고 수량)
+          const newStock = Math.max(0, stockQuantity)
+          const changeAmount = newStock - previousStock // 실제 변경량 계산
 
           const { error: updateError } = await supabase
             .from('products')
             .update({
               stock_quantity: newStock,
-              updated_at: new Date().toISOString()
+              updated_at: getKoreaTime()
             })
             .eq('id', product.id)
 
@@ -169,11 +184,13 @@ export async function POST(request: NextRequest) {
               product_id: product.id,
               movement_type: changeAmount > 0 ? 'inbound' : 'adjustment',
               quantity: changeAmount,
-              notes: `전체 재고 변경 (엑셀 일괄 업로드) - 이전: ${previousStock}, 변경: ${changeAmount}, 결과: ${newStock}`,
-              created_at: new Date().toISOString()
+              color: null,
+              size: null,
+              notes: `전체 재고 설정 (엑셀 일괄 업로드) - 이전: ${previousStock}, 설정: ${newStock}, 변경: ${changeAmount}`,
+              created_at: getKoreaTime()
             }
             
-            console.log(`재고 변동 이력 기록 시도:`, movementData)
+            console.log(`[${productCode}] 일반재고 변동 이력 기록 시도:`, JSON.stringify(movementData, null, 2))
             
             const { data: movementResult, error: movementError } = await supabase
               .from('stock_movements')
@@ -181,12 +198,17 @@ export async function POST(request: NextRequest) {
               .select()
             
             if (movementError) {
-              console.error(`재고 변동 이력 기록 실패 (${productCode}):`, movementError)
-              // 이력 기록 실패는 경고만 하고 계속 진행
-              console.warn(`재고 변동 이력 기록 실패하지만 계속 진행: ${movementError.message}`)
+              console.error(`[${productCode}] 일반재고 변동 이력 기록 실패:`, movementError)
+              console.error(`[${productCode}] Movement data:`, movementData)
+              // 이력 기록 실패는 오류로 처리하지만 전체 업로드를 중단하지는 않음
+              errors.push(`${i + 2}행: 재고 변동 이력 기록 실패 - ${movementError.message}`)
+              errorCount++
+              continue
             } else {
-              console.log(`재고 변동 이력 기록 성공:`, movementResult)
+              console.log(`[${productCode}] 일반재고 변동 이력 기록 성공:`, movementResult)
             }
+          } else {
+            console.log(`[${productCode}] 일반재고 변경량이 0이므로 이력 기록 생략`)
           }
         }
 

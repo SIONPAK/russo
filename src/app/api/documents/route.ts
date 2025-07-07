@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 사용자 명세서 목록 조회 (거래명세서, 반품명세서, 차감명세서)
 export async function GET(request: NextRequest) {
@@ -277,7 +278,7 @@ export async function POST(request: NextRequest) {
         filename,
         file_url,
         amount,
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       },
       message: '문서가 성공적으로 생성되었습니다.'
     })

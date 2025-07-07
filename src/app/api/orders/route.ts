@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
 import { createClient } from '@supabase/supabase-js'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // RLS를 무시하는 클라이언트 생성
 const supabaseAdmin = createClient(
@@ -286,38 +287,11 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // 재고 차감 (할당된 수량만)
-        const updatedOptions = product.inventory_options.map((option: any) => {
-          if (option.color === item.color && option.size === item.size) {
-            const newQuantity = option.stock_quantity - allocatedQuantity
-            console.log(`재고 차감 - ${option.color}/${option.size}: ${option.stock_quantity} → ${newQuantity}`)
-            return {
-              ...option,
-              stock_quantity: newQuantity
-            }
-          }
-          return option
-        })
-
-        // 총 재고량 재계산
-        const totalStock = updatedOptions.reduce((sum: number, option: any) => sum + option.stock_quantity, 0)
-        console.log(`총 재고량 재계산 - ${product.stock_quantity} → ${totalStock}`)
-
-        const { error: updateError } = await supabase
-          .from('products')
-          .update({
-            inventory_options: updatedOptions,
-            stock_quantity: totalStock
-          })
-          .eq('id', item.productId)
-
-        if (updateError) {
-          console.error('재고 업데이트 오류:', updateError)
-          return NextResponse.json(
-            { success: false, error: '재고 업데이트에 실패했습니다.' },
-            { status: 500 }
-          )
-        }
+        // 재고 예약 처리 (실제 재고는 차감하지 않고 예약량만 기록)
+        // 주문 생성 시에는 재고를 차감하지 않고, 출고 시에만 차감
+        console.log(`재고 예약 처리 - ${item.color}/${item.size}: 예약량 ${allocatedQuantity}개`)
+        
+        // 재고 차감은 하지 않음 (출고 시에만 차감)
 
                  // 재고 변동 이력 기록 (옵션별, 할당된 수량만)
          try {
@@ -325,8 +299,10 @@ export async function POST(request: NextRequest) {
              product_id: item.productId,
              movement_type: 'order_reserve',
              quantity: -allocatedQuantity, // 음수 (출고 예약)
+             color: item.color || null,
+             size: item.size || null,
              notes: `주문 생성 시 재고 예약 (${item.color}/${item.size}) - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개`,
-             created_at: new Date().toISOString()
+             created_at: getKoreaTime()
            }
           
           const { error: movementError } = await supabase
@@ -363,24 +339,11 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // 재고 차감 (할당된 수량만)
-        const newQuantity = product.stock_quantity - allocatedQuantity
-        console.log(`재고 차감 - ${product.stock_quantity} → ${newQuantity}`)
-
-        const { error: updateError } = await supabase
-          .from('products')
-          .update({
-            stock_quantity: newQuantity
-          })
-          .eq('id', item.productId)
-
-        if (updateError) {
-          console.error('재고 업데이트 오류:', updateError)
-          return NextResponse.json(
-            { success: false, error: '재고 업데이트에 실패했습니다.' },
-            { status: 500 }
-          )
-        }
+        // 재고 예약 처리 (실제 재고는 차감하지 않고 예약량만 기록)
+        // 주문 생성 시에는 재고를 차감하지 않고, 출고 시에만 차감
+        console.log(`재고 예약 처리 - 일반재고: 예약량 ${allocatedQuantity}개`)
+        
+        // 재고 차감은 하지 않음 (출고 시에만 차감)
 
                  // 재고 변동 이력 기록 (일반 재고, 할당된 수량만)
          try {
@@ -388,8 +351,10 @@ export async function POST(request: NextRequest) {
              product_id: item.productId,
              movement_type: 'order_reserve',
              quantity: -allocatedQuantity, // 음수 (출고 예약)
-             notes: `주문 생성 시 재고 예약 - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개`,
-             created_at: new Date().toISOString()
+             color: item.color || null,
+             size: item.size || null,
+             notes: `주문 생성 시 재고 예약 (${item.color}/${item.size}) - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개`,
+             created_at: getKoreaTime()
            }
           
           const { error: movementError } = await supabase
@@ -406,7 +371,7 @@ export async function POST(request: NextRequest) {
           console.error('재고 변동 이력 기록 오류:', movementRecordError)
         }
 
-        console.log(`재고 업데이트 성공 - 상품 ID: ${item.productId}`)
+        console.log(`재고 예약 성공 - 상품 ID: ${item.productId}`)
       }
     }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 import { CreateProductData, ProductFilters } from '@/shared/types'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // 서비스 키를 사용하는 관리자용 클라이언트 (RLS 우회)
 const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY 
@@ -208,7 +209,8 @@ export async function POST(request: NextRequest) {
         dimensions: body.dimensions,
         tags: body.tags,
         meta_title: body.meta_title,
-        meta_description: body.meta_description
+        meta_description: body.meta_description,
+        created_at: getKoreaTime()
       }])
       .select(`
         *,
@@ -267,7 +269,7 @@ export async function POST(request: NextRequest) {
             movement_type: 'initial_stock',
             quantity: option.stock_quantity,
             notes: `상품 등록 시 초기 재고 (${option.color}/${option.size})`,
-            created_at: new Date().toISOString()
+            created_at: getKoreaTime()
           }
           
           console.log(`상품 등록 재고 변동 이력 기록:`, movementData)

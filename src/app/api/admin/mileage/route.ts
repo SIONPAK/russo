@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 마일리지 목록 조회
 export async function GET(request: NextRequest) {
@@ -219,7 +220,7 @@ export async function PUT(request: NextRequest) {
       .from('mileage')
       .update({ 
         status,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .in('id', mileageIds)
 

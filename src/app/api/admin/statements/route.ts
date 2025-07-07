@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 명세서 목록 조회
 export async function GET(request: NextRequest) {
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
         reason,
         notes,
         status: 'issued',
-        created_at: new Date().toISOString()
+        created_at: getKoreaTime()
       })
       .select()
       .single()
@@ -208,7 +209,7 @@ export async function POST(request: NextRequest) {
             description: `차감 명세서: ${statementNumber} - ${reason}`,
             balance_after: newMileage,
             statement_id: statement.id,
-            created_at: new Date().toISOString()
+            created_at: getKoreaTime()
           })
       }
     }
@@ -247,11 +248,11 @@ export async function PUT(request: NextRequest) {
 
     const updateData: any = { 
       status,
-      updated_at: new Date().toISOString()
+      updated_at: getKoreaTime()
     }
 
     if (status === 'sent') {
-      updateData.sent_at = new Date().toISOString()
+      updateData.sent_at = getKoreaTime()
     }
 
     const { data, error } = await supabase

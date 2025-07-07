@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
         .update({
           inventory_options: updatedOptions,
           stock_quantity: totalStock,
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('id', product_id)
 
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
         .from('products')
         .update({
           stock_quantity: newStock,
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('id', product_id)
 
@@ -94,8 +95,10 @@ export async function POST(request: NextRequest) {
       product_id,
       movement_type: 'inbound',
       quantity: quantity,
+      color: color || null,
+      size: size || null,
       notes: `수동 입고 등록${color && size ? ` (${color}/${size})` : ''} - ${reason.trim()}`,
-      created_at: new Date().toISOString()
+      created_at: getKoreaTime()
     }
     
     console.log(`재고 변동 이력 기록 시도:`, movementData)
@@ -107,8 +110,53 @@ export async function POST(request: NextRequest) {
 
     if (movementError) {
       console.error('Stock movement error:', movementError)
-      // 재고 변동 이력 기록 실패는 경고만 하고 계속 진행
-      console.warn('재고 변동 이력 기록에 실패했습니다:', movementError)
+      console.error('Movement data:', movementData)
+      
+      // 재고 변동 이력 기록 실패 시 오류 반환 (재고 업데이트는 이미 완료되었으므로 롤백 필요)
+      
+      // 재고 롤백 시도
+      try {
+        if (product.inventory_options && Array.isArray(product.inventory_options) && color && size) {
+          // 옵션별 재고 롤백
+          const rollbackOptions = product.inventory_options.map((option: any) => {
+            if (option.color === color && option.size === size) {
+              return {
+                ...option,
+                stock_quantity: (option.stock_quantity || 0) // 원래 수량으로 복원
+              }
+            }
+            return option
+          })
+
+          const rollbackTotalStock = rollbackOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+
+          await supabase
+            .from('products')
+            .update({
+              inventory_options: rollbackOptions,
+              stock_quantity: rollbackTotalStock,
+              updated_at: getKoreaTime()
+            })
+            .eq('id', product_id)
+        } else {
+          // 전체 재고 롤백
+          await supabase
+            .from('products')
+            .update({
+              stock_quantity: product.stock_quantity, // 원래 수량으로 복원
+              updated_at: getKoreaTime()
+            })
+            .eq('id', product_id)
+        }
+      } catch (rollbackError) {
+        console.error('재고 롤백 실패:', rollbackError)
+      }
+      
+      return NextResponse.json({
+        success: false,
+        error: `재고 변동 이력 기록에 실패했습니다: ${movementError.message}`,
+        details: movementError
+      }, { status: 500 })
     } else {
       console.log(`재고 변동 이력 기록 성공:`, movementResult)
     }

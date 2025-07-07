@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // GET - 관리자 주문 목록 조회
 export async function GET(request: NextRequest) {
@@ -376,7 +377,7 @@ export async function PUT(request: NextRequest) {
       .from('orders')
       .update({ 
         status,
-        ...(status === 'shipped' && { shipped_at: new Date().toISOString() })
+        ...(status === 'shipped' && { shipped_at: getKoreaTime() })
       })
       .in('id', orderIds)
       .select()

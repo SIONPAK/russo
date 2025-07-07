@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import * as XLSX from 'xlsx'
-import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
+import { getCurrentKoreanDateTime, getKoreaDate, getKoreaDateFormatted } from '@/shared/lib/utils'
 
 // 반품 명세서 생성 API
 export async function POST(request: NextRequest) {
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 반품 명세서 번호 생성
-    const returnNumber = `RO-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Date.now().toString().slice(-6)}`
+    const returnNumber = `RO-${getKoreaDateFormatted()}-${Date.now().toString().slice(-6)}`
     
     // 반품 총액 계산
     const totalReturnAmount = items.reduce((sum: number, item: any) => 
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     const returnStatementData = {
       returnNumber,
       orderNumber,
-      issueDate: new Date().toISOString().split('T')[0],
+      issueDate: getKoreaDate(),
       returnType,
       returnReason,
       

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // PUT - 카테고리 메뉴 수정
 export async function PUT(
@@ -63,7 +64,7 @@ export async function PUT(
         is_special,
         badge: badge || null,
         text_color: text_color || null,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', id)
       .select()
@@ -83,7 +84,7 @@ export async function PUT(
         .from('products')
         .update({
           category: name, // 상품 테이블의 category 필드 업데이트 (있는 경우)
-          updated_at: new Date().toISOString()
+          updated_at: getKoreaTime()
         })
         .eq('category_id', id)
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 // PUT - 추천 상품 수정
 export async function PUT(
@@ -88,7 +89,7 @@ export async function PUT(
         end_date,
         badge_text,
         badge_color,
-        updated_at: new Date().toISOString()
+        updated_at: getKoreaTime()
       })
       .eq('id', id)
       .select(`

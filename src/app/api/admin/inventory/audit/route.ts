@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
               .update({
                 inventory_options: updatedOptions,
                 stock_quantity: updatedOptions.reduce((sum: number, opt: any) => sum + opt.stock_quantity, 0),
-                updated_at: new Date().toISOString()
+                updated_at: getKoreaTime()
               })
               .eq('id', product.id)
 
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
             .from('products')
             .update({
               stock_quantity: actualStock,
-              updated_at: new Date().toISOString()
+              updated_at: getKoreaTime()
             })
             .eq('id', product.id)
 

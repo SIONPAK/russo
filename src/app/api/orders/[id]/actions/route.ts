@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaTime } from '@/shared/lib/utils'
 
 export async function POST(
   request: NextRequest,
@@ -49,7 +50,7 @@ export async function POST(
           .from('orders')
           .update({ 
             status: 'cancelled',
-            updated_at: new Date().toISOString()
+            updated_at: getKoreaTime()
           })
           .eq('id', id)
 
@@ -67,7 +68,7 @@ export async function POST(
             order_id: id,
             action_type: 'cancel',
             reason: reason || '고객 요청',
-            created_at: new Date().toISOString()
+            created_at: getKoreaTime()
           })
 
         break
@@ -97,7 +98,7 @@ export async function POST(
             action_type: action,
             reason: reason,
             status: 'pending', // 관리자 승인 대기
-            created_at: new Date().toISOString()
+            created_at: getKoreaTime()
           })
 
         if (requestError) {
