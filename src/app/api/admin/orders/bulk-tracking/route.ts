@@ -169,7 +169,8 @@ async function generateTransactionStatement(supabase: any, order: any) {
     }
 
     // 거래명세서 번호 생성
-    const statementNumber = `TXN-${Date.now()}-${order.order_number}`
+    const timestamp = Date.now()
+    const statementNumber = `TXN-${timestamp}-${order.order_number}`
 
     // 총 금액 계산 (출고된 상품 기준)
     const totalAmount = shippedItems.reduce((sum: number, item: any) => 

@@ -122,7 +122,8 @@ export async function POST(request: NextRequest) {
         const totalAmount = shippedAmount + shippingFee
 
         // 1. 거래명세서 생성
-        const statementNumber = `TXN-${getKoreaDateFormatted()}-${order.order_number}`
+        const timestamp = Date.now()
+        const statementNumber = `TXN-${getKoreaDateFormatted()}-${timestamp}-${order.order_number}`
         
         const { data: statement, error: statementError } = await supabase
           .from('statements')
