@@ -93,11 +93,13 @@ export async function GET(
     const excelBuffer = await generateShippingStatement(statementData)
 
     // 엑셀 파일을 직접 반환
-    return new NextResponse(excelBuffer, {
+    const fileName = `shipping_statement_${order.order_number}_${new Date().toISOString().split('T')[0]}.xlsx`
+    
+    return new Response(excelBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="출고명세서_${order.order_number}_${new Date().toISOString().split('T')[0]}.xlsx"`,
+        'Content-Disposition': `attachment; filename="${fileName}"`,
         'Cache-Control': 'no-cache'
       }
     })

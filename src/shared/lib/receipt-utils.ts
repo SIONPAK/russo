@@ -1,6 +1,8 @@
 import * as XLSX from 'xlsx-js-style'
 import { saveAs } from 'file-saver'
 import ExcelJS from 'exceljs'
+import path from 'path'
+import fs from 'fs'
 
 export interface ReceiptData {
   orderNumber: string
@@ -647,7 +649,7 @@ export async function generateTradeStatement(data: TradeStatementData, fileName:
 export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
   try {
     // 템플릿 파일 로드
-    const templateResponse = await fetch('/api/templates/shipping-statement-template')
+    const templateResponse = await fetch('https://luso.kr/api/templates/shipping-statement-template')
     if (!templateResponse.ok) {
       throw new Error('템플릿 파일을 불러올 수 없습니다.')
     }
@@ -656,7 +658,6 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
     await workbook.xlsx.load(templateArrayBuffer)
 
     const worksheet = workbook.getWorksheet(1) // 첫 번째 시트 사용
-    
     if (!worksheet) {
       throw new Error('템플릿 시트를 찾을 수 없습니다.')
     }
