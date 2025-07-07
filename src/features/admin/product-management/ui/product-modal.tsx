@@ -890,8 +890,8 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
             <label className="text-sm font-medium text-gray-700">상세설명</label>
             <Editor
               apiKey="0t68kcm68pz2n5zz8rrifdmdazpfevqcgfuysgy7ku94iut4"
-              value={formData.description}
-              onEditorChange={(content) => setFormData({...formData, description: content})}
+              value={formData.detailed_description}
+              onEditorChange={(content) => setFormData({...formData, detailed_description: content})}
               init={{
                 height: 400,
                 menubar: false,

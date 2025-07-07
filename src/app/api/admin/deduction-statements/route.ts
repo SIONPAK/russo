@@ -8,8 +8,9 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     
-    const startDate = searchParams.get('startDate') || getKoreaDate()
-    const endDate = searchParams.get('endDate') || getKoreaDate()
+    const yearMonth = searchParams.get('yearMonth') || getKoreaDate().slice(0, 7)
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
     const companyName = searchParams.get('companyName')
     const deductionType = searchParams.get('deductionType')
     const status = searchParams.get('status')
@@ -19,9 +20,23 @@ export async function GET(request: NextRequest) {
       .select('*')
       .order('created_at', { ascending: false })
 
-    // 날짜 필터
-    query = query.gte('created_at', startDate + 'T00:00:00+09:00')
-    query = query.lte('created_at', endDate + 'T23:59:59+09:00')
+    // 날짜 필터 - yearMonth가 있으면 월단위, 없으면 기존 방식
+    if (yearMonth && !startDate && !endDate) {
+      // 월단위 조회
+      const [year, month] = yearMonth.split('-').map(Number)
+      const monthStartDate = `${year}-${month.toString().padStart(2, '0')}-01`
+      const monthEndDate = `${year}-${month.toString().padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
+      
+      query = query.gte('created_at', monthStartDate + 'T00:00:00+09:00')
+      query = query.lte('created_at', monthEndDate + 'T23:59:59+09:00')
+    } else {
+      // 기존 날짜 범위 조회
+      const finalStartDate = startDate || getKoreaDate()
+      const finalEndDate = endDate || getKoreaDate()
+      
+      query = query.gte('created_at', finalStartDate + 'T00:00:00+09:00')
+      query = query.lte('created_at', finalEndDate + 'T23:59:59+09:00')
+    }
 
     // 차감 유형 필터
     if (deductionType && deductionType !== 'all') {

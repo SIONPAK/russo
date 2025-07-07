@@ -84,6 +84,7 @@ export function OrderManagementPage() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   
   // 로컬 스토리지 키
   const STORAGE_KEY = 'order-management-items'
@@ -540,6 +541,12 @@ export function OrderManagementPage() {
 
   // 발주서 저장
   const saveOrder = async () => {
+    // 중복 제출 방지
+    if (isSaving) {
+      showError('이미 처리 중입니다. 잠시만 기다려주세요.')
+      return
+    }
+
     if (orderItems.length === 0) {
       showError('발주 상품을 추가해주세요.')
       return
@@ -549,6 +556,8 @@ export function OrderManagementPage() {
       showError('배송지를 선택해주세요.')
       return
     }
+
+    setIsSaving(true) // 저장 시작
 
     try {
       const orderData = {
@@ -605,6 +614,8 @@ export function OrderManagementPage() {
     } catch (error) {
       console.error('발주서 저장 오류:', error)
       showError('발주서 저장 중 오류가 발생했습니다.')
+    } finally {
+      setIsSaving(false) // 저장 완료
     }
   }
 
@@ -629,33 +640,40 @@ export function OrderManagementPage() {
     }
   }
 
-  // 오후 3시 이전인지 확인하는 함수
+  // 오후 3시 기준 수정 가능 시간 확인 함수
   const isEditableTime = (orderDate: string) => {
-    // 현재 한국시간 직접 계산
-    const nowKorea = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
-    const [datePart, timePart] = nowKorea.split(' ')
-    const [year, month, day] = datePart.split('.').map(s => parseInt(s.trim()))
-    const [hourMinSec, ampm] = timePart.split(' ')
-    const [hour, minute, second] = hourMinSec.split(':').map(s => parseInt(s))
+    // 현재 한국 시간
+    const now = new Date()
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
     
-    // 24시간 형식으로 변환
-    let hour24 = hour
-    if (ampm === '오후' && hour !== 12) hour24 += 12
-    if (ampm === '오전' && hour === 12) hour24 = 0
-    
-    // 주문일 파싱
+    // 주문 시간 (한국 시간으로 변환)
     const orderTime = new Date(orderDate)
-    const orderYear = orderTime.getFullYear()
-    const orderMonth = orderTime.getMonth()
-    const orderDay = orderTime.getDate()
+    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
     
-    // 오늘 날짜와 주문일이 같은지 확인
-    const today = new Date(year, month - 1, day)
-    const orderDay2 = new Date(orderYear, orderMonth, orderDay)
-    const isSameDay = today.getTime() === orderDay2.getTime()
+    // 현재 선택된 날짜의 15:00 기준 범위 계산
+    const selectedDateTime = new Date(selectedDate + 'T00:00:00+09:00')
     
-    // 같은 날이고 15시(오후 3시) 이전인 경우만 수정 가능
-    return isSameDay && hour24 < 15
+    // 전날 오후 3시 (한국 시간)
+    const startTime = new Date(selectedDateTime)
+    startTime.setDate(startTime.getDate() - 1)
+    startTime.setHours(15, 0, 0, 0)
+    
+    // 당일 오후 2시 59분 59초 (한국 시간)
+    const endTime = new Date(selectedDateTime)
+    endTime.setHours(14, 59, 59, 999)
+    
+    // 주문이 현재 조회 중인 기간에 속하는지 확인
+    const orderInCurrentPeriod = orderKoreaTime >= startTime && orderKoreaTime <= endTime
+    
+    if (!orderInCurrentPeriod) {
+      return false // 현재 조회 기간에 속하지 않으면 수정 불가
+    }
+    
+    // 현재 시간이 당일 오후 3시 이전인지 확인
+    const todayThreePM = new Date(selectedDateTime)
+    todayThreePM.setHours(15, 0, 0, 0)
+    
+    return koreaTime < todayThreePM
   }
 
   // 발주서 삭제
@@ -915,9 +933,9 @@ export function OrderManagementPage() {
                   수정 모드
                 </span>
               )}
-              <Button onClick={saveOrder} disabled={orderItems.length === 0} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={saveOrder} disabled={orderItems.length === 0 || isSaving} className="bg-green-600 hover:bg-green-700">
                 <Save className="h-4 w-4 mr-2" />
-                {editingOrderId ? '발주서 수정' : '발주서 저장'}
+                {isSaving ? '저장 중...' : (editingOrderId ? '발주서 수정' : '발주서 저장')}
               </Button>
             </div>
           </div>

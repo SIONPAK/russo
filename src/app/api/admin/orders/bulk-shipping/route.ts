@@ -76,79 +76,64 @@ export async function POST(request: NextRequest) {
         let hasShippableItems = false
 
         for (const item of order.order_items) {
-          // 이미 출고된 수량이 있으면 스킵
-          if (item.shipped_quantity && item.shipped_quantity > 0) {
+          const remainingQuantity = item.quantity - (item.shipped_quantity || 0)
+          
+          if (remainingQuantity <= 0) {
+            continue // 이미 모든 수량이 출고됨
+          }
+
+          // 현재 재고 확인
+          const product = item.products as any
+          if (!product) {
+            console.log(`상품 정보 없음: ${item.product_name}`)
             continue
           }
 
-          // 출고 가능한 수량 계산 (주문 수량과 현재 재고 중 작은 값)
           let availableStock = 0
-          const product = item.products as any
-          
-          if (product && product.inventory_options && Array.isArray(product.inventory_options)) {
-            // 옵션별 재고 확인
-            const option = product.inventory_options.find(
-              (opt: any) => opt.color === item.color && opt.size === item.size
-            )
-            availableStock = option?.stock_quantity || 0
-          } else {
-            // 전체 재고 확인
-            availableStock = (product && product.stock_quantity) || 0
-          }
+          let shippableQuantity = 0
 
-          const shippableQuantity = Math.min(item.quantity, availableStock)
+          // inventory_options에서 해당 색상/사이즈의 재고 확인
+          if (product.inventory_options && Array.isArray(product.inventory_options)) {
+            const matchingOption = product.inventory_options.find((opt: any) => 
+              opt.color === item.color && opt.size === item.size
+            )
+
+            if (matchingOption) {
+              availableStock = matchingOption.stock_quantity || 0
+              shippableQuantity = Math.min(availableStock, remainingQuantity)
+            }
+          } else {
+            // 옵션이 없는 경우 전체 재고 확인
+            availableStock = product.stock_quantity || 0
+            shippableQuantity = Math.min(availableStock, remainingQuantity)
+          }
           
           if (shippableQuantity > 0) {
             hasShippableItems = true
 
-            // 출고 수량 업데이트
+            // 1. 출고 수량 업데이트
             updatePromises.push(
               supabase
                 .from('order_items')
                 .update({
-                  shipped_quantity: shippableQuantity,
+                  shipped_quantity: (item.shipped_quantity || 0) + shippableQuantity,
                   updated_at: getKoreaTime()
                 })
                 .eq('id', item.id)
             )
 
-            // 재고 변동 이력 기록
-            const movementData = {
-              product_id: item.product_id,
-              movement_type: 'order_shipment',
-              quantity: -shippableQuantity, // 출고는 음수
-              color: item.color || null,
-              size: item.size || null,
-              notes: `주문 벌크 출고 처리 (${item.color}/${item.size}) - 주문번호: ${order.order_number}`,
-              reference_id: orderId,
-              reference_type: 'order',
-              created_at: getKoreaTime()
-            }
-            
-            console.log('재고 변동 이력 기록 시도:', movementData)
-            
-            updatePromises.push(
-              supabase
-                .from('stock_movements')
-                .insert(movementData)
-            )
-
-            // 재고 차감
-            if (product && product.inventory_options && Array.isArray(product.inventory_options)) {
+            // 2. 재고 차감
+            if (product.inventory_options && Array.isArray(product.inventory_options)) {
               // 옵션별 재고 차감
               const updatedOptions = product.inventory_options.map((opt: any) => {
                 if (opt.color === item.color && opt.size === item.size) {
-                  return {
-                    ...opt,
-                    stock_quantity: Math.max(0, opt.stock_quantity - shippableQuantity)
-                  }
+                  return { ...opt, stock_quantity: opt.stock_quantity - shippableQuantity }
                 }
                 return opt
               })
-
-              // 전체 재고량 재계산
-              const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + opt.stock_quantity, 0)
-
+              
+              const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+              
               updatePromises.push(
                 supabase
                   .from('products')
@@ -165,12 +150,31 @@ export async function POST(request: NextRequest) {
                 supabase
                   .from('products')
                   .update({
-                    stock_quantity: Math.max(0, ((product && product.stock_quantity) || 0) - shippableQuantity),
+                    stock_quantity: product.stock_quantity - shippableQuantity,
                     updated_at: getKoreaTime()
                   })
                   .eq('id', item.product_id)
               )
             }
+
+            // 3. 재고 변동 이력 기록
+            const movementData = {
+              product_id: item.product_id,
+              movement_type: 'order_shipment',
+              quantity: -shippableQuantity, // 출고는 음수
+              color: item.color || null,
+              size: item.size || null,
+              notes: `주문 벌크 출고 처리 (${item.color}/${item.size}) - 주문번호: ${order.order_number}`,
+              reference_id: orderId,
+              reference_type: 'order',
+              created_at: getKoreaTime()
+            }
+            
+            updatePromises.push(
+              supabase
+                .from('stock_movements')
+                .insert(movementData)
+            )
           }
         }
 

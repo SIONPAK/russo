@@ -153,11 +153,15 @@ export async function GET(request: NextRequest) {
 
     // 날짜 필터
     if (startDate) {
-      query = query.gte('created_at', `${startDate}T00:00:00`)
+      // 발주 관리에서 전달된 ISO 문자열을 그대로 사용
+      query = query.gte('created_at', startDate)
       if (endDate) {
-        query = query.lte('created_at', `${endDate}T23:59:59`)
+        query = query.lte('created_at', endDate)
       } else {
-        query = query.lte('created_at', `${startDate}T23:59:59`)
+        // endDate가 없으면 startDate 기준으로 하루 범위 설정
+        const start = new Date(startDate)
+        const end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
+        query = query.lte('created_at', end.toISOString())
       }
     }
 
@@ -234,7 +238,7 @@ export async function POST(request: NextRequest) {
     let finalShippingFee = totalQuantity >= 20 ? 0 : 3000
     let finalTotalAmount = totalAmount + finalShippingFee
 
-    // 재고 확인 및 차감
+    // 재고 확인 (주문 생성 전 재고 부족 체크)
     for (const item of items) {
       console.log(`재고 확인 시작 - 상품 ID: ${item.productId}, 요청 수량: ${item.quantity}`)
       
@@ -272,106 +276,26 @@ export async function POST(request: NextRequest) {
 
         console.log(`옵션 재고 확인 - 색상: ${item.color}, 사이즈: ${item.size}, 현재 재고: ${inventoryOption.stock_quantity}`)
 
-        // 가용 재고만큼만 할당 (부족해도 주문 접수)
-        const availableStock = inventoryOption.stock_quantity
-        const allocatedQuantity = Math.min(item.quantity, availableStock)
-        
-        console.log(`재고 할당 - 요청: ${item.quantity}, 재고: ${availableStock}, 할당: ${allocatedQuantity}`)
-        
-        // 할당할 재고가 없는 경우에만 에러
-        if (allocatedQuantity <= 0) {
+        // 재고가 완전히 없는 경우에만 에러 (부족해도 주문 접수)
+        if (inventoryOption.stock_quantity <= 0) {
           console.error(`재고 없음 - 상품: ${item.productName} (${item.color}/${item.size})`)
           return NextResponse.json(
             { success: false, error: `재고가 없습니다: ${item.productName} (${item.color}/${item.size})` },
             { status: 400 }
           )
         }
-
-        // 재고 예약 처리 (실제 재고는 차감하지 않고 예약량만 기록)
-        // 주문 생성 시에는 재고를 차감하지 않고, 출고 시에만 차감
-        console.log(`재고 예약 처리 - ${item.color}/${item.size}: 예약량 ${allocatedQuantity}개`)
-        
-        // 재고 차감은 하지 않음 (출고 시에만 차감)
-
-                 // 재고 변동 이력 기록 (옵션별, 할당된 수량만)
-         try {
-           const movementData = {
-             product_id: item.productId,
-             movement_type: 'order_reserve',
-             quantity: -allocatedQuantity, // 음수 (출고 예약)
-             color: item.color || null,
-             size: item.size || null,
-             notes: `주문 생성 시 재고 예약 (${item.color}/${item.size}) - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개`,
-             created_at: getKoreaTime()
-           }
-          
-          const { error: movementError } = await supabase
-            .from('stock_movements')
-            .insert(movementData)
-          
-          if (movementError) {
-            console.error('재고 변동 이력 기록 실패:', movementError)
-            // 이력 기록 실패는 경고만 하고 계속 진행
-          } else {
-            console.log(`재고 변동 이력 기록 성공 - 상품 ID: ${item.productId}`)
-          }
-        } catch (movementRecordError) {
-          console.error('재고 변동 이력 기록 오류:', movementRecordError)
-        }
-
-        console.log(`재고 업데이트 성공 - 상품 ID: ${item.productId}`)
       } else {
         // 일반 재고 관리인 경우
         console.log(`일반 재고 관리 - 현재 재고: ${product.stock_quantity}`)
         
-        // 가용 재고만큼만 할당 (부족해도 주문 접수)
-        const availableStock = product.stock_quantity
-        const allocatedQuantity = Math.min(item.quantity, availableStock)
-        
-        console.log(`일반재고 할당 - 요청: ${item.quantity}, 재고: ${availableStock}, 할당: ${allocatedQuantity}`)
-        
-        // 할당할 재고가 없는 경우에만 에러
-        if (allocatedQuantity <= 0) {
+        // 재고가 완전히 없는 경우에만 에러 (부족해도 주문 접수)
+        if (product.stock_quantity <= 0) {
           console.error(`재고 없음 - 상품: ${item.productName}`)
           return NextResponse.json(
             { success: false, error: `재고가 없습니다: ${item.productName}` },
             { status: 400 }
           )
         }
-
-        // 재고 예약 처리 (실제 재고는 차감하지 않고 예약량만 기록)
-        // 주문 생성 시에는 재고를 차감하지 않고, 출고 시에만 차감
-        console.log(`재고 예약 처리 - 일반재고: 예약량 ${allocatedQuantity}개`)
-        
-        // 재고 차감은 하지 않음 (출고 시에만 차감)
-
-                 // 재고 변동 이력 기록 (일반 재고, 할당된 수량만)
-         try {
-           const movementData = {
-             product_id: item.productId,
-             movement_type: 'order_reserve',
-             quantity: -allocatedQuantity, // 음수 (출고 예약)
-             color: item.color || null,
-             size: item.size || null,
-             notes: `주문 생성 시 재고 예약 (${item.color}/${item.size}) - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개`,
-             created_at: getKoreaTime()
-           }
-          
-          const { error: movementError } = await supabase
-            .from('stock_movements')
-            .insert(movementData)
-          
-          if (movementError) {
-            console.error('재고 변동 이력 기록 실패:', movementError)
-            // 이력 기록 실패는 경고만 하고 계속 진행
-          } else {
-            console.log(`재고 변동 이력 기록 성공 - 상품 ID: ${item.productId}`)
-          }
-        } catch (movementRecordError) {
-          console.error('재고 변동 이력 기록 오류:', movementRecordError)
-        }
-
-        console.log(`재고 예약 성공 - 상품 ID: ${item.productId}`)
       }
     }
 
@@ -469,52 +393,162 @@ export async function POST(request: NextRequest) {
 
     if (itemsError) {
       console.error('Order items creation error:', itemsError)
-      // 주문 아이템 생성 실패 시 주문도 삭제하고 재고 복구
+      // 주문 아이템 생성 실패 시 주문도 삭제
       await supabase.from('orders').delete().eq('id', order.id)
       
-      // 재고 복구 로직
-      for (const item of items) {
-        const { data: product } = await supabase
-          .from('products')
-          .select('inventory_options, stock_quantity')
-          .eq('id', item.productId)
-          .single()
-
-        if (product && product.inventory_options && Array.isArray(product.inventory_options)) {
-          const updatedOptions = product.inventory_options.map((option: any) => {
-            if (option.color === item.color && option.size === item.size) {
-              return {
-                ...option,
-                stock_quantity: option.stock_quantity + item.quantity
-              }
-            }
-            return option
-          })
-
-          const totalStock = updatedOptions.reduce((sum: number, option: any) => sum + option.stock_quantity, 0)
-
-          await supabase
-            .from('products')
-            .update({
-              inventory_options: updatedOptions,
-              stock_quantity: totalStock
-            })
-            .eq('id', item.productId)
-        } else if (product) {
-          await supabase
-            .from('products')
-            .update({
-              stock_quantity: product.stock_quantity + item.quantity
-            })
-            .eq('id', item.productId)
-        }
-      }
-
       return NextResponse.json(
         { success: false, error: '주문 상품 정보 저장에 실패했습니다.' },
         { status: 500 }
       )
     }
+
+    // 시간순 재고 할당 처리
+    console.log('🔄 시간순 재고 할당 시작')
+    let allItemsFullyAllocated = true
+    let hasPartialAllocation = false
+
+    for (const item of items) {
+      try {
+        // 최신 상품 정보 다시 조회
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('id, name, inventory_options, stock_quantity')
+          .eq('id', item.productId)
+          .single()
+
+        if (productError || !product) {
+          console.error(`재고 할당 중 상품 조회 실패 - ID: ${item.productId}`, productError)
+          allItemsFullyAllocated = false
+          continue
+        }
+
+        let allocatedQuantity = 0
+        const requestedQuantity = item.quantity
+
+        // 옵션별 재고 관리인 경우
+        if (product.inventory_options && Array.isArray(product.inventory_options)) {
+          const inventoryOption = product.inventory_options.find(
+            (option: any) => option.color === item.color && option.size === item.size
+          )
+
+          if (inventoryOption) {
+            const availableStock = inventoryOption.stock_quantity || 0
+            allocatedQuantity = Math.min(requestedQuantity, availableStock)
+            
+            if (allocatedQuantity > 0) {
+              // 옵션별 재고 차감
+              const updatedOptions = product.inventory_options.map((option: any) => {
+                if (option.color === item.color && option.size === item.size) {
+                  return {
+                    ...option,
+                    stock_quantity: option.stock_quantity - allocatedQuantity
+                  }
+                }
+                return option
+              })
+
+              // 전체 재고량 재계산
+              const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+
+              const { error: stockUpdateError } = await supabase
+                .from('products')
+                .update({
+                  inventory_options: updatedOptions,
+                  stock_quantity: totalStock,
+                  updated_at: getKoreaTime()
+                })
+                .eq('id', item.productId)
+
+              if (stockUpdateError) {
+                console.error('재고 업데이트 실패:', stockUpdateError)
+                allItemsFullyAllocated = false
+                continue
+              }
+            }
+          }
+        } else {
+          // 일반 재고 관리인 경우
+          const availableStock = product.stock_quantity || 0
+          allocatedQuantity = Math.min(requestedQuantity, availableStock)
+          
+          if (allocatedQuantity > 0) {
+            const { error: stockUpdateError } = await supabase
+              .from('products')
+              .update({
+                stock_quantity: availableStock - allocatedQuantity,
+                updated_at: getKoreaTime()
+              })
+              .eq('id', item.productId)
+
+            if (stockUpdateError) {
+              console.error('재고 업데이트 실패:', stockUpdateError)
+              allItemsFullyAllocated = false
+              continue
+            }
+          }
+        }
+
+        // 주문 아이템에 할당된 수량 업데이트
+        if (allocatedQuantity > 0) {
+          await supabase
+            .from('order_items')
+            .update({
+              shipped_quantity: allocatedQuantity
+            })
+            .eq('order_id', order.id)
+            .eq('product_id', item.productId)
+            .eq('color', item.color || '기본')
+            .eq('size', item.size || '기본')
+
+          // 재고 변동 이력 기록
+          await supabase
+            .from('stock_movements')
+            .insert({
+              product_id: item.productId,
+              movement_type: 'order_allocation',
+              quantity: -allocatedQuantity,
+              color: item.color || null,
+              size: item.size || null,
+              notes: `주문 시간순 자동 할당 (${orderNumber}) - ${item.color}/${item.size}`,
+              reference_id: order.id,
+              reference_type: 'order',
+              created_at: getKoreaTime()
+            })
+        }
+
+        console.log(`✅ 재고 할당 완료 - 상품: ${item.productName}, 요청: ${requestedQuantity}, 할당: ${allocatedQuantity}`)
+
+        // 할당 상태 확인
+        if (allocatedQuantity < requestedQuantity) {
+          allItemsFullyAllocated = false
+          if (allocatedQuantity > 0) {
+            hasPartialAllocation = true
+          }
+        }
+
+      } catch (allocationError) {
+        console.error(`재고 할당 오류 - 상품 ID: ${item.productId}`, allocationError)
+        allItemsFullyAllocated = false
+      }
+    }
+
+    // 주문 상태 업데이트 (재고 할당 결과에 따라)
+    let orderStatus = 'pending'
+    if (allItemsFullyAllocated) {
+      orderStatus = 'confirmed' // 전량 할당 완료
+    } else if (hasPartialAllocation) {
+      orderStatus = 'partial' // 부분 할당
+    }
+
+    await supabase
+      .from('orders')
+      .update({
+        status: orderStatus,
+        updated_at: getKoreaTime()
+      })
+      .eq('id', order.id)
+
+    console.log(`🔄 주문 상태 업데이트 완료 - 상태: ${orderStatus}`)
 
     // 생성된 주문 정보 반환
     const { data: createdOrder } = await supabase
@@ -536,7 +570,11 @@ export async function POST(request: NextRequest) {
       .eq('id', order.id)
       .single()
 
-    const message = '주문이 성공적으로 생성되었습니다.'
+    const message = allItemsFullyAllocated 
+      ? '주문이 성공적으로 생성되었습니다.' 
+      : hasPartialAllocation 
+        ? '주문이 생성되었습니다. 일부 상품은 재고 부족으로 대기 상태입니다.'
+        : '주문이 생성되었습니다. 재고 부족으로 관리자 확인 후 처리됩니다.'
 
     return NextResponse.json({
       success: true,

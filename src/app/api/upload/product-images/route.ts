@@ -13,27 +13,38 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // 파일 개수 제한 (한 번에 최대 5개)
+    if (files.length > 5) {
+      return NextResponse.json({
+        success: false,
+        error: '한 번에 최대 5개의 파일만 업로드할 수 있습니다.'
+      }, { status: 400 })
+    }
+
     const uploadedUrls: string[] = []
+    const errors: string[] = []
 
     for (const file of files) {
-      // 파일 확장자 검증
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
-      if (!allowedTypes.includes(file.type)) {
-        continue
-      }
-
-      // 파일 크기 검증 (5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        continue
-      }
-
       try {
+        // 파일 확장자 검증
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+        if (!allowedTypes.includes(file.type)) {
+          errors.push(`${file.name}: 지원하지 않는 파일 형식입니다.`)
+          continue
+        }
+
+        // 파일 크기 검증 (5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          errors.push(`${file.name}: 파일 크기가 5MB를 초과합니다.`)
+          continue
+        }
+
         // 고유한 파일명 생성
         const fileExt = file.name.split('.').pop()
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
         const filePath = `products/${fileName}`
 
-        // Supabase Storage에 업로드 시도
+        // Supabase Storage에 업로드
         const { data, error } = await supabase.storage
           .from('product-images')
           .upload(filePath, file, {
@@ -43,9 +54,7 @@ export async function POST(request: NextRequest) {
 
         if (error) {
           console.error('Upload error:', error)
-          // Storage 오류 시 더미 URL 사용 (개발용)
-          const dummyUrl = `https://via.placeholder.com/400x400/cccccc/666666?text=${encodeURIComponent(file.name)}`
-          uploadedUrls.push(dummyUrl)
+          errors.push(`${file.name}: 업로드 실패 - ${error.message}`)
           continue
         }
 
@@ -57,17 +66,26 @@ export async function POST(request: NextRequest) {
         uploadedUrls.push(publicUrl)
       } catch (uploadError) {
         console.error('Individual upload error:', uploadError)
-        // 개별 파일 업로드 실패 시 더미 URL 사용
-        const dummyUrl = `https://via.placeholder.com/400x400/cccccc/666666?text=${encodeURIComponent(file.name)}`
-        uploadedUrls.push(dummyUrl)
+        errors.push(`${file.name}: 업로드 중 오류 발생`)
       }
+    }
+
+    // 결과 반환
+    if (uploadedUrls.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: '모든 파일 업로드에 실패했습니다.',
+        errors
+      }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
       data: {
         urls: uploadedUrls
-      }
+      },
+      message: `${uploadedUrls.length}개 파일 업로드 완료${errors.length > 0 ? `, ${errors.length}개 실패` : ''}`,
+      errors: errors.length > 0 ? errors : undefined
     })
 
   } catch (error) {

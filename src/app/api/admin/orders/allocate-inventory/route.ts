@@ -17,16 +17,17 @@ type OrderWithUser = {
   }
 }
 
-// POST - 재고 할당 처리
+// POST - 재고 할당 처리 (시간순 자동 할당)
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const { orderIds } = await request.json()
 
-    console.log('재고 할당 시작:', { orderIds })
+    console.log('시간순 재고 할당 시작:', { orderIds })
 
     let allocatedCount = 0
     let insufficientStockCount = 0
+    let partialCount = 0
 
     // 주문들을 시간순으로 정렬하여 처리 (오래된 주문부터)
     const { data: ordersToSort, error: sortError } = await supabase
@@ -61,8 +62,13 @@ export async function POST(request: NextRequest) {
       const result = await allocateInventoryForOrder(supabase, order.id)
       
       if (result.success) {
-        allocatedCount++
-        console.log(`✅ 주문 ${order.order_number} (${order.users?.company_name || '알 수 없음'}) 할당 완료`)
+        if (result.reason === 'allocated') {
+          allocatedCount++
+          console.log(`✅ 주문 ${order.order_number} (${order.users?.company_name || '알 수 없음'}) 전량 할당 완료`)
+        } else if (result.reason === 'partial') {
+          partialCount++
+          console.log(`🟡 주문 ${order.order_number} (${order.users?.company_name || '알 수 없음'}) 부분 할당 완료`)
+        }
       } else if (result.reason === 'insufficient_stock') {
         insufficientStockCount++
         console.log(`❌ 주문 ${order.order_number} (${order.users?.company_name || '알 수 없음'}) 재고 부족`)
@@ -73,9 +79,11 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         allocated: allocatedCount,
+        partial: partialCount,
         insufficient_stock: insufficientStockCount,
         total_processed: orderIds.length
-      }
+      },
+      message: `재고 할당 완료: 전량할당 ${allocatedCount}건, 부분할당 ${partialCount}건, 재고부족 ${insufficientStockCount}건`
     })
 
   } catch (error) {
@@ -97,6 +105,7 @@ async function allocateInventoryForOrder(supabase: any, orderId: string) {
         *,
         order_items (
           id,
+          product_id,
           product_name,
           color,
           size,
@@ -119,6 +128,7 @@ async function allocateInventoryForOrder(supabase: any, orderId: string) {
     }
 
     let allItemsAllocated = true
+    let hasPartialAllocation = false
     const allocationResults = []
 
     // 각 아이템에 대해 재고 할당 처리
@@ -128,6 +138,9 @@ async function allocateInventoryForOrder(supabase: any, orderId: string) {
       
       if (!allocationResult.success) {
         allItemsAllocated = false
+      } else if (allocationResult.reason === 'partial') {
+        hasPartialAllocation = true
+        allItemsAllocated = false
       }
     }
 
@@ -135,6 +148,8 @@ async function allocateInventoryForOrder(supabase: any, orderId: string) {
     let newStatus = order.status
     if (allItemsAllocated) {
       newStatus = 'confirmed' // 모든 재고 할당 완료
+    } else if (hasPartialAllocation) {
+      newStatus = 'partial' // 부분 할당
     } else {
       newStatus = 'pending' // 재고 부족으로 대기
     }
@@ -149,12 +164,13 @@ async function allocateInventoryForOrder(supabase: any, orderId: string) {
 
     console.log(`주문 ${orderId} 할당 완료:`, { 
       status: newStatus, 
-      allocated: allItemsAllocated 
+      allocated: allItemsAllocated,
+      partial: hasPartialAllocation
     })
 
     return {
-      success: allItemsAllocated,
-      reason: allItemsAllocated ? 'allocated' : 'insufficient_stock',
+      success: allItemsAllocated || hasPartialAllocation,
+      reason: allItemsAllocated ? 'allocated' : hasPartialAllocation ? 'partial' : 'insufficient_stock',
       results: allocationResults
     }
 
@@ -303,9 +319,9 @@ async function allocateItemInventory(supabase: any, item: any) {
       // 재고 변동 이력 기록 (출고)
       const movementData = {
         product_id: product.id,
-        movement_type: 'order_shipment',
+        movement_type: 'order_allocation',
         quantity: -stockToAllocate, // 출고는 음수
-        notes: `주문 재고 할당 (${item.color}/${item.size}) - 시간순 자동 할당`,
+        notes: `시간순 재고 할당 (${item.color}/${item.size}) - 관리자 수동 할당`,
         reference_id: item.order_id,
         reference_type: 'order',
         created_at: getKoreaTime()
@@ -323,12 +339,15 @@ async function allocateItemInventory(supabase: any, item: any) {
       }
     }
 
+    const isFullyAllocated = stockToAllocate === remainingQuantity
+    const isPartiallyAllocated = stockToAllocate > 0 && stockToAllocate < remainingQuantity
+
     const result = {
-      success: stockToAllocate === remainingQuantity,
+      success: stockToAllocate > 0,
       allocated: stockToAllocate,
       available: availableStock,
       required: remainingQuantity,
-      reason: stockToAllocate === remainingQuantity ? 'allocated' : 'insufficient_stock'
+      reason: isFullyAllocated ? 'allocated' : isPartiallyAllocated ? 'partial' : 'insufficient_stock'
     }
 
     console.log(`✅ 아이템 할당 완료:`, result)

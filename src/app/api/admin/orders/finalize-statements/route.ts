@@ -41,88 +41,27 @@ export async function POST(request: NextRequest) {
     }
 
     // 주문 정보 상세 조회
-    let orders, orderError
-
-    try {
-      const result = await supabase
-        .from('orders')
-        .select(`
-          *,
-          users!orders_user_id_fkey (
-            id,
-            company_name,
-            mileage_balance
-          ),
-          order_items!order_items_order_id_fkey (
-            id,
-            product_name,
-            quantity,
-            shipped_quantity,
-            unit_price,
-            total_price,
-            color,
-            size,
-            products!order_items_product_id_fkey (
-              code
-            )
-          )
-        `)
-        .in('id', orderIds)
-      
-      orders = result.data
-      orderError = result.error
-    } catch (joinError) {
-      console.log('조인 조회 실패, 개별 조회로 시도:', joinError)
-      
-      // 조인 실패 시 개별 조회
-      const { data: basicOrders, error: basicError } = await supabase
-        .from('orders')
-        .select('*')
-        .in('id', orderIds)
-
-      if (basicError || !basicOrders) {
-        return NextResponse.json({
-          success: false,
-          error: `기본 주문 조회 실패: ${basicError?.message}`
-        }, { status: 500 })
-      }
-
-      // 각 주문에 대해 개별적으로 관련 데이터 조회
-      orders = []
-      for (const order of basicOrders) {
-        // 사용자 정보 조회
-        const { data: user } = await supabase
-          .from('users')
-          .select('id, company_name, mileage_balance')
-          .eq('id', order.user_id)
-          .single()
-
-        // 주문 아이템 조회
-        const { data: orderItems } = await supabase
-          .from('order_items')
-          .select(`
-            id,
-            product_name,
-            quantity,
-            shipped_quantity,
-            unit_price,
-            total_price,
-            color,
-            size,
-            products!order_items_product_id_fkey (
-              code
-            )
-          `)
-          .eq('order_id', order.id)
-
-        orders.push({
-          ...order,
-          users: user,
-          order_items: orderItems || []
-        })
-      }
-      orderError = null
-    }
+    const { data: orders, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        users!orders_user_id_fkey (
+          id,
+          company_name,
+          mileage_balance
+        ),
+        order_items!order_items_order_id_fkey (
+          id,
+          product_name,
+          quantity,
+          shipped_quantity,
+          unit_price,
+          total_price,
+          color,
+          size
+        )
+      `)
+      .in('id', orderIds)
 
     console.log('상세 주문 조회 결과:', { 
       ordersCount: orders?.length, 

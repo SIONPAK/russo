@@ -93,14 +93,34 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
-    // 날짜 필터
+    // 날짜 필터 (오후 3시 기준)
     if (startDate) {
-      query = query.gte('created_at', `${startDate}T00:00:00`)
-      if (endDate) {
-        query = query.lte('created_at', `${endDate}T23:59:59`)
-      } else {
-        query = query.lte('created_at', `${startDate}T23:59:59`)
-      }
+      // 오후 3시(15:00) 기준으로 날짜 구분
+      // 7월 7일 조회 시: 7월 6일 15:00 ~ 7월 7일 14:59
+      const searchDate = new Date(startDate)
+      const prevDay = new Date(searchDate)
+      prevDay.setDate(prevDay.getDate() - 1)
+      
+      const startDateTime = `${prevDay.toISOString().split('T')[0]}T15:00:00`
+      const endDateTime = `${searchDate.toISOString().split('T')[0]}T14:59:59`
+      
+      query = query.gte('created_at', startDateTime)
+      query = query.lte('created_at', endDateTime)
+      
+      console.log(`날짜 필터 적용: ${startDate} → ${startDateTime} ~ ${endDateTime}`)
+    } else if (endDate) {
+      // endDate만 있는 경우도 동일한 로직 적용
+      const searchDate = new Date(endDate)
+      const prevDay = new Date(searchDate)
+      prevDay.setDate(prevDay.getDate() - 1)
+      
+      const startDateTime = `${prevDay.toISOString().split('T')[0]}T15:00:00`
+      const endDateTime = `${searchDate.toISOString().split('T')[0]}T14:59:59`
+      
+      query = query.gte('created_at', startDateTime)
+      query = query.lte('created_at', endDateTime)
+      
+      console.log(`날짜 필터 적용 (endDate): ${endDate} → ${startDateTime} ~ ${endDateTime}`)
     }
 
     // 정렬 처리 (조인 테이블 정렬 제거 - 프론트엔드에서 처리)

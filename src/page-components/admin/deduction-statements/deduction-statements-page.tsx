@@ -53,8 +53,7 @@ export default function DeductionStatementsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedStatements, setSelectedStatements] = useState<string[]>([])
   const [filters, setFilters] = useState({
-    startDate: format(new Date(), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
+    yearMonth: format(new Date(), 'yyyy-MM'),
     companyName: '',
     deductionType: 'all',
     status: 'all'
@@ -90,8 +89,7 @@ export default function DeductionStatementsPage() {
     try {
       setLoading(true)
       const params = new URLSearchParams({
-        startDate: filters.startDate,
-        endDate: filters.endDate,
+        yearMonth: filters.yearMonth,
         companyName: filters.companyName,
         deductionType: filters.deductionType,
         status: filters.status
@@ -385,22 +383,13 @@ export default function DeductionStatementsPage() {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              시작일
+              조회 월
             </label>
             <Input
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              종료일
-            </label>
-            <Input
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+              type="month"
+              value={filters.yearMonth}
+              onChange={(e) => setFilters(prev => ({ ...prev, yearMonth: e.target.value }))}
+              className="w-full"
             />
           </div>
           <div>

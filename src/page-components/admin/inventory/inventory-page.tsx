@@ -1158,10 +1158,10 @@ export function InventoryPage() {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {item.notes || item.reason || '-'}
+                              {item.notes || '-'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {new Date(item.created_at).toLocaleDateString('ko-KR')} {new Date(item.created_at).toLocaleTimeString('ko-KR')}
+                              {item.created_at ? new Date(item.created_at).toISOString().slice(0, 19).replace('T', ' ') : '-'}
                             </td>
                           </tr>
                         ))}
@@ -1274,7 +1274,7 @@ export function InventoryPage() {
                               )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {new Date(item.created_at).toLocaleDateString('ko-KR')} {new Date(item.created_at).toLocaleTimeString('ko-KR')}
+                              {item.created_at ? new Date(item.created_at).toISOString().slice(0, 19).replace('T', ' ') : '-'}
                             </td>
                           </tr>
                         ))}
@@ -1388,7 +1388,7 @@ export function InventoryPage() {
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {item['변경일시']}
+                              {item.created_at ? new Date(item.created_at).toISOString().slice(0, 19).replace('T', ' ') : '-'}
                             </td>
                           </tr>
                         ))}
@@ -1558,7 +1558,7 @@ export function InventoryPage() {
                             {item.quantity > 0 ? '+' : ''}{item.quantity}개
                           </div>
                           <div className="text-xs text-gray-500">
-                            {item.created_at ? new Date(item.created_at).toLocaleDateString('ko-KR') : ''}
+                            {item.created_at ? new Date(item.created_at).toISOString().slice(0, 19).replace('T', ' ') : '-'}
                           </div>
                         </div>
                       </div>

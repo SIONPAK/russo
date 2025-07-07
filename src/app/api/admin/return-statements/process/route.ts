@@ -30,12 +30,14 @@ export async function PATCH(request: NextRequest) {
         orders!return_statements_order_id_fkey (
           id,
           user_id,
+          order_type,
           users!orders_user_id_fkey (
             id,
             company_name,
             mileage_balance
           )
-        )
+        ),
+        return_reason
       `)
       .in('id', statementIds)
       .eq('status', 'pending')
@@ -71,6 +73,9 @@ export async function PATCH(request: NextRequest) {
         const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
         const user = order?.users ? (Array.isArray(order.users) ? order.users[0] : order.users) : null
 
+        // 발주서 기반 반품인지 확인 (return_reason이 '발주서 반품 요청'인 경우만 마일리지 적립)
+        const isPurchaseReturn = statement.return_reason === '발주서 반품 요청'
+
         if (!user && !order?.user_id) {
           // 사용자 정보가 없는 경우 (관리자가 직접 생성한 경우) 처리만 진행
           console.log(`⚠️ 사용자 정보 없음 - 관리자 생성 반품명세서: ${statement.statement_number}`)
@@ -94,6 +99,32 @@ export async function PATCH(request: NextRequest) {
 
           processedCount++
           console.log(`✅ 관리자 생성 반품 명세서 처리 완료: ${statement.statement_number}`)
+          continue
+        }
+
+        // 발주서 기반 반품이 아닌 경우 마일리지 적립 없이 처리
+        if (!isPurchaseReturn) {
+          console.log(`⚠️ 발주서 기반 반품이 아님 - 마일리지 적립 없이 처리: ${statement.statement_number}`)
+          
+          // 반품 명세서 상태만 업데이트
+          const { error: statementError } = await supabase
+            .from('return_statements')
+            .update({
+              status: 'refunded',
+              refunded: true,
+              processed_at: getKoreaTime(),
+              updated_at: getKoreaTime()
+            })
+            .eq('id', statement.id)
+
+          if (statementError) {
+            console.error('반품 명세서 상태 업데이트 오류:', statementError)
+            errors.push(`${statement.statement_number}: 상태 업데이트 실패`)
+            continue
+          }
+
+          processedCount++
+          console.log(`✅ 반품 명세서 처리 완료 (마일리지 적립 없음): ${statement.statement_number}`)
           continue
         }
 

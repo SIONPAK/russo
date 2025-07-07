@@ -20,6 +20,7 @@ import {
   XCircle,
   Mail
 } from 'lucide-react'
+import ReturnStatementDetailModal from './return-statement-detail-modal'
 
 interface ReturnStatement {
   id: string
@@ -62,6 +63,8 @@ export default function ReturnStatementsPage() {
   const [processing, setProcessing] = useState(false)
   const [sendingEmail, setSendingEmail] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [selectedStatement, setSelectedStatement] = useState<ReturnStatement | null>(null)
   const [newStatement, setNewStatement] = useState({
     company_name: '',
     return_reason: '',
@@ -544,6 +547,64 @@ export default function ReturnStatementsPage() {
     )
   }
 
+  const handleViewDetail = (statement: ReturnStatement) => {
+    setSelectedStatement(statement)
+    setShowDetailModal(true)
+  }
+
+  const handleDeleteStatement = async (statementId: string) => {
+    if (!confirm('이 반품명세서를 삭제하시겠습니까? 삭제된 데이터는 복구할 수 없습니다.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/return-statements/${statementId}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('반품명세서가 삭제되었습니다.')
+        await fetchStatements()
+      } else {
+        showError(`삭제 실패: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Delete error:', error)
+      showError('삭제 중 오류가 발생했습니다.')
+    }
+  }
+
+  const handleRejectStatement = async (statementId: string) => {
+    const reason = prompt('반품 거절 사유를 입력해주세요:')
+    if (!reason || !reason.trim()) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/return-statements/${statementId}/reject`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reason: reason.trim() })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('반품이 거절되었습니다.')
+        await fetchStatements()
+      } else {
+        showError(`거절 처리 실패: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Reject error:', error)
+      showError('거절 처리 중 오류가 발생했습니다.')
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -791,13 +852,42 @@ export default function ReturnStatementsPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-2">
+                      <div className="flex space-x-1">
+                        <Button
+                          onClick={() => handleViewDetail(statement)}
+                          size="sm"
+                          variant="outline"
+                          title="상세보기"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         <Button
                           onClick={() => handleStatementDownload(statement.id)}
                           size="sm"
                           variant="outline"
+                          title="다운로드"
                         >
                           <Download className="h-4 w-4" />
+                        </Button>
+                        {statement.status === 'pending' && (
+                          <Button
+                            onClick={() => handleRejectStatement(statement.id)}
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-800"
+                            title="거절"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          onClick={() => handleDeleteStatement(statement.id)}
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:text-red-800"
+                          title="삭제"
+                        >
+                          <AlertTriangle className="h-4 w-4" />
                         </Button>
                       </div>
                     </td>
@@ -1101,6 +1191,22 @@ export default function ReturnStatementsPage() {
           </div>
         </div>
       )}
+
+      {/* 반품명세서 상세보기 모달 */}
+      <ReturnStatementDetailModal
+        statement={selectedStatement}
+        isOpen={showDetailModal}
+        onClose={() => {
+          setShowDetailModal(false)
+          setSelectedStatement(null)
+        }}
+        onApprove={(statementId) => handleProcessReturn([statementId])}
+        onReject={handleRejectStatement}
+        getReturnTypeText={getReturnTypeText}
+        getReturnTypeColor={getReturnTypeColor}
+        getStatusText={getStatusText}
+        getStatusColor={getStatusColor}
+      />
 
       {/* 상품 검색 모달 */}
       {showProductSearchModal && (

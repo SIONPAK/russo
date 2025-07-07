@@ -170,14 +170,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const returnStatementNumber = `RO-${dateStr}-${randomStr}`
       console.log(`📋 [수정] 반품명세서 번호 생성: ${returnStatementNumber}`)
 
-      const returnItems = negativeItems.map((item: any) => ({
-        product_name: item.product_name,
-        color: item.color,
-        size: item.size,
-        quantity: Math.abs(item.quantity),
-        unit_price: item.unit_price,
-        total_amount: Math.abs(item.unit_price * item.quantity)
-      }))
+      const returnItems = negativeItems.map((item: any) => {
+        const quantity = Math.abs(item.quantity)
+        const supplyAmount = quantity * item.unit_price
+        const vat = Math.floor(supplyAmount * 0.1)
+        const totalAmountWithVat = supplyAmount + vat
+        
+        return {
+          product_name: item.product_name,
+          color: item.color,
+          size: item.size,
+          quantity: quantity,
+          unit_price: item.unit_price,
+          total_amount: totalAmountWithVat // VAT 포함 금액
+        }
+      })
       console.log(`📦 [수정] 반품 아이템 변환 완료:`, returnItems)
 
       const returnStatementData = {

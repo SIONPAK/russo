@@ -70,6 +70,12 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // 수량이 0인 경우 스킵 (오류 발생시키지 않음)
+        if (stockQuantity === 0) {
+          console.log(`${i + 2}행: 수량이 0이므로 스킵합니다. (${productCode})`)
+          continue
+        }
+
         // 상품 조회
         const { data: product, error: productError } = await supabase
           .from('products')
