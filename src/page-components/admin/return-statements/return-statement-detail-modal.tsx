@@ -3,7 +3,8 @@
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { Button } from '@/shared/ui/button'
-import { CheckCircle, XCircle } from 'lucide-react'
+import { CheckCircle, XCircle, Edit2, Save, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 interface ReturnStatement {
   id: string
@@ -26,7 +27,7 @@ interface ReturnStatement {
     size: string
     return_quantity: number
     unit_price: number
-    total_price: number
+    total_price?: number
   }[]
   total_amount: number
   email_sent: boolean
@@ -39,6 +40,7 @@ interface ReturnStatementDetailModalProps {
   onClose: () => void
   onApprove: (statementId: string) => void
   onReject: (statementId: string) => void
+  onUpdateItems?: (statementId: string, items: ReturnStatement['items']) => void
   getReturnTypeText: (type: string) => string
   getReturnTypeColor: (type: string) => string
   getStatusText: (status: string) => string
@@ -51,25 +53,130 @@ export default function ReturnStatementDetailModal({
   onClose,
   onApprove,
   onReject,
+  onUpdateItems,
   getReturnTypeText,
   getReturnTypeColor,
   getStatusText,
   getStatusColor
 }: ReturnStatementDetailModalProps) {
-  if (!isOpen) return null
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedItems, setEditedItems] = useState(statement?.items || [])
+
+  // statement가 변경될 때마다 editedItems 업데이트
+  useEffect(() => {
+    if (statement?.items) {
+      console.log('Statement items:', statement.items)
+      console.log('First item structure:', statement.items[0])
+      setEditedItems(statement.items)
+    }
+  }, [statement])
+
+  if (!isOpen || !statement) return null
+
+  // 안전한 데이터 접근 함수들
+  const getQuantity = (item: any) => {
+    return item.return_quantity || item.quantity || item.shipped_quantity || 0
+  }
+
+  const getUnitPrice = (item: any) => {
+    return item.unit_price || item.price || 0
+  }
+
+  const getTotalPrice = (item: any) => {
+    const quantity = getQuantity(item)
+    const unitPrice = getUnitPrice(item)
+    return item.total_price || (quantity * unitPrice) || 0
+  }
+
+  const handleEditItem = (index: number, field: string, value: string | number) => {
+    const newItems = [...editedItems]
+    
+    // 필드명 매핑 처리
+    if (field === 'return_quantity') {
+      // quantity 필드로도 저장
+      newItems[index] = {
+        ...newItems[index],
+        return_quantity: Number(value) || 0,
+        quantity: Number(value) || 0
+      } as any
+    } else {
+      newItems[index] = {
+        ...newItems[index],
+        [field]: value
+      } as any
+    }
+    
+    // 수량이나 단가가 변경되면 총액 재계산
+    if (field === 'return_quantity' || field === 'unit_price') {
+      const quantity = field === 'return_quantity' ? Number(value) || 0 : getQuantity(newItems[index])
+      const unitPrice = field === 'unit_price' ? Number(value) || 0 : getUnitPrice(newItems[index])
+      const totalPrice = quantity * unitPrice
+      newItems[index] = {
+        ...newItems[index],
+        total_price: totalPrice,
+        total_amount: totalPrice
+      } as any
+    }
+    
+    setEditedItems(newItems)
+  }
+
+  const handleSaveChanges = () => {
+    if (onUpdateItems) {
+      onUpdateItems(statement.id, editedItems)
+    }
+    setIsEditing(false)
+  }
+
+  const handleCancelEdit = () => {
+    setEditedItems(statement.items)
+    setIsEditing(false)
+  }
+
+  const currentItems = isEditing ? editedItems : statement.items
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
           <h3 className="text-lg font-medium text-gray-900">반품명세서 상세보기</h3>
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            닫기
-          </Button>
+          <div className="flex items-center space-x-2">
+            {!isEditing ? (
+              <Button
+                variant="outline"
+                onClick={() => setIsEditing(true)}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                <Edit2 className="h-4 w-4 mr-2" />
+                편집
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  className="text-gray-600 hover:text-gray-700"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  취소
+                </Button>
+                <Button
+                  onClick={handleSaveChanges}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  저장
+                </Button>
+              </>
+            )}
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              닫기
+            </Button>
+          </div>
         </div>
         
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
@@ -120,28 +227,76 @@ export default function ReturnStatementDetailModal({
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">상품명</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">색상/사이즈</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">색상</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">사이즈</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">수량</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">단가</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">총액</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {statement.items.map((item, index) => (
+                    {currentItems.map((item, index) => (
                       <tr key={index}>
                         <td className="px-4 py-2 text-sm text-gray-900 border-r">{item.product_name}</td>
                         <td className="px-4 py-2 text-sm text-gray-600 border-r">
-                          {item.color && item.size ? `${item.color} / ${item.size}` : '-'}
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={item.color || ''}
+                              onChange={(e) => handleEditItem(index, 'color', e.target.value)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                            />
+                          ) : (
+                            item.color || '-'
+                          )}
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-900 border-r">{item.return_quantity}</td>
-                        <td className="px-4 py-2 text-sm text-gray-900 border-r">{item.unit_price.toLocaleString()}원</td>
-                        <td className="px-4 py-2 text-sm text-gray-900 font-medium">{item.total_price.toLocaleString()}원</td>
+                        <td className="px-4 py-2 text-sm text-gray-600 border-r">
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={item.size || ''}
+                              onChange={(e) => handleEditItem(index, 'size', e.target.value)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                            />
+                          ) : (
+                            item.size || '-'
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-900 border-r">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              value={getQuantity(item)}
+                              onChange={(e) => handleEditItem(index, 'return_quantity', parseInt(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              min="0"
+                            />
+                          ) : (
+                            getQuantity(item)
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-900 border-r">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              value={getUnitPrice(item)}
+                              onChange={(e) => handleEditItem(index, 'unit_price', parseInt(e.target.value) || 0)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              min="0"
+                            />
+                          ) : (
+                            `${getUnitPrice(item).toLocaleString()}원`
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-900 font-medium">
+                          {getTotalPrice(item).toLocaleString()}원
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-gray-50">
                     <tr>
-                      <td colSpan={4} className="px-4 py-2 text-right text-sm font-medium text-gray-900 border-r">
+                      <td colSpan={5} className="px-4 py-2 text-right text-sm font-medium text-gray-900 border-r">
                         총 환불 금액:
                       </td>
                       <td className="px-4 py-2 text-sm font-bold text-blue-600">

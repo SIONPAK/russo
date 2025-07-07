@@ -88,6 +88,10 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
   const [bulkStockQuantity, setBulkStockQuantity] = useState(0)
   const [bulkAdditionalPrice, setBulkAdditionalPrice] = useState(0)
 
+  // 이미지 업로드 상태
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 })
+
   // 상품 데이터로 폼 초기화
   useEffect(() => {
     if (product) {
@@ -169,41 +173,88 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
 
     // 현재 이미지 개수 + 새로 업로드할 이미지 개수가 10개를 초과하는지 확인
     if (images.length + files.length > 10) {
-      alert(`최대 10개의 이미지만 업로드할 수 있습니다. (현재: ${images.length}개)`)
+      showError(`최대 10개의 이미지만 업로드할 수 있습니다. (현재: ${images.length}개)`)
       return
     }
 
     try {
-      // FormData 생성
-      const formData = new FormData()
-      files.forEach(file => {
-        formData.append('files', file)
-      })
+      setUploadingImages(true)
+      setUploadProgress({ current: 0, total: files.length })
+      
+      // 5개씩 나누어 순차적으로 업로드
+      const batchSize = 5
+      const batches = []
+      for (let i = 0; i < files.length; i += batchSize) {
+        batches.push(files.slice(i, i + batchSize))
+      }
 
-      // 이미지 업로드 API 호출
-      const response = await fetch('/api/upload/product-images', {
-        method: 'POST',
-        body: formData
-      })
+      const allUploadedImages: ProductImage[] = []
+      let currentImageIndex = images.length
+      let processedFiles = 0
 
-      const result = await response.json()
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex]
+        
+        try {
+          // FormData 생성
+          const formData = new FormData()
+          batch.forEach(file => {
+            formData.append('files', file)
+          })
 
-      if (result.success && result.data.urls) {
-        // 업로드된 이미지들을 images 배열에 추가
-        const newImages: ProductImage[] = result.data.urls.map((url: string, index: number) => ({
-          url,
-          altText: '',
-          isMain: images.length === 0 && index === 0, // 첫 번째 이미지가 없으면 첫 번째 업로드 이미지를 메인으로
-          sortOrder: images.length + index + 1
-        }))
+          console.log(`배치 ${batchIndex + 1}/${batches.length} 업로드 중... (${batch.length}개 파일)`)
 
-        setImages(prev => [...prev, ...newImages])
+          // 이미지 업로드 API 호출
+          const response = await fetch('/api/upload/product-images', {
+            method: 'POST',
+            body: formData
+          })
+
+          const result = await response.json()
+
+          if (result.success && result.data.urls) {
+            // 업로드된 이미지들을 배열에 추가
+            const newImages: ProductImage[] = result.data.urls.map((url: string, index: number) => ({
+              url,
+              altText: '',
+              isMain: images.length === 0 && allUploadedImages.length === 0 && index === 0, // 첫 번째 이미지가 없으면 첫 번째 업로드 이미지를 메인으로
+              sortOrder: currentImageIndex + index + 1
+            }))
+
+            allUploadedImages.push(...newImages)
+            currentImageIndex += newImages.length
+            processedFiles += batch.length
+            
+            console.log(`배치 ${batchIndex + 1} 업로드 완료: ${newImages.length}개`)
+            
+            // 진행 상황 업데이트
+            setUploadProgress({ current: processedFiles, total: files.length })
+            
+            // 중간 결과를 UI에 반영
+            setImages(prev => [...prev, ...newImages])
+          } else {
+            throw new Error(result.error || `배치 ${batchIndex + 1} 업로드 실패`)
+          }
+        } catch (batchError) {
+          console.error(`배치 ${batchIndex + 1} 업로드 오류:`, batchError)
+          showError(`배치 ${batchIndex + 1} 업로드 중 오류가 발생했습니다: ${batchError}`)
+          processedFiles += batch.length
+          setUploadProgress({ current: processedFiles, total: files.length })
+          // 오류가 발생해도 다음 배치 계속 진행
+        }
+      }
+
+      if (allUploadedImages.length > 0) {
+        showSuccess(`${allUploadedImages.length}개의 이미지가 성공적으로 업로드되었습니다.`)
       } else {
-        alert('이미지 업로드에 실패했습니다.')
+        showError('모든 이미지 업로드에 실패했습니다.')
       }
     } catch (error) {
       console.error('Image upload error:', error)
-      alert('이미지 업로드 중 오류가 발생했습니다.')
+      showError('이미지 업로드 중 오류가 발생했습니다.')
+    } finally {
+      setUploadingImages(false)
+      setUploadProgress({ current: 0, total: 0 })
     }
   }
 
@@ -774,27 +825,49 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
             {/* 이미지 업로드 영역 */}
             {images.length < 10 && (
               <div className="mb-4">
-                <div 
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer"
-                  onClick={() => document.getElementById('image-upload')?.click()}
-                >
-                  <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-2">이미지를 드래그하거나 클릭하여 업로드</p>
-                  <p className="text-sm text-gray-500">JPG, PNG, WebP (최대 5MB, {10 - images.length}개 추가 가능)</p>
-                  <input
-                    id="image-upload"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || [])
-                      if (files.length > 0) {
-                        handleImageUpload(files)
-                      }
-                    }}
-                    className="hidden"
-                  />
-                </div>
+                {uploadingImages ? (
+                  // 업로드 진행 중 UI
+                  <div className="border-2 border-blue-300 rounded-lg p-8 text-center bg-blue-50">
+                    <Upload className="w-12 h-12 text-blue-500 mx-auto mb-4 animate-pulse" />
+                    <p className="text-blue-700 mb-2 font-medium">이미지 업로드 중...</p>
+                    <p className="text-sm text-blue-600 mb-4">
+                      {uploadProgress.current}/{uploadProgress.total} 파일 처리 완료
+                    </p>
+                    {/* 진행 바 */}
+                    <div className="w-full bg-blue-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                        style={{ 
+                          width: `${uploadProgress.total > 0 ? (uploadProgress.current / uploadProgress.total) * 100 : 0}%` 
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                ) : (
+                  // 일반 업로드 UI
+                  <div 
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer"
+                    onClick={() => document.getElementById('image-upload')?.click()}
+                  >
+                    <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-2">이미지를 드래그하거나 클릭하여 업로드</p>
+                    <p className="text-sm text-gray-500">JPG, PNG, WebP (최대 5MB, {10 - images.length}개 추가 가능)</p>
+                    <input
+                      id="image-upload"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || [])
+                        if (files.length > 0) {
+                          handleImageUpload(files)
+                        }
+                      }}
+                      className="hidden"
+                      disabled={uploadingImages}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
@@ -942,20 +1015,20 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
               type="button"
               variant="outline"
               onClick={onClose}
-              disabled={loading}
+              disabled={loading || uploadingImages}
               className="px-6 py-2 rounded-xl"
             >
               취소
             </Button>
             <Button
               type="submit"
-              disabled={loading}
+              disabled={loading || uploadingImages}
               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold px-6 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
             >
-              {loading ? (
+              {loading || uploadingImages ? (
                 <div className="flex items-center">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  저장 중...
+                  {uploadingImages ? '이미지 업로드 중...' : '저장 중...'}
                 </div>
               ) : (
                 <div className="flex items-center">

@@ -43,7 +43,7 @@ interface ReturnStatement {
     size: string
     return_quantity: number
     unit_price: number
-    total_price: number
+    total_price?: number
   }[]
   total_amount: number
   email_sent: boolean
@@ -550,6 +550,37 @@ export default function ReturnStatementsPage() {
   const handleViewDetail = (statement: ReturnStatement) => {
     setSelectedStatement(statement)
     setShowDetailModal(true)
+  }
+
+  const handleUpdateItems = async (statementId: string, items: ReturnStatement['items']) => {
+    try {
+      const response = await fetch(`/api/admin/return-statements/${statementId}/items`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ items })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('반품 상품 정보가 업데이트되었습니다.')
+        await fetchStatements()
+        // 선택된 명세서 정보도 업데이트
+        if (selectedStatement) {
+          setSelectedStatement({
+            ...selectedStatement,
+            items: items
+          })
+        }
+      } else {
+        showError(`업데이트 실패: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Update items error:', error)
+      showError('업데이트 중 오류가 발생했습니다.')
+    }
   }
 
   const handleDeleteStatement = async (statementId: string) => {
@@ -1146,7 +1177,7 @@ export default function ReturnStatementsPage() {
                         
                         <div className="mt-3 text-right">
                           <span className="text-sm text-gray-600">
-                            총 가격: <span className="font-medium">{item.total_price.toLocaleString()}원</span>
+                            총 가격: <span className="font-medium">{item.total_price?.toLocaleString()}원</span>
                           </span>
                         </div>
                       </div>
@@ -1155,7 +1186,7 @@ export default function ReturnStatementsPage() {
                   
                   <div className="mt-4 text-right">
                     <span className="text-lg font-medium text-gray-900">
-                      총 환불 금액: {newStatement.items.reduce((sum, item) => sum + item.total_price, 0).toLocaleString()}원
+                      총 환불 금액: {newStatement.items.reduce((sum, item) => sum + (item.total_price || 0), 0).toLocaleString()}원
                     </span>
                   </div>
                 </div>
@@ -1202,6 +1233,7 @@ export default function ReturnStatementsPage() {
         }}
         onApprove={(statementId) => handleProcessReturn([statementId])}
         onReject={handleRejectStatement}
+        onUpdateItems={handleUpdateItems}
         getReturnTypeText={getReturnTypeText}
         getReturnTypeColor={getReturnTypeColor}
         getStatusText={getStatusText}

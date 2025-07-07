@@ -13,19 +13,24 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 파일 개수 제한 (한 번에 최대 5개)
-    if (files.length > 5) {
+    // 파일 개수 제한 (한 번에 최대 10개로 증가)
+    if (files.length > 10) {
       return NextResponse.json({
         success: false,
-        error: '한 번에 최대 5개의 파일만 업로드할 수 있습니다.'
+        error: '한 번에 최대 10개의 파일만 업로드할 수 있습니다.'
       }, { status: 400 })
     }
 
     const uploadedUrls: string[] = []
     const errors: string[] = []
 
-    for (const file of files) {
+    // 순차적으로 파일 업로드 처리
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      
       try {
+        console.log(`파일 ${i + 1}/${files.length} 업로드 중: ${file.name}`)
+        
         // 파일 확장자 검증
         const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
         if (!allowedTypes.includes(file.type)) {
@@ -64,6 +69,8 @@ export async function POST(request: NextRequest) {
           .getPublicUrl(filePath)
 
         uploadedUrls.push(publicUrl)
+        console.log(`파일 ${i + 1}/${files.length} 업로드 완료: ${file.name}`)
+        
       } catch (uploadError) {
         console.error('Individual upload error:', uploadError)
         errors.push(`${file.name}: 업로드 중 오류 발생`)
@@ -78,6 +85,8 @@ export async function POST(request: NextRequest) {
         errors
       }, { status: 500 })
     }
+
+    console.log(`업로드 완료: 성공 ${uploadedUrls.length}개, 실패 ${errors.length}개`)
 
     return NextResponse.json({
       success: true,

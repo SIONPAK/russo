@@ -678,7 +678,11 @@ export function OrderManagementPage() {
 
   // 발주서 삭제
   const handleDeleteOrder = async (order: PurchaseOrder) => {
-    if (!confirm(`발주번호 ${order.order_number}를 삭제하시겠습니까?`)) {
+    const confirmMessage = order.status === 'confirmed' || order.status === 'partial' 
+      ? `발주번호 ${order.order_number}를 삭제하시겠습니까?\n\n※ 재고가 할당된 주문입니다. 삭제 시 할당된 재고가 복원됩니다.`
+      : `발주번호 ${order.order_number}를 삭제하시겠습니까?`
+    
+    if (!confirm(confirmMessage)) {
       return
     }
 
@@ -690,7 +694,7 @@ export function OrderManagementPage() {
       const result = await response.json()
 
       if (result.success) {
-        showSuccess('발주서가 삭제되었습니다.')
+        showSuccess(result.message || '발주서가 삭제되었습니다.')
         fetchPurchaseOrders(selectedDate) // 목록 새로고침
       } else {
         showError(`발주서 삭제 실패: ${result.error}`)
@@ -1148,12 +1152,14 @@ export function OrderManagementPage() {
                         <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency(order.total_amount)}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            order.total_amount < 0 && order.status === 'confirmed' ? 'bg-red-100 text-red-800' :
                             order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                             order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                             order.status === 'completed' ? 'bg-green-100 text-green-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>
-                            {order.status === 'pending' ? '대기' : 
+                            {order.total_amount < 0 && order.status === 'confirmed' ? '반품 접수' :
+                             order.status === 'pending' ? '대기' : 
                              order.status === 'processing' ? '처리중' :
                              order.status === 'completed' ? '완료' : order.status}
                           </span>
