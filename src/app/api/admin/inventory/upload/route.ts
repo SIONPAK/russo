@@ -127,10 +127,9 @@ export async function POST(request: NextRequest) {
           if (stockQuantity < 0) {
             // 음수인 경우 (출고)
             if (previousStock === 0) {
-              // 현재 재고가 0이면 그대로 0으로 유지 (오류 발생시키지 않음)
-              newStock = 0
-              actualChangeAmount = 0
-              console.log(`${i + 2}행: 현재 재고가 0개이므로 출고하지 않고 0으로 유지합니다. (${productCode} - ${color}/${size})`)
+              // 현재 재고가 0이면 스킵 (처리하지 않음)
+              console.log(`${i + 2}행: 현재 재고가 0개이므로 스킵합니다. (${productCode} - ${color}/${size})`)
+              continue
             } else if (Math.abs(stockQuantity) > previousStock) {
               // 출고 요청량이 현재 재고보다 많은 경우, 현재 재고만큼만 출고
               newStock = 0
@@ -142,9 +141,9 @@ export async function POST(request: NextRequest) {
               actualChangeAmount = stockQuantity
             }
           } else {
-            // 양수인 경우 (입고) - 그대로 처리
-            newStock = stockQuantity
-            actualChangeAmount = stockQuantity - previousStock
+            // 양수인 경우 (입고) - 기존 재고에 추가
+            newStock = previousStock + stockQuantity
+            actualChangeAmount = stockQuantity
           }
 
           console.log(`옵션 재고 변경:`, { 
@@ -187,7 +186,7 @@ export async function POST(request: NextRequest) {
               quantity: Math.abs(actualChangeAmount),
               color: inventoryOptions[optionIndex].color,
               size: inventoryOptions[optionIndex].size,
-              notes: `${inventoryOptions[optionIndex].color}/${inventoryOptions[optionIndex].size} 옵션 재고 ${actualChangeAmount > 0 ? '입고' : '출고'} (엑셀 일괄 업로드) - 이전: ${previousStock}, 설정: ${newStock}, 변경: ${actualChangeAmount > 0 ? '+' : ''}${actualChangeAmount}`,
+              notes: `${inventoryOptions[optionIndex].color}/${inventoryOptions[optionIndex].size} 옵션 재고 ${actualChangeAmount > 0 ? '입고' : '출고'} (엑셀 일괄 업로드) - 이전: ${previousStock}, 추가: ${stockQuantity}, 결과: ${newStock}`,
               created_at: getKoreaTime()
             }
             
@@ -218,10 +217,9 @@ export async function POST(request: NextRequest) {
           if (stockQuantity < 0) {
             // 음수인 경우 (출고)
             if (previousStock === 0) {
-              // 현재 재고가 0이면 그대로 0으로 유지 (오류 발생시키지 않음)
-              newStock = 0
-              actualChangeAmount = 0
-              console.log(`${i + 2}행: 현재 재고가 0개이므로 출고하지 않고 0으로 유지합니다. (${productCode})`)
+              // 현재 재고가 0이면 스킵 (처리하지 않음)
+              console.log(`${i + 2}행: 현재 재고가 0개이므로 스킵합니다. (${productCode})`)
+              continue
             } else if (Math.abs(stockQuantity) > previousStock) {
               // 출고 요청량이 현재 재고보다 많은 경우, 현재 재고만큼만 출고
               newStock = 0
@@ -233,9 +231,9 @@ export async function POST(request: NextRequest) {
               actualChangeAmount = stockQuantity
             }
           } else {
-            // 양수인 경우 (입고) - 그대로 처리
-            newStock = stockQuantity
-            actualChangeAmount = stockQuantity - previousStock
+            // 양수인 경우 (입고) - 기존 재고에 추가
+            newStock = previousStock + stockQuantity
+            actualChangeAmount = stockQuantity
           }
 
           console.log(`일반 재고 변경:`, { 
@@ -271,7 +269,7 @@ export async function POST(request: NextRequest) {
               quantity: Math.abs(actualChangeAmount),
               color: null,
               size: null,
-              notes: `전체 재고 ${actualChangeAmount > 0 ? '입고' : '출고'} (엑셀 일괄 업로드) - 이전: ${previousStock}, 설정: ${newStock}, 변경: ${actualChangeAmount > 0 ? '+' : ''}${actualChangeAmount}`,
+              notes: `전체 재고 ${actualChangeAmount > 0 ? '입고' : '출고'} (엑셀 일괄 업로드) - 이전: ${previousStock}, 추가: ${stockQuantity}, 결과: ${newStock}`,
               created_at: getKoreaTime()
             }
             
