@@ -13,92 +13,81 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 파일 개수 제한 (한 번에 최대 10개로 증가)
-    if (files.length > 10) {
+    // 단일 파일 업로드로 제한
+    if (files.length > 1) {
       return NextResponse.json({
         success: false,
-        error: '한 번에 최대 10개의 파일만 업로드할 수 있습니다.'
+        error: '한 번에 하나의 파일만 업로드할 수 있습니다.'
       }, { status: 400 })
     }
 
-    const uploadedUrls: string[] = []
-    const errors: string[] = []
-
-    // 순차적으로 파일 업로드 처리
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      
-      try {
-        console.log(`파일 ${i + 1}/${files.length} 업로드 중: ${file.name}`)
-        
-        // 파일 확장자 검증
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
-        if (!allowedTypes.includes(file.type)) {
-          errors.push(`${file.name}: 지원하지 않는 파일 형식입니다.`)
-          continue
-        }
-
-        // 파일 크기 검증 (5MB)
-        if (file.size > 5 * 1024 * 1024) {
-          errors.push(`${file.name}: 파일 크기가 5MB를 초과합니다.`)
-          continue
-        }
-
-        // 고유한 파일명 생성
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-        const filePath = `products/${fileName}`
-
-        // Supabase Storage에 업로드
-        const { data, error } = await supabase.storage
-          .from('product-images')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          })
-
-        if (error) {
-          console.error('Upload error:', error)
-          errors.push(`${file.name}: 업로드 실패 - ${error.message}`)
-          continue
-        }
-
-        // 공개 URL 생성
-        const { data: { publicUrl } } = supabase.storage
-          .from('product-images')
-          .getPublicUrl(filePath)
-
-        uploadedUrls.push(publicUrl)
-        console.log(`파일 ${i + 1}/${files.length} 업로드 완료: ${file.name}`)
-        
-      } catch (uploadError) {
-        console.error('Individual upload error:', uploadError)
-        errors.push(`${file.name}: 업로드 중 오류 발생`)
-      }
-    }
-
-    // 결과 반환
-    if (uploadedUrls.length === 0) {
+    const file = files[0]
+    console.log(`📁 업로드: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`)
+    
+    // 파일 확장자 검증
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+    if (!allowedTypes.includes(file.type)) {
       return NextResponse.json({
         success: false,
-        error: '모든 파일 업로드에 실패했습니다.',
-        errors
+        error: '지원하지 않는 파일 형식입니다. (JPEG, PNG, WebP만 지원)'
+      }, { status: 400 })
+    }
+
+    // 파일 크기 검증
+    if (file.size > 3 * 1024 * 1024) {
+      return NextResponse.json({
+        success: false,
+        error: '파일 크기가 3MB를 초과합니다.'
+      }, { status: 400 })
+    }
+
+    try {
+      // 고유한 파일명 생성
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `products/${fileName}`
+
+      // Supabase Storage에 업로드
+      const { data, error } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file, {
+          cacheControl: '31536000', // 1년 캐시
+          upsert: false
+        })
+
+      if (error) {
+        console.error('❌ Supabase 업로드 실패:', error.message)
+        return NextResponse.json({
+          success: false,
+          error: `업로드 실패: ${error.message}`
+        }, { status: 500 })
+      }
+
+      // 공개 URL 생성
+      const { data: { publicUrl } } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath)
+
+      console.log(`✅ 업로드 성공: ${file.name}`)
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          urls: [publicUrl]
+        },
+        message: '파일 업로드 완료'
+      })
+      
+    } catch (uploadError) {
+      console.error('❌ 업로드 오류:', uploadError instanceof Error ? uploadError.message : String(uploadError))
+      return NextResponse.json({
+        success: false,
+        error: '파일 업로드 중 오류가 발생했습니다.'
       }, { status: 500 })
     }
 
-    console.log(`업로드 완료: 성공 ${uploadedUrls.length}개, 실패 ${errors.length}개`)
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        urls: uploadedUrls
-      },
-      message: `${uploadedUrls.length}개 파일 업로드 완료${errors.length > 0 ? `, ${errors.length}개 실패` : ''}`,
-      errors: errors.length > 0 ? errors : undefined
-    })
-
   } catch (error) {
-    console.error('Image upload API error:', error)
+    console.error('❌ API 오류:', error instanceof Error ? error.message : String(error))
     return NextResponse.json({
       success: false,
       error: '이미지 업로드 중 오류가 발생했습니다.'

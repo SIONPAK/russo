@@ -862,10 +862,6 @@ export function InventoryPage() {
                     <ClipboardList className="h-4 w-4 mr-2" />
                     재고 실사
                   </Button>
-                  <Button onClick={() => showInfo('입고 등록 기능을 준비 중입니다.')}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    입고 등록
-                  </Button>
                 </div>
               </div>
 

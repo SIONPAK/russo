@@ -168,6 +168,51 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
+  // 이미지 압축 함수 (최소 압축)
+  const compressImage = async (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const img = new Image()
+      
+      img.onload = () => {
+        // 최소 압축 설정 (속도 최우선)
+        let maxWidth = 1200
+        let quality = 0.9
+        
+        // 매우 큰 파일만 압축
+        if (file.size > 5 * 1024 * 1024) { // 5MB 이상만
+          maxWidth = 1000
+          quality = 0.8
+        }
+        
+        // 비율 유지하면서 리사이즈
+        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height)
+        canvas.width = img.width * ratio
+        canvas.height = img.height * ratio
+        
+        // 이미지 그리기
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
+        
+        // 압축된 이미지를 Blob으로 변환
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            })
+            resolve(compressedFile)
+          } else {
+            resolve(file) // 압축 실패시 원본 반환
+          }
+        }, 'image/jpeg', quality)
+      }
+      
+      img.onerror = () => resolve(file) // 에러시 원본 반환
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
   const handleImageUpload = async (files: File[]) => {
     if (files.length === 0) return
 
@@ -177,80 +222,105 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
       return
     }
 
+    console.log(`이미지 업로드 시작: ${files.length}개 파일`)
+
     try {
       setUploadingImages(true)
       setUploadProgress({ current: 0, total: files.length })
       
-      // 5개씩 나누어 순차적으로 업로드
-      const batchSize = 5
-      const batches = []
-      for (let i = 0; i < files.length; i += batchSize) {
-        batches.push(files.slice(i, i + batchSize))
-      }
-
       const allUploadedImages: ProductImage[] = []
-      let currentImageIndex = images.length
       let processedFiles = 0
 
-      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-        const batch = batches[batchIndex]
+      // 순차 업로드 (안정성 우선)
+      for (let i = 0; i < files.length; i++) {
+        const originalFile = files[i]
+        
+        console.log(`파일 ${i + 1}/${files.length}: ${originalFile.name} (${(originalFile.size / 1024 / 1024).toFixed(2)}MB)`)
         
         try {
+          // 2MB 이상인 경우만 압축
+          let file = originalFile
+          if (originalFile.size > 2 * 1024 * 1024) {
+            file = await compressImage(originalFile)
+            console.log(`압축 완료: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
+          }
+          
           // FormData 생성
           const formData = new FormData()
-          batch.forEach(file => {
-            formData.append('files', file)
-          })
+          formData.append('files', file)
 
-          console.log(`배치 ${batchIndex + 1}/${batches.length} 업로드 중... (${batch.length}개 파일)`)
-
-          // 이미지 업로드 API 호출
+          // API 호출
           const response = await fetch('/api/upload/product-images', {
             method: 'POST',
             body: formData
           })
+          
+          // 응답 상태 확인
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 100)}`)
+          }
 
-          const result = await response.json()
+          // 응답 처리
+          const responseText = await response.text()
+          
+          if (!responseText.trim()) {
+            throw new Error('서버에서 빈 응답을 받았습니다.')
+          }
+          
+          let result
+          try {
+            result = JSON.parse(responseText)
+          } catch (parseError) {
+            // HTML 응답인지 확인
+            if (responseText.includes('<html>') || responseText.includes('<!DOCTYPE')) {
+              throw new Error('서버에서 HTML 오류 페이지를 반환했습니다.')
+            }
+            throw new Error(`서버 응답을 파싱할 수 없습니다: ${parseError}`)
+          }
 
-          if (result.success && result.data.urls) {
-            // 업로드된 이미지들을 배열에 추가
-            const newImages: ProductImage[] = result.data.urls.map((url: string, index: number) => ({
-              url,
+          if (result.success && result.data && result.data.urls && result.data.urls.length > 0) {
+            const newImage: ProductImage = {
+              url: result.data.urls[0],
               altText: '',
-              isMain: images.length === 0 && allUploadedImages.length === 0 && index === 0, // 첫 번째 이미지가 없으면 첫 번째 업로드 이미지를 메인으로
-              sortOrder: currentImageIndex + index + 1
-            }))
+              isMain: images.length === 0 && allUploadedImages.length === 0,
+              sortOrder: images.length + i + 1
+            }
 
-            allUploadedImages.push(...newImages)
-            currentImageIndex += newImages.length
-            processedFiles += batch.length
+            allUploadedImages.push(newImage)
+            processedFiles += 1
             
-            console.log(`배치 ${batchIndex + 1} 업로드 완료: ${newImages.length}개`)
+            console.log(`✅ ${originalFile.name} 업로드 완료`)
             
             // 진행 상황 업데이트
             setUploadProgress({ current: processedFiles, total: files.length })
             
-            // 중간 결과를 UI에 반영
-            setImages(prev => [...prev, ...newImages])
+            // 즉시 UI에 반영
+            setImages(prev => [...prev, newImage])
           } else {
-            throw new Error(result.error || `배치 ${batchIndex + 1} 업로드 실패`)
+            throw new Error(result.error || '업로드 실패')
           }
-        } catch (batchError) {
-          console.error(`배치 ${batchIndex + 1} 업로드 오류:`, batchError)
-          showError(`배치 ${batchIndex + 1} 업로드 중 오류가 발생했습니다: ${batchError}`)
-          processedFiles += batch.length
+        } catch (fileError) {
+          console.error(`❌ ${originalFile.name} 업로드 실패:`, fileError)
+          const errorMessage = fileError instanceof Error ? fileError.message : String(fileError)
+          showError(`파일 ${originalFile.name} 업로드 실패: ${errorMessage}`)
+          processedFiles += 1
           setUploadProgress({ current: processedFiles, total: files.length })
-          // 오류가 발생해도 다음 배치 계속 진행
         }
       }
 
+      console.log(`업로드 완료: 성공 ${allUploadedImages.length}개, 실패 ${files.length - allUploadedImages.length}개`)
+
       if (allUploadedImages.length > 0) {
         showSuccess(`${allUploadedImages.length}개의 이미지가 성공적으로 업로드되었습니다.`)
-      } else {
-        showError('모든 이미지 업로드에 실패했습니다.')
+      }
+      
+      const failedCount = files.length - allUploadedImages.length
+      if (failedCount > 0) {
+        showError(`${failedCount}개 이미지 업로드에 실패했습니다.`)
       }
     } catch (error) {
-      console.error('Image upload error:', error)
+      console.error('업로드 프로세스 오류:', error)
       showError('이미지 업로드 중 오류가 발생했습니다.')
     } finally {
       setUploadingImages(false)

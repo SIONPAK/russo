@@ -505,14 +505,6 @@ export function OrdersPage() {
           
           <div className="flex gap-2">
             <Button
-              onClick={handleAllocateInventory}
-              disabled={selectedOrders.length === 0 || updating}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <Package className="w-4 h-4 mr-2" />
-              재고 할당 ({selectedOrders.length})
-            </Button>
-            <Button
               onClick={handleBulkShipping}
               disabled={selectedOrders.length === 0 || updating}
               className="bg-green-600 hover:bg-green-700"
