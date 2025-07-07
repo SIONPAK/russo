@@ -3,6 +3,8 @@ import { createClient } from '@/shared/lib/supabase/server'
 import { getCurrentKoreanDateTime, getKoreaTime } from '@/shared/lib/utils'
 import { sendShippingStatementEmail } from '@/shared/lib/email-utils'
 import * as XLSX from 'xlsx-js-style'
+import path from 'path'
+import fs from 'fs'
 
 // 출고 명세서 이메일 발송 API
 export async function POST(request: NextRequest) {
@@ -185,16 +187,10 @@ export async function POST(request: NextRequest) {
 async function generateReceiptExcel(order: any, shippedItems: any[]): Promise<Buffer> {
   try {
     // 템플릿 파일 로드
-    const templatePath = '/templates/루소_영수증.xlsx'
-    const templateUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}${templatePath}`
+    const templatePath = path.join(process.cwd(), 'public/templates/루소_영수증.xlsx')
+    const templateBuffer = fs.readFileSync(templatePath)
     
-    const templateResponse = await fetch(templateUrl)
-    if (!templateResponse.ok) {
-      throw new Error('템플릿 파일을 불러올 수 없습니다.')
-    }
-
-    const templateBuffer = await templateResponse.arrayBuffer()
-    const workbook = XLSX.read(templateBuffer, { type: 'array' })
+    const workbook = XLSX.read(templateBuffer, { type: 'buffer' })
     const worksheetName = workbook.SheetNames[0]
     const worksheet = workbook.Sheets[worksheetName]
 
