@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
-import { generateReceipt } from '@/shared/lib/receipt-utils'
+import { 
+  generateShippingStatement,
+  generateReturnStatement, 
+  generateDeductionStatement, 
+  ShippingStatementData,
+  ReturnStatementData, 
+  DeductionStatementData 
+} from '@/shared/lib/shipping-statement-utils'
 
 // GET - 문서 다운로드
 export async function GET(
@@ -11,99 +18,112 @@ export async function GET(
     const { id } = await params
     const supabase = await createClient()
 
-    // 현재 사용자 확인
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    // 사용자 인증 확인
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
       return NextResponse.json({
         success: false,
-        error: '로그인이 필요합니다.'
+        error: '인증이 필요합니다.'
       }, { status: 401 })
     }
 
-    // ID 파싱 (order_123, return_456, deduction_789 형태)
-    const [type, actualId] = id.split('_')
+    // ID에서 타입과 실제 ID 분리
+    const [type, actualId] = id.includes('_') ? id.split('_') : ['shipping', id]
     
-    let receiptData: any = null
     let fileName = ''
+    let excelBuffer: Buffer | null = null
 
-    if (type === 'order') {
-      // 거래명세서 (주문 기반)
+    if (type === 'shipping') {
+      // 출고명세서 (새로운 유틸리티 사용)
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .select(`
           *,
           users!orders_user_id_fkey (
+            id,
             company_name,
             representative_name,
             email,
             phone,
             address,
-            business_number
+            business_number,
+            customer_grade
           ),
-          order_items (
-            id,
+          order_items!inner(
             product_name,
             color,
             size,
             quantity,
-            unit_price,
-            total_price
+            shipped_quantity,
+            unit_price
           )
         `)
         .eq('id', actualId)
-        .eq('user_id', user.id)
         .single()
 
       if (orderError || !order) {
         return NextResponse.json({
           success: false,
-          error: '주문을 찾을 수 없습니다.'
+          error: '출고명세서를 찾을 수 없습니다.'
         }, { status: 404 })
       }
 
-      receiptData = {
-        orderNumber: order.order_number,
-        orderDate: new Date(order.created_at).toLocaleDateString('ko-KR'),
-        customerName: order.users.company_name,
-        customerPhone: order.users.phone,
-        customerEmail: order.users.email,
-        shippingName: order.shipping_name,
-        shippingPhone: order.shipping_phone,
-        shippingAddress: order.shipping_address,
-        shippingPostalCode: order.shipping_postal_code,
-        items: order.order_items.map((item: any) => ({
-          productName: item.product_name,
-          productCode: '',
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          totalPrice: item.total_price,
-          color: item.color,
-          size: item.size
-        })),
-        subtotal: order.total_amount,
-        shippingFee: order.shipping_fee || 0,
-        totalAmount: order.total_amount + (order.shipping_fee || 0),
-        notes: ''
+      // 사용자 권한 확인
+      const orderUser = Array.isArray(order.users) ? order.users[0] : order.users
+      if (!orderUser || orderUser.id !== user.id) {
+        return NextResponse.json({
+          success: false,
+          error: '접근 권한이 없습니다.'
+        }, { status: 403 })
       }
-      fileName = `거래명세서_${order.order_number}.xlsx`
+
+      // 실제 출고된 상품만 필터링
+      const shippedItems = order.order_items.filter((item: any) => 
+        item.shipped_quantity && item.shipped_quantity > 0
+      )
+
+      if (shippedItems.length === 0) {
+        return NextResponse.json({
+          success: false,
+          error: '출고된 상품이 없습니다.'
+        }, { status: 400 })
+      }
+
+      const statementData: ShippingStatementData = {
+        orderNumber: order.order_number,
+        companyName: orderUser.company_name,
+        businessLicenseNumber: orderUser.business_number,
+        email: orderUser.email,
+        phone: orderUser.phone,
+        address: orderUser.address || '',
+        postalCode: '',
+        customerGrade: orderUser.customer_grade || 'BRONZE',
+        shippedAt: order.shipped_at || order.created_at,
+        items: shippedItems.map((item: any) => ({
+          productName: item.product_name,
+          color: item.color || '-',
+          size: item.size || '-',
+          quantity: item.shipped_quantity,
+          unitPrice: item.unit_price,
+          totalPrice: item.shipped_quantity * item.unit_price
+        })),
+        totalAmount: shippedItems.reduce((sum: number, item: any) => 
+          sum + (item.shipped_quantity * item.unit_price), 0
+        )
+      }
+
+      excelBuffer = await generateShippingStatement(statementData)
+      fileName = `출고명세서_${order.order_number}.xlsx`
 
     } else if (type === 'return') {
-      // 반품명세서
+      // 반품명세서 (새로운 유틸리티 사용)
       const { data: returnStatement, error: returnError } = await supabase
         .from('return_statements')
         .select(`
           *,
           orders!return_statements_order_id_fkey (
             order_number,
-            users!orders_user_id_fkey (
-              company_name,
-              representative_name,
-              email,
-              phone,
-              address,
-              business_number
-            )
+            user_id
           )
         `)
         .eq('id', actualId)
@@ -118,57 +138,69 @@ export async function GET(
 
       // 사용자 권한 확인
       const order = Array.isArray(returnStatement.orders) ? returnStatement.orders[0] : returnStatement.orders
-      const orderUser = Array.isArray(order?.users) ? order.users[0] : order?.users
-      
-      if (!orderUser || orderUser.id !== user.id) {
+      if (!order || order.user_id !== user.id) {
         return NextResponse.json({
           success: false,
           error: '접근 권한이 없습니다.'
         }, { status: 403 })
       }
 
-      receiptData = {
-        orderNumber: returnStatement.statement_number,
-        orderDate: new Date(returnStatement.created_at).toLocaleDateString('ko-KR'),
-        customerName: orderUser.company_name,
-        customerPhone: orderUser.phone,
-        customerEmail: orderUser.email,
-        shippingName: orderUser.representative_name,
-        shippingPhone: orderUser.phone,
-        shippingAddress: orderUser.address || '',
-        shippingPostalCode: '',
+      // company_name으로 사용자 정보 조회
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select(`
+          company_name,
+          representative_name,
+          email,
+          phone,
+          address,
+          business_number,
+          customer_grade
+        `)
+        .eq('company_name', returnStatement.company_name)
+        .single()
+
+      if (userError || !userData) {
+        return NextResponse.json({
+          success: false,
+          error: '회사 정보를 찾을 수 없습니다.'
+        }, { status: 404 })
+      }
+
+      const statementData: ReturnStatementData = {
+        statementNumber: returnStatement.statement_number,
+        companyName: userData.company_name,
+        businessLicenseNumber: userData.business_number,
+        email: userData.email,
+        phone: userData.phone,
+        address: userData.address || '',
+        postalCode: '',
+        customerGrade: userData.customer_grade || 'BRONZE',
+        returnDate: returnStatement.created_at,
+        returnReason: returnStatement.return_reason,
         items: (returnStatement.items || []).map((item: any) => ({
           productName: item.product_name,
-          productCode: '',
+          color: item.color || '-',
+          size: item.size || '-',
           quantity: item.return_quantity || item.quantity,
           unitPrice: item.unit_price,
-          totalPrice: item.total_price,
-          color: item.color,
-          size: item.size
+          totalPrice: item.unit_price * (item.return_quantity || item.quantity)
         })),
-        subtotal: returnStatement.total_amount,
-        shippingFee: 0,
-        totalAmount: returnStatement.total_amount,
-        notes: `반품 사유: ${returnStatement.return_reason}`
+        totalAmount: returnStatement.refund_amount || returnStatement.total_amount
       }
+
+      excelBuffer = await generateReturnStatement(statementData)
       fileName = `반품명세서_${returnStatement.statement_number}.xlsx`
 
     } else if (type === 'deduction') {
-      // 차감명세서
+      // 차감명세서 (새로운 유틸리티 사용)
       const { data: deductionStatement, error: deductionError } = await supabase
         .from('deduction_statements')
         .select(`
           *,
           orders!deduction_statements_order_id_fkey (
             order_number,
-            users!orders_user_id_fkey (
-              company_name,
-              representative_name,
-              email,
-              phone,
-              address,
-              business_number
-            )
+            user_id
           )
         `)
         .eq('id', actualId)
@@ -183,39 +215,59 @@ export async function GET(
 
       // 사용자 권한 확인
       const order = Array.isArray(deductionStatement.orders) ? deductionStatement.orders[0] : deductionStatement.orders
-      const orderUser = Array.isArray(order?.users) ? order.users[0] : order?.users
-      
-      if (!orderUser || orderUser.id !== user.id) {
+      if (!order || order.user_id !== user.id) {
         return NextResponse.json({
           success: false,
           error: '접근 권한이 없습니다.'
         }, { status: 403 })
       }
 
-      receiptData = {
-        orderNumber: deductionStatement.statement_number,
-        orderDate: new Date(deductionStatement.created_at).toLocaleDateString('ko-KR'),
-        customerName: orderUser.company_name,
-        customerPhone: orderUser.phone,
-        customerEmail: orderUser.email,
-        shippingName: orderUser.representative_name,
-        shippingPhone: orderUser.phone,
-        shippingAddress: orderUser.address || '',
-        shippingPostalCode: '',
+      // company_name으로 사용자 정보 조회
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select(`
+          company_name,
+          representative_name,
+          email,
+          phone,
+          address,
+          business_number,
+          customer_grade
+        `)
+        .eq('company_name', deductionStatement.company_name)
+        .single()
+
+      if (userError || !userData) {
+        return NextResponse.json({
+          success: false,
+          error: '회사 정보를 찾을 수 없습니다.'
+        }, { status: 404 })
+      }
+
+      const statementData: DeductionStatementData = {
+        statementNumber: deductionStatement.statement_number,
+        companyName: userData.company_name,
+        businessLicenseNumber: userData.business_number,
+        email: userData.email,
+        phone: userData.phone,
+        address: userData.address || '',
+        postalCode: '',
+        customerGrade: userData.customer_grade || 'BRONZE',
+        deductionDate: deductionStatement.created_at,
+        deductionReason: deductionStatement.deduction_reason,
+        deductionType: deductionStatement.deduction_type,
         items: (deductionStatement.items || []).map((item: any) => ({
           productName: item.product_name,
-          productCode: '',
-          quantity: item.quantity,
+          color: item.color || '-',
+          size: item.size || '-',
+          quantity: item.deduction_quantity || item.quantity,
           unitPrice: item.unit_price,
-          totalPrice: item.total_price,
-          color: item.color,
-          size: item.size
+          totalPrice: item.unit_price * (item.deduction_quantity || item.quantity)
         })),
-        subtotal: deductionStatement.total_amount,
-        shippingFee: 0,
-        totalAmount: deductionStatement.total_amount,
-        notes: `차감 사유: ${deductionStatement.deduction_reason}`
+        totalAmount: deductionStatement.total_amount
       }
+
+      excelBuffer = await generateDeductionStatement(statementData)
       fileName = `차감명세서_${deductionStatement.statement_number}.xlsx`
 
     } else {
@@ -225,21 +277,25 @@ export async function GET(
       }, { status: 400 })
     }
 
-    // 엑셀 파일 생성 및 다운로드
-    const success = await generateReceipt(receiptData)
-    
-    if (!success) {
-      return NextResponse.json({
-        success: false,
-        error: '명세서 다운로드에 실패했습니다.'
-      }, { status: 500 })
+    // 모든 명세서를 직접 다운로드로 처리
+    if (excelBuffer) {
+      // 파일명 인코딩 처리
+      const encodedFileName = encodeURIComponent(fileName)
+      
+      return new NextResponse(excelBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodedFileName}`,
+          'Cache-Control': 'no-cache'
+        }
+      })
     }
 
     return NextResponse.json({
-      success: true,
-      message: '명세서가 다운로드되었습니다.',
-      fileName
-    })
+      success: false,
+      error: '명세서 생성에 실패했습니다.'
+    }, { status: 500 })
 
   } catch (error) {
     console.error('명세서 다운로드 오류:', error)

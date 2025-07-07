@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
-import * as XLSX from 'xlsx-js-style'
+import { generateDeductionStatement, DeductionStatementData } from '@/shared/lib/shipping-statement-utils'
 
 export async function GET(
   request: NextRequest,
@@ -16,15 +16,7 @@ export async function GET(
       .select(`
         *,
         orders!deduction_statements_order_id_fkey (
-          order_number,
-          users!orders_user_id_fkey (
-            company_name,
-            representative_name,
-            phone,
-            email,
-            business_number,
-            address
-          )
+          order_number
         )
       `)
       .eq('id', id)
@@ -37,97 +29,64 @@ export async function GET(
       }, { status: 404 })
     }
 
-    // 새 워크북 생성
-    const workbook = XLSX.utils.book_new()
-    
-    // 워크시트 데이터 생성
-    const worksheetData = [
-      ['차감명세서'],
-      [''],
-      ['명세서 번호:', statement.statement_number],
-      ['주문번호:', statement.orders.order_number],
-      ['회사명:', statement.orders.users.company_name],
-      ['대표자명:', statement.orders.users.representative_name],
-      ['연락처:', statement.orders.users.phone],
-      ['이메일:', statement.orders.users.email],
-      ['사업자번호:', statement.orders.users.business_number],
-      ['주소:', statement.orders.users.address],
-      [''],
-      ['차감 유형:', getDeductionTypeText(statement.deduction_type)],
-      ['차감 사유:', statement.deduction_reason],
-      ['생성일:', new Date(statement.created_at).toLocaleDateString('ko-KR')],
-      [''],
-      ['상품 목록'],
-      ['품목명', '색상', '사이즈', '차감수량', '단가', '금액'],
-      ...(statement.items || []).map((item: any) => [
-        item.product_name || '-',
-        item.color || '-',
-        item.size || '-',
-        item.deduction_quantity || 0,
-        (item.unit_price || 0).toLocaleString(),
-        ((item.unit_price || 0) * (item.deduction_quantity || 0)).toLocaleString()
-      ]),
-      [''],
-      ['총 차감 금액:', `${(statement.total_amount || 0).toLocaleString()}원`],
-      [''],
-      ['마일리지 차감:', statement.mileage_deducted ? '완료' : '미완료'],
-      ['차감 마일리지:', `${(statement.mileage_amount || 0).toLocaleString()}P`],
-      [''],
-      ['처리 상태:', getStatusText(statement.status)],
-      ['처리일:', statement.processed_at ? new Date(statement.processed_at).toLocaleDateString('ko-KR') : '미처리']
-    ]
+    // company_name으로 사용자 정보 조회
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select(`
+        company_name,
+        representative_name,
+        email,
+        phone,
+        address,
+        business_number,
+        customer_grade
+      `)
+      .eq('company_name', statement.company_name)
+      .single()
 
-    // 워크시트 생성
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData)
-
-    // 스타일 적용
-    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
-    
-    // 제목 스타일
-    worksheet['A1'] = {
-      ...worksheet['A1'],
-      s: {
-        font: { bold: true, sz: 16 },
-        alignment: { horizontal: 'center' }
-      }
+    if (userError || !userData) {
+      console.error('User data fetch error:', userError)
+      return NextResponse.json({
+        success: false,
+        error: '회사 정보를 찾을 수 없습니다.'
+      }, { status: 404 })
     }
 
-    // 헤더 스타일 (상품 목록)
-    for (let col = 0; col < 6; col++) {
-      const cellRef = XLSX.utils.encode_cell({ r: 16, c: col })
-      if (worksheet[cellRef]) {
-        worksheet[cellRef].s = {
-          font: { bold: true },
-          fill: { fgColor: { rgb: 'E5E7EB' } },
-          alignment: { horizontal: 'center' }
-        }
-      }
+    // 차감 명세서 데이터 구성
+    const statementData: DeductionStatementData = {
+      statementNumber: statement.statement_number,
+      companyName: userData.company_name,
+      businessLicenseNumber: userData.business_number,
+      email: userData.email,
+      phone: userData.phone,
+      address: userData.address,
+      postalCode: '',
+      customerGrade: userData.customer_grade || 'BRONZE',
+      deductionDate: statement.created_at,
+      deductionReason: statement.deduction_reason,
+      deductionType: statement.deduction_type,
+      items: (statement.items || []).map((item: any) => ({
+        productName: item.product_name,
+        color: item.color || '-',
+        size: item.size || '-',
+        quantity: item.deduction_quantity || item.quantity,
+        unitPrice: item.unit_price,
+        totalPrice: item.unit_price * (item.deduction_quantity || item.quantity)
+      })),
+      totalAmount: statement.total_amount
     }
-
-    // 열 너비 설정
-    worksheet['!cols'] = [
-      { width: 20 }, // 품목명
-      { width: 15 }, // 색상
-      { width: 10 }, // 사이즈
-      { width: 10 }, // 차감수량
-      { width: 12 }, // 단가
-      { width: 15 }  // 금액
-    ]
-
-    // 워크시트를 워크북에 추가
-    XLSX.utils.book_append_sheet(workbook, worksheet, '차감명세서')
 
     // 엑셀 파일 생성
-    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' })
+    const excelBuffer = await generateDeductionStatement(statementData)
 
-    // 파일명 생성
-    const fileName = `deduction_statement_${statement.statement_number}.xlsx`
+    // 파일명 생성 (한글 파일명 인코딩 문제 해결)
+    const fileName = encodeURIComponent(`차감명세서_${statement.statement_number}.xlsx`)
 
     return new NextResponse(excelBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Content-Disposition': `attachment; filename*=UTF-8''${fileName}`,
         'Cache-Control': 'no-cache'
       }
     })

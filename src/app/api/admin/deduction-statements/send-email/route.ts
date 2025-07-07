@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
           .from('deduction_statements')
           .update({
             email_sent: true,
-            email_sent_at: getKoreaTime()
+            email_sent_at: new Date().toISOString()
           })
           .eq('id', statement.id)
 

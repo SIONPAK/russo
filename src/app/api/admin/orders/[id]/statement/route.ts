@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
-import { generateShippingStatement } from '@/shared/lib/receipt-utils'
+import { generateShippingStatement } from '@/shared/lib/shipping-statement-utils'
 
 // 거래명세서 조회 API
 export async function GET(

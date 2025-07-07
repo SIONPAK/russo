@@ -76,7 +76,7 @@ export async function POST(
         email_type: 'deduction_statement',
         subject: `[루소] 차감명세서 발송 - ${statement.statement_number}`,
         status: 'sent',
-        sent_at: getKoreaTime()
+        sent_at: new Date().toISOString()
       })
 
     return NextResponse.json({

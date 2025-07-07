@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
-import { generateShippingStatement } from '@/shared/lib/receipt-utils'
+import { generateShippingStatement } from '@/shared/lib/shipping-statement-utils'
 
 export async function GET(
   request: NextRequest,
@@ -10,8 +10,6 @@ export async function GET(
     const { id } = await params
     const supabase = await createClient()
     const statementId = id
-
-    // 권한 확인 제거 - 일반 클라이언트 사용
 
     // 출고 명세서 정보 조회
     const { data: order, error: orderError } = await supabase

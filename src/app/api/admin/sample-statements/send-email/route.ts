@@ -24,11 +24,7 @@ export async function POST(request: NextRequest) {
         *,
         orders!sample_statements_order_id_fkey (
           order_number,
-          users!orders_user_id_fkey (
-            email,
-            company_name,
-            representative_name
-          )
+          user_id
         )
       `)
       .in('id', statementIds)
@@ -47,9 +43,25 @@ export async function POST(request: NextRequest) {
     // 각 샘플 명세서에 대해 이메일 발송
     for (const statement of statements) {
       try {
-        const userEmail = statement.orders.users.email
-        const companyName = statement.orders.users.company_name
-        const representativeName = statement.orders.users.representative_name
+        // 주문의 user_id를 통해 사용자 정보 조회
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('email, company_name, representative_name')
+          .eq('id', statement.orders.user_id)
+          .single()
+
+        if (userError || !userData) {
+          console.error('User fetch error:', userError)
+          failedStatements.push({
+            id: statement.id,
+            reason: '사용자 정보를 찾을 수 없습니다.'
+          })
+          continue
+        }
+
+        const userEmail = userData.email
+        const companyName = userData.company_name
+        const representativeName = userData.representative_name
 
         if (!userEmail) {
           failedStatements.push({
@@ -122,7 +134,7 @@ export async function POST(request: NextRequest) {
           .from('sample_statements')
           .update({
             email_sent: true,
-            email_sent_at: getKoreaTime()
+            email_sent_at: new Date().toISOString()
           })
           .eq('id', statement.id)
 

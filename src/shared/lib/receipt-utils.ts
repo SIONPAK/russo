@@ -2,7 +2,6 @@ import * as XLSX from 'xlsx-js-style'
 import { saveAs } from 'file-saver'
 import ExcelJS from 'exceljs'
 import path from 'path'
-import fs from 'fs'
 
 export interface ReceiptData {
   orderNumber: string
@@ -463,13 +462,11 @@ export const generateReceipt = async (receiptData: ReceiptData) => {
 }
 
 export const formatDate = (date: Date): string => {
-  return new Intl.DateTimeFormat('ko-KR', {
+  return date.toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(date)
+    day: '2-digit'
+  }).replace(/\./g, '-').slice(0, -1)
 }
 
 // 거래명세서 생성 함수
@@ -642,73 +639,5 @@ export async function generateTradeStatement(data: TradeStatementData, fileName:
   } catch (error) {
     console.error('거래명세서 생성 오류:', error)
     throw new Error('거래명세서 생성에 실패했습니다.')
-  }
-}
-
-// 출고 명세서 생성 함수
-export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
-  try {
-    // 템플릿 파일 로드
-    const templatePath = path.join(process.cwd(), 'public/templates/루소_영수증.xlsx')
-    const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.readFile(templatePath)
-
-    const worksheet = workbook.getWorksheet(1) // 첫 번째 시트 사용
-    if (!worksheet) {
-      throw new Error('템플릿 시트를 찾을 수 없습니다.')
-    }
-
-    // 데이터 입력 시작
-    worksheet.getCell('B4').value = data.orderNumber // 주문번호
-    worksheet.getCell('B5').value = new Date(data.shippedAt).toLocaleDateString('ko-KR') // 출고일자
-    
-    // 고객 정보 입력
-    worksheet.getCell('F4').value = data.companyName // 업체명
-    worksheet.getCell('F5').value = data.businessLicenseNumber || '-' // 사업자번호
-    worksheet.getCell('F6').value = data.phone // 연락처
-    worksheet.getCell('F7').value = data.email // 이메일
-    worksheet.getCell('F8').value = `${data.address} (${data.postalCode})` // 주소
-
-    // 상품 목록 시작 행
-    let currentRow = 12
-
-    // 상품 목록 입력
-    data.items.forEach((item, index) => {
-      worksheet.getCell(`A${currentRow}`).value = index + 1 // 번호
-      worksheet.getCell(`B${currentRow}`).value = item.productName // 상품명
-      worksheet.getCell(`C${currentRow}`).value = item.color // 색상
-      worksheet.getCell(`D${currentRow}`).value = item.size // 사이즈
-      worksheet.getCell(`E${currentRow}`).value = item.quantity // 수량
-      worksheet.getCell(`F${currentRow}`).value = item.unitPrice // 단가
-      worksheet.getCell(`G${currentRow}`).value = item.totalPrice // 금액
-      
-      // 셀 스타일 복사 (템플릿의 스타일 유지)
-      for (const col of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
-        const cell = worksheet.getCell(`${col}${currentRow}`)
-        const templateCell = worksheet.getCell(`${col}12`) // 템플릿의 첫 번째 데이터 행
-        cell.style = JSON.parse(JSON.stringify(templateCell.style))
-      }
-      
-      currentRow++
-    })
-
-    // 합계 금액
-    worksheet.getCell(`G${currentRow + 1}`).value = data.totalAmount
-
-    // 고객 등급 표시
-    if (data.customerGrade === 'premium') {
-      worksheet.getCell(`A${currentRow + 3}`).value = '⭐ 우수업체'
-    } else if (data.customerGrade === 'vip') {
-      worksheet.getCell(`A${currentRow + 3}`).value = '👑 VIP 고객'
-    }
-
-    // 파일 생성
-    const buffer = await workbook.xlsx.writeBuffer()
-    
-    return Buffer.from(buffer)
-
-  } catch (error) {
-    console.error('출고 명세서 생성 중 오류 발생:', error)
-    throw error
   }
 } 
