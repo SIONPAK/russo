@@ -96,13 +96,13 @@ export async function GET(request: NextRequest) {
     // 날짜 필터 (오후 3시 기준)
     if (startDate) {
       // 오후 3시(15:00) 기준으로 날짜 구분
-      // 7월 7일 조회 시: 7월 6일 15:00 ~ 7월 7일 14:59
+      // 예: 7월 8일자 조회 시 7월 7일 15:00:00 ~ 7월 8일 14:59:59
       const searchDate = new Date(startDate)
       const prevDay = new Date(searchDate)
       prevDay.setDate(prevDay.getDate() - 1)
       
       const startDateTime = `${prevDay.toISOString().split('T')[0]}T15:00:00`
-      const endDateTime = `${searchDate.toISOString().split('T')[0]}T14:59:59`
+      const endDateTime = `${startDate}T14:59:59`
       
       query = query.gte('created_at', startDateTime)
       query = query.lte('created_at', endDateTime)
@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
       prevDay.setDate(prevDay.getDate() - 1)
       
       const startDateTime = `${prevDay.toISOString().split('T')[0]}T15:00:00`
-      const endDateTime = `${searchDate.toISOString().split('T')[0]}T14:59:59`
+      const endDateTime = `${endDate}T14:59:59`
       
       query = query.gte('created_at', startDateTime)
       query = query.lte('created_at', endDateTime)
