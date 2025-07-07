@@ -127,10 +127,10 @@ export async function POST(request: NextRequest) {
           if (stockQuantity < 0) {
             // 음수인 경우 (출고)
             if (previousStock === 0) {
-              // 현재 재고가 0이면 출고 불가
-              errors.push(`${i + 2}행: 현재 재고가 0개이므로 출고할 수 없습니다. (${productCode} - ${color}/${size})`)
-              errorCount++
-              continue
+              // 현재 재고가 0이면 그대로 0으로 유지 (오류 발생시키지 않음)
+              newStock = 0
+              actualChangeAmount = 0
+              console.log(`${i + 2}행: 현재 재고가 0개이므로 출고하지 않고 0으로 유지합니다. (${productCode} - ${color}/${size})`)
             } else if (Math.abs(stockQuantity) > previousStock) {
               // 출고 요청량이 현재 재고보다 많은 경우, 현재 재고만큼만 출고
               newStock = 0
@@ -218,10 +218,10 @@ export async function POST(request: NextRequest) {
           if (stockQuantity < 0) {
             // 음수인 경우 (출고)
             if (previousStock === 0) {
-              // 현재 재고가 0이면 출고 불가
-              errors.push(`${i + 2}행: 현재 재고가 0개이므로 출고할 수 없습니다. (${productCode})`)
-              errorCount++
-              continue
+              // 현재 재고가 0이면 그대로 0으로 유지 (오류 발생시키지 않음)
+              newStock = 0
+              actualChangeAmount = 0
+              console.log(`${i + 2}행: 현재 재고가 0개이므로 출고하지 않고 0으로 유지합니다. (${productCode})`)
             } else if (Math.abs(stockQuantity) > previousStock) {
               // 출고 요청량이 현재 재고보다 많은 경우, 현재 재고만큼만 출고
               newStock = 0
