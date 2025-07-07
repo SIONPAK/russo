@@ -649,13 +649,9 @@ export async function generateTradeStatement(data: TradeStatementData, fileName:
 export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
   try {
     // 템플릿 파일 로드
-    const templateResponse = await fetch('https://luso.kr/api/templates/shipping-statement-template')
-    if (!templateResponse.ok) {
-      throw new Error('템플릿 파일을 불러올 수 없습니다.')
-    }
-    const templateArrayBuffer = await templateResponse.arrayBuffer()
+    const templatePath = path.join(process.cwd(), 'public/templates/루소_영수증.xlsx')
     const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(templateArrayBuffer)
+    await workbook.xlsx.readFile(templatePath)
 
     const worksheet = workbook.getWorksheet(1) // 첫 번째 시트 사용
     if (!worksheet) {
