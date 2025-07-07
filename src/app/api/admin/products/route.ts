@@ -268,6 +268,8 @@ export async function POST(request: NextRequest) {
             product_id: product.id,
             movement_type: 'initial_stock',
             quantity: option.stock_quantity,
+            color: option.color || null,
+            size: option.size || null,
             notes: `상품 등록 시 초기 재고 (${option.color}/${option.size})`,
             created_at: getKoreaTime()
           }

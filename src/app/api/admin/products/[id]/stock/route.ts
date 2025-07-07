@@ -94,6 +94,8 @@ export async function PATCH(
         product_id: productId,
         movement_type: 'adjustment',
         quantity: adjustment,
+        color: color || null,
+        size: size || null,
         notes: `옵션별 재고 조정 (${color}/${size}) - ${reason || '수동 재고 조정'}`,
         created_at: getKoreaTime()
       }
