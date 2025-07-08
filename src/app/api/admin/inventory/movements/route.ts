@@ -31,13 +31,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
 
     // 입고/출고 타입에 따른 필터링
-    if (type === 'inbound') {
-      // 양수 수량 (입고)
-      query = query.gt('quantity', 0)
-    } else {
-      // 음수 수량 (출고)
-      query = query.lt('quantity', 0)
-    }
+    query = query.eq('movement_type', type)
 
     const { data: movements, error: movementsError } = await query
 
