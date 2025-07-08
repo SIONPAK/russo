@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
       general: { count: 0, orders: 0, revenue: 0 }
     }
 
-    const gradeGroups = companyOrders.data?.reduce((acc: any, user: any) => {
+    const gradeGroups = companyOrders?.reduce((acc: any, user: any) => {
       const grade = user.customer_grade || 'general'
       if (!acc[grade]) acc[grade] = []
       acc[grade].push(user)
@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
 
     const statisticsData = {
       overview: {
-        totalOrders: orders.data?.length || 0,
+        totalOrders: orders?.length || 0,
         totalRevenue,
         totalCustomers: totalCustomersResult.count || 0,
         totalProducts: totalProductsResult.count || 0,

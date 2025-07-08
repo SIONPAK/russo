@@ -677,33 +677,23 @@ export function OrderManagementPage() {
     }
   }
 
-  // 오후 3시 기준 수정 가능 시간 확인 함수 (UTC 시간 기준)
+  // 오후 3시 기준 수정 가능 시간 확인 함수
   const isEditableTime = (orderDate: string) => {
-    // 현재 한국 시간
+    // 현재 UTC 시간
     const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
     
-    // 주문 시간 (UTC로 저장됨)
-    const orderTime = new Date(orderDate)
-    // UTC를 한국 시간으로 변환
-    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
+    // 한국 시간으로 변환 (UTC + 9시간)
+    const koreaOffset = 9 * 60 * 60 * 1000 // 9시간을 밀리초로
+    const koreaTime = new Date(now.getTime() + koreaOffset)
     
-    // 주문일의 오후 3시 (한국 시간) 계산
-    const orderDate_KST = new Date(orderKoreaTime.getFullYear(), orderKoreaTime.getMonth(), orderKoreaTime.getDate())
-    const cutoffTime = new Date(orderDate_KST)
-    cutoffTime.setHours(15, 0, 0, 0) // 주문일 15:00
+    // 한국 시간 기준 시간 확인
+    const koreaHour = koreaTime.getUTCHours() // UTC 메서드를 사용해야 한국 시간이 정확히 나옴
+    const koreaMinute = koreaTime.getUTCMinutes()
     
-    // 현재 시간이 주문일의 오후 3시 이전인지 확인
-    const isBeforeCutoff = koreaTime < cutoffTime
+    // 15시 이전이면 수정/삭제 가능
+    const isBeforeCutoff = koreaHour < 15
     
-    console.log('수정 가능 시간 확인:', {
-      orderDate,
-      orderTime: orderTime.toISOString(),
-      orderKoreaTime: orderKoreaTime.toISOString(),
-      currentKoreaTime: koreaTime.toISOString(),
-      cutoffTime: cutoffTime.toISOString(),
-      isBeforeCutoff
-    })
+
     
     return isBeforeCutoff
   }
