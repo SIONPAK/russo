@@ -37,11 +37,8 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    let successCount = 0
-    const failedStatements = []
-
-    // 각 샘플 명세서에 대해 이메일 발송
-    for (const statement of statements) {
+    // 이메일 발송을 위한 병렬 처리 함수
+    const sendSampleEmailBatch = async (statement: any) => {
       try {
         // 주문의 user_id를 통해 사용자 정보 조회
         const { data: userData, error: userError } = await supabase
@@ -52,11 +49,11 @@ export async function POST(request: NextRequest) {
 
         if (userError || !userData) {
           console.error('User fetch error:', userError)
-          failedStatements.push({
+          return {
+            success: false,
             id: statement.id,
             reason: '사용자 정보를 찾을 수 없습니다.'
-          })
-          continue
+          }
         }
 
         const userEmail = userData.email
@@ -64,11 +61,11 @@ export async function POST(request: NextRequest) {
         const representativeName = userData.representative_name
 
         if (!userEmail) {
-          failedStatements.push({
+          return {
+            success: false,
             id: statement.id,
             reason: '이메일 주소가 없습니다.'
-          })
-          continue
+          }
         }
 
         // 샘플 타입 한글 변환
@@ -138,14 +135,56 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', statement.id)
 
-        successCount++
+        return {
+          success: true,
+          id: statement.id
+        }
 
       } catch (error) {
         console.error(`Failed to send email for statement ${statement.id}:`, error)
-        failedStatements.push({
+        return {
+          success: false,
           id: statement.id,
           reason: '이메일 발송 실패'
-        })
+        }
+      }
+    }
+
+    // 병렬 처리 (배치 크기 제한: 5개씩)
+    const batchSize = 5
+    let successCount = 0
+    const failedStatements: any[] = []
+
+    for (let i = 0; i < statements.length; i += batchSize) {
+      const batch = statements.slice(i, i + batchSize)
+      const batchResults = await Promise.allSettled(
+        batch.map(statement => sendSampleEmailBatch(statement))
+      )
+
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          const emailResult = result.value
+          if (emailResult.success) {
+            successCount++
+          } else {
+            failedStatements.push({
+              id: emailResult.id,
+              reason: emailResult.reason
+            })
+          }
+        } else {
+          const statement = batch[index]
+          console.error(`Batch processing error for statement ${statement.id}:`, result.reason)
+          failedStatements.push({
+            id: statement.id,
+            reason: '이메일 발송 중 오류 발생'
+          })
+        }
+      })
+
+      // 각 배치 간 잠시 대기 (SMTP 서버 부하 방지)
+      if (i + batchSize < statements.length) {
+        await new Promise(resolve => setTimeout(resolve, 500))
       }
     }
 

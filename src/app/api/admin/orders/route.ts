@@ -93,34 +93,42 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
-    // 날짜 필터 (오후 3시 기준)
+    // 날짜 필터 (UTC 저장된 시간을 한국 시간 기준으로 필터링)
     if (startDate) {
-      // 오후 3시(15:00) 기준으로 날짜 구분
-      // 예: 7월 8일자 조회 시 7월 7일 15:00:00 ~ 7월 8일 14:59:59
-      const searchDate = new Date(startDate)
-      const prevDay = new Date(searchDate)
-      prevDay.setDate(prevDay.getDate() - 1)
-      
-      const startDateTime = `${prevDay.toISOString().split('T')[0]}T15:00:00`
-      const endDateTime = `${startDate}T14:59:59`
-      
-      query = query.gte('created_at', startDateTime)
-      query = query.lte('created_at', endDateTime)
-      
-      console.log(`날짜 필터 적용: ${startDate} → ${startDateTime} ~ ${endDateTime}`)
-    } else if (endDate) {
-      // endDate만 있는 경우도 동일한 로직 적용
-      const searchDate = new Date(endDate)
-      const prevDay = new Date(searchDate)
-      prevDay.setDate(prevDay.getDate() - 1)
-      
-      const startDateTime = `${prevDay.toISOString().split('T')[0]}T15:00:00`
-      const endDateTime = `${endDate}T14:59:59`
-      
-      query = query.gte('created_at', startDateTime)
-      query = query.lte('created_at', endDateTime)
-      
-      console.log(`날짜 필터 적용 (endDate): ${endDate} → ${startDateTime} ~ ${endDateTime}`)
+      if (is3PMBased) {
+        // 오후 3시 기준 조회: 프론트엔드에서 이미 UTC로 변환된 시간 사용
+        query = query.gte('created_at', startDate)
+        if (endDate) {
+          query = query.lte('created_at', endDate)
+        }
+        
+        console.log(`오후 3시 기준 날짜 필터: ${startDate} ~ ${endDate}`)
+      } else {
+        // 일반 날짜 필터 (00:00 ~ 23:59 한국 시간)
+        const selectedDate = new Date(startDate)
+        
+        // 한국 00:00 = UTC 15:00 (전날)
+        const startTimeUTC = new Date(Date.UTC(
+          selectedDate.getFullYear(), 
+          selectedDate.getMonth(), 
+          selectedDate.getDate() - 1, 
+          15, 0, 0
+        ))
+        
+        // 한국 23:59 = UTC 14:59 (당일)
+        const endTimeUTC = new Date(Date.UTC(
+          selectedDate.getFullYear(), 
+          selectedDate.getMonth(), 
+          selectedDate.getDate(), 
+          14, 59, 59
+        ))
+        
+        query = query.gte('created_at', startTimeUTC.toISOString())
+        query = query.lte('created_at', endTimeUTC.toISOString())
+        
+        console.log(`일반 날짜 필터: ${startDate}`)
+        console.log(`UTC 시간 범위: ${startTimeUTC.toISOString()} ~ ${endTimeUTC.toISOString()}`)
+      }
     }
 
     // 정렬 처리 (조인 테이블 정렬 제거 - 프론트엔드에서 처리)
@@ -178,6 +186,7 @@ export async function GET(request: NextRequest) {
       cancelled: orders?.filter((o: any) => o.status === 'cancelled').length || 0,
       total: count || 0,
       allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
+      partial_shipped: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial_shipped').length,
       insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
     }
 
@@ -213,31 +222,53 @@ async function calculateAllocationStatus(supabase: any, orderItems: any[]): Prom
     return { status: 'pending', message: '상품 정보 없음' }
   }
 
-  let totalAllocated = 0
+  let totalShipped = 0
   let totalRequired = 0
+  let hasPartialShipment = false
   let hasInsufficientStock = false
 
   for (const item of orderItems) {
-    const availableStock = await getAvailableStock(supabase, item.products, item.color, item.size)
     const alreadyShipped = item.shipped_quantity || 0
-    const remainingQuantity = item.quantity - alreadyShipped // 아직 할당되지 않은 수량
-    const allocatedQuantity = Math.min(availableStock, remainingQuantity)
-
-    totalAllocated += (alreadyShipped + allocatedQuantity)
+    totalShipped += alreadyShipped
     totalRequired += item.quantity
 
-    if ((alreadyShipped + allocatedQuantity) < item.quantity) {
-      hasInsufficientStock = true
+    // 부분 출고 확인
+    if (alreadyShipped > 0 && alreadyShipped < item.quantity) {
+      hasPartialShipment = true
+    }
+
+    // 재고 부족 확인 (아직 출고되지 않은 수량에 대해)
+    if (alreadyShipped < item.quantity) {
+      const availableStock = await getAvailableStock(supabase, item.products, item.color, item.size)
+      const remainingQuantity = item.quantity - alreadyShipped
+      
+      if (availableStock < remainingQuantity) {
+        hasInsufficientStock = true
+      }
     }
   }
 
-  if (hasInsufficientStock) {
-    return { status: 'insufficient', message: '재고 부족' }
-  } else if (totalAllocated === totalRequired) {
-    return { status: 'allocated', message: '할당 완료' }
-  } else {
-    return { status: 'partial', message: '부분 할당' }
+  // 부분 출고가 있는 경우
+  if (hasPartialShipment) {
+    return { status: 'partial_shipped', message: '부분출고' }
   }
+
+  // 전량 출고된 경우
+  if (totalShipped === totalRequired) {
+    return { status: 'shipped', message: '출고완료' }
+  }
+
+  // 아직 출고되지 않은 경우
+  if (totalShipped === 0) {
+    if (hasInsufficientStock) {
+      return { status: 'insufficient', message: '재고 부족' }
+    } else {
+      return { status: 'allocated', message: '할당 완료' }
+    }
+  }
+
+  // 기타 경우
+  return { status: 'pending', message: '대기중' }
 }
 
 // 사용 가능한 재고 계산 (특정 색상/사이즈) - 예약된 재고 고려

@@ -32,9 +32,17 @@ export async function GET(request: NextRequest) {
       `)
       .order('created_at', { ascending: false })
 
-    // 월단위 날짜 필터
-    query = query.gte('created_at', startDate + 'T00:00:00+09:00')
-    query = query.lte('created_at', endDate + 'T23:59:59+09:00')
+    // 날짜 필터 (DB에 이미 한국 시간으로 저장되어 있음)
+    if (startDate) {
+      const startDateObj = new Date(startDate)
+      const startTimeStr = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, '0')}-${String(startDateObj.getDate()).padStart(2, '0')} 00:00:00`
+      query = query.gte('created_at', startTimeStr)
+    }
+    if (endDate) {
+      const endDateObj = new Date(endDate)
+      const endTimeStr = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, '0')}-${String(endDateObj.getDate()).padStart(2, '0')} 23:59:59`
+      query = query.lte('created_at', endTimeStr)
+    }
 
     // 회사명 필터 (반품명세서 직접 저장된 회사명과 주문 연결된 회사명 모두 검색)
     if (companyName) {

@@ -576,10 +576,12 @@ export default function ReturnStatementsPage() {
         }
       } else {
         showError(`업데이트 실패: ${result.error}`)
+        throw new Error(result.error)
       }
     } catch (error) {
       console.error('Update items error:', error)
       showError('업데이트 중 오류가 발생했습니다.')
+      throw error
     }
   }
 

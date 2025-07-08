@@ -5,6 +5,7 @@ import { ko } from 'date-fns/locale'
 import { Button } from '@/shared/ui/button'
 import { CheckCircle, XCircle, Edit2, Save, X } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { showSuccess, showError } from '@/shared/lib/toast'
 
 interface ReturnStatement {
   id: string
@@ -61,6 +62,7 @@ export default function ReturnStatementDetailModal({
 }: ReturnStatementDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedItems, setEditedItems] = useState(statement?.items || [])
+  const [isSaving, setIsSaving] = useState(false)
 
   // statement가 변경될 때마다 editedItems 업데이트
   useEffect(() => {
@@ -121,11 +123,18 @@ export default function ReturnStatementDetailModal({
     setEditedItems(newItems)
   }
 
-  const handleSaveChanges = () => {
-    if (onUpdateItems) {
-      onUpdateItems(statement.id, editedItems)
+  const handleSaveChanges = async () => {
+    if (!onUpdateItems || isSaving) return
+    
+    try {
+      setIsSaving(true)
+      await onUpdateItems(statement.id, editedItems)
+      setIsEditing(false)
+    } catch (error) {
+      console.error('저장 중 오류:', error)
+    } finally {
+      setIsSaving(false)
     }
-    setIsEditing(false)
   }
 
   const handleCancelEdit = () => {
@@ -136,8 +145,25 @@ export default function ReturnStatementDetailModal({
   const currentItems = isEditing ? editedItems : statement.items
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={(e) => {
+        // 저장 중에는 배경 클릭으로 모달 닫기 방지
+        if (!isSaving && e.target === e.currentTarget) {
+          onClose()
+        }
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden relative">
+        {/* 저장 중 로딩 오버레이 */}
+        {isSaving && (
+          <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center z-10">
+            <div className="bg-white rounded-lg p-6 flex flex-col items-center space-y-3 shadow-lg">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="text-sm font-medium text-gray-700">저장 중입니다...</span>
+            </div>
+          </div>
+        )}
         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
           <h3 className="text-lg font-medium text-gray-900">반품명세서 상세보기</h3>
           <div className="flex items-center space-x-2">
@@ -145,7 +171,8 @@ export default function ReturnStatementDetailModal({
               <Button
                 variant="outline"
                 onClick={() => setIsEditing(true)}
-                className="text-blue-600 hover:text-blue-700"
+                disabled={isSaving}
+                className="text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Edit2 className="h-4 w-4 mr-2" />
                 편집
@@ -155,24 +182,36 @@ export default function ReturnStatementDetailModal({
                 <Button
                   variant="outline"
                   onClick={handleCancelEdit}
-                  className="text-gray-600 hover:text-gray-700"
+                  disabled={isSaving}
+                  className="text-gray-600 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <X className="h-4 w-4 mr-2" />
                   취소
                 </Button>
                 <Button
                   onClick={handleSaveChanges}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  disabled={isSaving}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Save className="h-4 w-4 mr-2" />
-                  저장
+                  {isSaving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      저장 중...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      저장
+                    </>
+                  )}
                 </Button>
               </>
             )}
             <Button
               variant="outline"
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700"
+              disabled={isSaving}
+              className="text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               닫기
             </Button>
@@ -268,7 +307,8 @@ export default function ReturnStatementDetailModal({
                               type="number"
                               value={getQuantity(item)}
                               onChange={(e) => handleEditItem(index, 'return_quantity', parseInt(e.target.value) || 0)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              disabled={isSaving}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                               min="0"
                             />
                           ) : (
@@ -281,7 +321,8 @@ export default function ReturnStatementDetailModal({
                               type="number"
                               value={getUnitPrice(item)}
                               onChange={(e) => handleEditItem(index, 'unit_price', parseInt(e.target.value) || 0)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              disabled={isSaving}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                               min="0"
                             />
                           ) : (
@@ -318,8 +359,9 @@ export default function ReturnStatementDetailModal({
                   onClose()
                   onReject(statement.id)
                 }}
+                disabled={isSaving}
                 variant="outline"
-                className="text-red-600 hover:text-red-700"
+                className="text-red-600 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <XCircle className="h-4 w-4 mr-2" />
                 반품 거절
@@ -329,7 +371,8 @@ export default function ReturnStatementDetailModal({
                   onClose()
                   onApprove(statement.id)
                 }}
-                className="bg-green-600 hover:bg-green-700"
+                disabled={isSaving}
+                className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
                 반품 승인
@@ -339,6 +382,8 @@ export default function ReturnStatementDetailModal({
           <Button
             variant="outline"
             onClick={onClose}
+            disabled={isSaving}
+            className="disabled:opacity-50 disabled:cursor-not-allowed"
           >
             닫기
           </Button>

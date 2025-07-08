@@ -20,22 +20,16 @@ export async function GET(request: NextRequest) {
       .select('*')
       .order('created_at', { ascending: false })
 
-    // 날짜 필터 - yearMonth가 있으면 월단위, 없으면 기존 방식
-    if (yearMonth && !startDate && !endDate) {
-      // 월단위 조회
-      const [year, month] = yearMonth.split('-').map(Number)
-      const monthStartDate = `${year}-${month.toString().padStart(2, '0')}-01`
-      const monthEndDate = `${year}-${month.toString().padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
-      
-      query = query.gte('created_at', monthStartDate + 'T00:00:00+09:00')
-      query = query.lte('created_at', monthEndDate + 'T23:59:59+09:00')
-    } else {
-      // 기존 날짜 범위 조회
-      const finalStartDate = startDate || getKoreaDate()
-      const finalEndDate = endDate || getKoreaDate()
-      
-      query = query.gte('created_at', finalStartDate + 'T00:00:00+09:00')
-      query = query.lte('created_at', finalEndDate + 'T23:59:59+09:00')
+    // 날짜 필터 (DB에 이미 한국 시간으로 저장되어 있음)
+    if (startDate) {
+      const startDateObj = new Date(startDate)
+      const startTimeStr = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, '0')}-${String(startDateObj.getDate()).padStart(2, '0')} 00:00:00`
+      query = query.gte('created_at', startTimeStr)
+    }
+    if (endDate) {
+      const endDateObj = new Date(endDate)
+      const endTimeStr = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, '0')}-${String(endDateObj.getDate()).padStart(2, '0')} 23:59:59`
+      query = query.lte('created_at', endTimeStr)
     }
 
     // 차감 유형 필터

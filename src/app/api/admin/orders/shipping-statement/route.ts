@@ -117,11 +117,20 @@ export async function GET(request: NextRequest) {
       `)
       .in('status', ['confirmed', 'preparing', 'shipped'])  // confirmed 이후 상태의 주문 조회
 
-    // 날짜 필터
+    // 날짜 필터 (DB에 이미 한국 시간으로 저장되어 있음)
     if (startDate && endDate) {
+      const startDateObj = new Date(startDate)
+      const endDateObj = new Date(endDate)
+      
+      const startTimeStr = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, '0')}-${String(startDateObj.getDate()).padStart(2, '0')} 00:00:00`
+      const endTimeStr = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, '0')}-${String(endDateObj.getDate()).padStart(2, '0')} 23:59:59`
+      
       query = query
-        .gte('created_at', `${startDate}T00:00:00`)
-        .lte('created_at', `${endDate}T23:59:59`)
+        .gte('created_at', startTimeStr)
+        .lte('created_at', endTimeStr)
+        
+      console.log(`날짜 필터: ${startDate} ~ ${endDate}`)
+      console.log(`시간 범위: ${startTimeStr} ~ ${endTimeStr}`)
     }
 
     // 업체명 필터

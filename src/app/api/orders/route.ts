@@ -156,12 +156,12 @@ export async function GET(request: NextRequest) {
       // 발주 관리에서 전달된 ISO 문자열을 그대로 사용
       query = query.gte('created_at', startDate)
       if (endDate) {
-        query = query.lte('created_at', endDate)
+        query = query.lt('created_at', endDate)
       } else {
         // endDate가 없으면 startDate 기준으로 하루 범위 설정
         const start = new Date(startDate)
         const end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
-        query = query.lte('created_at', end.toISOString())
+        query = query.lt('created_at', end.toISOString())
       }
     }
 

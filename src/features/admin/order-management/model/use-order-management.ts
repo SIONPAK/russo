@@ -76,21 +76,30 @@ export interface OrderFilters {
 }
 
 export function get3PMBasedDateRange(targetDate: string) {
-  // 한국 시간 기준으로 계산
-  const target = new Date(targetDate + 'T00:00:00+09:00') // 한국 시간대로 파싱
+  // DB에 UTC로 저장되어 있으므로 한국 시간을 UTC로 변환
+  const target = new Date(targetDate)
   
-  // 전날 오후 3시 (한국 시간)
-  const startDate = new Date(target)
-  startDate.setDate(startDate.getDate() - 1)
-  startDate.setHours(15, 0, 0, 0)
+  // 전날 15:00 (한국 시간) = UTC 06:00
+  const prevDay = new Date(target)
+  prevDay.setDate(target.getDate() - 1)
+  const startTimeUTC = new Date(Date.UTC(
+    prevDay.getFullYear(), 
+    prevDay.getMonth(), 
+    prevDay.getDate(), 
+    6, 0, 0  // 한국 15:00 = UTC 06:00
+  ))
   
-  // 당일 오후 2시 59분 59초 (한국 시간)
-  const endDate = new Date(target)
-  endDate.setHours(14, 59, 59, 999)
+  // 당일 14:59 (한국 시간) = UTC 05:59
+  const endTimeUTC = new Date(Date.UTC(
+    target.getFullYear(), 
+    target.getMonth(), 
+    target.getDate(), 
+    5, 59, 59  // 한국 14:59 = UTC 05:59
+  ))
   
   return {
-    startDate: startDate.toISOString(),
-    endDate: endDate.toISOString()
+    startDate: startTimeUTC.toISOString(),
+    endDate: endTimeUTC.toISOString()
   }
 }
 

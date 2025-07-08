@@ -18,6 +18,7 @@ import {
   List,
   X
 } from 'lucide-react'
+import { supabase } from '@/shared/lib/supabase'
 
 interface OrderItem {
   id: string
@@ -167,37 +168,58 @@ export function OrderManagementPage() {
     fetchShippingAddresses()
   }, [isAuthenticated, user])
 
-  // 발주 내역 조회 (오후 3시 기준, 한국 시간)
-  const fetchPurchaseOrders = async (date: string) => {
-    if (!isAuthenticated || !user) return
-
-    setIsLoadingOrders(true)
+  // 발주 내역 조회 (오후 3시 기준 조회)
+  const fetchPurchaseOrders = async (selectedDate: string) => {
+    if (!user) return
+    
     try {
-      // 한국 시간 기준으로 계산
-      const selectedDateTime = new Date(date + 'T00:00:00+09:00')
+      setIsLoadingOrders(true)
       
-      // 전날 오후 3시 (한국 시간)
-      const startDate = new Date(selectedDateTime)
-      startDate.setDate(startDate.getDate() - 1)
-      startDate.setHours(15, 0, 0, 0)
+      // 프론트엔드에서 오후 3시 기준 날짜 범위 계산
+      const dateObj = new Date(selectedDate + 'T00:00:00')
       
-      // 당일 오후 2시 59분 59초 (한국 시간)
-      const endDate = new Date(selectedDateTime)
-      endDate.setHours(14, 59, 59, 999)
-
-      const response = await fetch(
-        `/api/orders?userId=${user.id}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}&type=purchase`
-      )
+      // 전날 15:00 (한국) = 전날 06:00 (UTC)
+      const startTimeUTC = new Date(Date.UTC(
+        dateObj.getFullYear(), 
+        dateObj.getMonth(), 
+        dateObj.getDate() - 1, 
+        6, 0, 0
+      ))
+      
+      // 당일 15:00 (한국) = 당일 06:00 (UTC) - 마감 시간까지 포함
+      const endTimeUTC = new Date(Date.UTC(
+        dateObj.getFullYear(), 
+        dateObj.getMonth(), 
+        dateObj.getDate(), 
+        6, 0, 0
+      ))
+      
+      console.log(`발주 내역 조회 - 선택 날짜: ${selectedDate}`)
+      console.log(`UTC 시간 범위: ${startTimeUTC.toISOString()} ~ ${endTimeUTC.toISOString()}`)
+      console.log(`한국 시간 범위: ${new Date(startTimeUTC.getTime() + 9*60*60*1000).toISOString()} ~ ${new Date(endTimeUTC.getTime() + 9*60*60*1000).toISOString()}`)
+      
+      // API 엔드포인트를 사용하여 발주 내역 조회 (사용자 ID 포함)
+      const params = new URLSearchParams({
+        type: 'purchase',
+        startDate: startTimeUTC.toISOString(),
+        endDate: endTimeUTC.toISOString(),
+        userId: user.id,
+        limit: '100'
+      })
+      
+      const response = await fetch(`/api/orders?${params}`)
       const result = await response.json()
-
+      
       if (result.success) {
+        console.log(`조회된 주문 수: ${result.data?.length || 0}`)
         setPurchaseOrders(result.data || [])
       } else {
-        showError('발주 내역 조회에 실패했습니다.')
+        console.error('주문 조회 실패:', result.error)
+        setPurchaseOrders([])
       }
     } catch (error) {
-      console.error('발주 내역 조회 오류:', error)
-      showError('발주 내역 조회 중 오류가 발생했습니다.')
+      console.error('주문 조회 오류:', error)
+      setPurchaseOrders([])
     } finally {
       setIsLoadingOrders(false)
     }
@@ -302,26 +324,41 @@ export function OrderManagementPage() {
       const result = await response.json()
 
       if (result.success && Array.isArray(result.data)) {
-        const products: ProductSearchResult[] = result.data.map((product: any) => {
-          const colors = product.inventory_options 
-            ? [...new Set(product.inventory_options.map((opt: any) => opt.color).filter(Boolean))]
-            : ['기본']
-          
-          const sizes = product.inventory_options 
-            ? [...new Set(product.inventory_options.map((opt: any) => opt.size).filter(Boolean))]
-            : ['기본']
+        const products: ProductSearchResult[] = result.data
+          .map((product: any) => {
+            // inventory_options에서 재고가 있는 옵션들만 필터링
+            const availableOptions = product.inventory_options 
+              ? product.inventory_options.filter((opt: any) => (opt.stock_quantity || 0) > 0)
+              : []
+            
+            // 재고가 있는 옵션들로부터 색상과 사이즈 추출
+            const colors = availableOptions.length > 0
+              ? [...new Set(availableOptions.map((opt: any) => opt.color).filter(Boolean))]
+              : ['기본']
+            
+            const sizes = availableOptions.length > 0
+              ? [...new Set(availableOptions.map((opt: any) => opt.size).filter(Boolean))]
+              : ['기본']
 
-          return {
-            id: product.id,
-            code: product.code,
-            name: product.name,
-            colors: colors.length > 0 ? colors : ['기본'],
-            sizes: sizes.length > 0 ? sizes : ['기본'],
-            price: product.price,
-            stock: product.stock_quantity || 0,
-            inventory_options: product.inventory_options || []
-          }
-        })
+            return {
+              id: product.id,
+              code: product.code,
+              name: product.name,
+              colors: colors.length > 0 ? colors : ['기본'],
+              sizes: sizes.length > 0 ? sizes : ['기본'],
+              price: product.price,
+              stock: product.stock_quantity || 0,
+              inventory_options: availableOptions
+            }
+          })
+          .filter((product: any) => {
+            // 재고가 있는 옵션이 하나도 없는 상품은 제외
+            if (product.inventory_options.length === 0) {
+              // inventory_options가 없는 경우 기본 재고량 확인
+              return (product.stock || 0) > 0
+            }
+            return product.inventory_options.length > 0
+          })
         setSearchResults(products)
       } else {
         setSearchResults([])
@@ -640,40 +677,35 @@ export function OrderManagementPage() {
     }
   }
 
-  // 오후 3시 기준 수정 가능 시간 확인 함수
+  // 오후 3시 기준 수정 가능 시간 확인 함수 (UTC 시간 기준)
   const isEditableTime = (orderDate: string) => {
     // 현재 한국 시간
     const now = new Date()
     const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
     
-    // 주문 시간 (한국 시간으로 변환)
+    // 주문 시간 (UTC로 저장됨)
     const orderTime = new Date(orderDate)
+    // UTC를 한국 시간으로 변환
     const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
     
-    // 현재 선택된 날짜의 15:00 기준 범위 계산
-    const selectedDateTime = new Date(selectedDate + 'T00:00:00+09:00')
+    // 주문일의 오후 3시 (한국 시간) 계산
+    const orderDate_KST = new Date(orderKoreaTime.getFullYear(), orderKoreaTime.getMonth(), orderKoreaTime.getDate())
+    const cutoffTime = new Date(orderDate_KST)
+    cutoffTime.setHours(15, 0, 0, 0) // 주문일 15:00
     
-    // 전날 오후 3시 (한국 시간)
-    const startTime = new Date(selectedDateTime)
-    startTime.setDate(startTime.getDate() - 1)
-    startTime.setHours(15, 0, 0, 0)
+    // 현재 시간이 주문일의 오후 3시 이전인지 확인
+    const isBeforeCutoff = koreaTime < cutoffTime
     
-    // 당일 오후 2시 59분 59초 (한국 시간)
-    const endTime = new Date(selectedDateTime)
-    endTime.setHours(14, 59, 59, 999)
+    console.log('수정 가능 시간 확인:', {
+      orderDate,
+      orderTime: orderTime.toISOString(),
+      orderKoreaTime: orderKoreaTime.toISOString(),
+      currentKoreaTime: koreaTime.toISOString(),
+      cutoffTime: cutoffTime.toISOString(),
+      isBeforeCutoff
+    })
     
-    // 주문이 현재 조회 중인 기간에 속하는지 확인
-    const orderInCurrentPeriod = orderKoreaTime >= startTime && orderKoreaTime <= endTime
-    
-    if (!orderInCurrentPeriod) {
-      return false // 현재 조회 기간에 속하지 않으면 수정 불가
-    }
-    
-    // 현재 시간이 당일 오후 3시 이전인지 확인
-    const todayThreePM = new Date(selectedDateTime)
-    todayThreePM.setHours(15, 0, 0, 0)
-    
-    return koreaTime < todayThreePM
+    return isBeforeCutoff
   }
 
   // 발주서 삭제
@@ -1107,7 +1139,7 @@ export function OrderManagementPage() {
                 />
               </div>
               <div className="text-sm text-gray-500">
-                * 선택한 날짜 기준 전날 15:00 ~ 당일 14:59 발주 내역
+                * 오후 3시 기준 조회 (전날 15:00 ~ 당일 14:59)
               </div>
             </div>
             <Button onClick={() => fetchPurchaseOrders(selectedDate)} disabled={isLoadingOrders}>
@@ -1153,12 +1185,14 @@ export function OrderManagementPage() {
                         <td className="px-4 py-3">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             order.total_amount < 0 && order.status === 'confirmed' ? 'bg-red-100 text-red-800' :
+                            order.status === 'confirmed' ? 'bg-green-100 text-green-800' :
                             order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                             order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                             order.status === 'completed' ? 'bg-green-100 text-green-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>
                             {order.total_amount < 0 && order.status === 'confirmed' ? '반품 접수' :
+                             order.status === 'confirmed' ? '주문 접수' :
                              order.status === 'pending' ? '대기' : 
                              order.status === 'processing' ? '처리중' :
                              order.status === 'completed' ? '완료' : order.status}
@@ -1271,12 +1305,17 @@ export function OrderManagementPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {product.colors.map((color) =>
                             product.sizes.map((size) => {
-                              const isSelected = isProductSelected(product, color, size)
-                              
-                              // 해당 옵션의 추가 가격 찾기
+                              // 해당 옵션이 재고가 있는지 확인
                               const matchingOption = product.inventory_options?.find(
                                 (opt: any) => opt.color === color && opt.size === size
                               )
+                              
+                              // 재고가 0개인 옵션은 렌더링하지 않음
+                              if (!matchingOption || (matchingOption.stock_quantity || 0) <= 0) {
+                                return null
+                              }
+                              
+                              const isSelected = isProductSelected(product, color, size)
                               const additionalPrice = matchingOption?.additional_price || 0
                               
                               return (
@@ -1379,12 +1418,16 @@ export function OrderManagementPage() {
                     <div>
                       <span className="font-medium">상태:</span>
                       <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        selectedOrder.total_amount < 0 && selectedOrder.status === 'confirmed' ? 'bg-red-100 text-red-800' :
+                        selectedOrder.status === 'confirmed' ? 'bg-green-100 text-green-800' :
                         selectedOrder.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                         selectedOrder.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                         selectedOrder.status === 'completed' ? 'bg-green-100 text-green-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
-                        {selectedOrder.status === 'pending' ? '대기' : 
+                        {selectedOrder.total_amount < 0 && selectedOrder.status === 'confirmed' ? '반품 접수' :
+                         selectedOrder.status === 'confirmed' ? '주문 접수' :
+                         selectedOrder.status === 'pending' ? '대기' : 
                          selectedOrder.status === 'processing' ? '처리중' :
                          selectedOrder.status === 'completed' ? '완료' : selectedOrder.status}
                       </span>

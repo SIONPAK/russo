@@ -8,31 +8,82 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    // 권한 확인 제거 - 일반 클라이언트 사용
+    if (!startDate || !endDate) {
+      return NextResponse.json({ 
+        success: false, 
+        error: '시작 날짜와 종료 날짜가 필요합니다.' 
+      }, { status: 400 })
+    }
 
-    // 기본 통계 조회
+    // DB에 이미 한국 시간으로 저장되어 있음
+    const startDateObj = new Date(startDate)
+    const endDateObj = new Date(endDate)
+    
+    const startTimeStr = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, '0')}-${String(startDateObj.getDate()).padStart(2, '0')} 00:00:00`
+    const endTimeStr = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, '0')}-${String(endDateObj.getDate()).padStart(2, '0')} 23:59:59`
+    
+    console.log(`통계 날짜 필터: ${startDate} ~ ${endDate}`)
+    console.log(`시간 범위: ${startTimeStr} ~ ${endTimeStr}`)
+
+    // 1. 주문 통계
+    const { data: orders } = await supabase
+      .from('orders')
+      .select('status, total_amount, created_at')
+      .gte('created_at', startTimeStr)
+      .lte('created_at', endTimeStr)
+
+    // 2. 사용자 통계 (신규 가입)
+    const { data: newUsers } = await supabase
+      .from('users')
+      .select('id, created_at')
+      .gte('created_at', startTimeStr)
+      .lte('created_at', endTimeStr)
+
+    // 3. 상품별 판매 통계
+    const { data: productSales } = await supabase
+      .from('order_items')
+      .select(`
+        product_name,
+        quantity,
+        unit_price,
+        total_price,
+        orders!inner(
+          created_at,
+          status
+        )
+      `)
+      .gte('orders.created_at', startTimeStr)
+      .lte('orders.created_at', endTimeStr)
+      .eq('orders.status', 'completed')
+
+    // 4. 업체별 주문 통계
+    const { data: companyOrders } = await supabase
+      .from('orders')
+      .select(`
+        total_amount,
+        created_at,
+        users!inner(
+          company_name,
+          customer_grade
+        )
+      `)
+      .gte('created_at', startTimeStr)
+      .lte('created_at', endTimeStr)
+
+    // 5. 마일리지 통계
+    const { data: mileageStats } = await supabase
+      .from('mileage')
+      .select('type, amount, created_at')
+      .gte('created_at', startTimeStr)
+      .lte('created_at', endTimeStr)
+
+    // 기본 통계 조회 (이미 위에서 조회한 데이터 활용)
     const [
-      totalOrdersResult,
-      totalRevenueResult,
       totalCustomersResult,
       totalProductsResult,
-      orderStatsResult,
-      customerGradeStatsResult
+      pendingShipmentsResult,
+      returnStatementsResult
     ] = await Promise.all([
-      // 총 주문수
-      supabase
-        .from('orders')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', `${startDate}T00:00:00`)
-        .lte('created_at', `${endDate}T23:59:59`),
-      
-      // 총 매출
-      supabase
-        .from('orders')
-        .select('total_amount')
-        .gte('created_at', `${startDate}T00:00:00`)
-        .lte('created_at', `${endDate}T23:59:59`),
-      
       // 총 고객수
       supabase
         .from('users')
@@ -44,31 +95,6 @@ export async function GET(request: NextRequest) {
         .from('products')
         .select('id', { count: 'exact', head: true }),
       
-      // 주문 상태별 통계
-      supabase
-        .from('orders')
-        .select('status')
-        .gte('created_at', `${startDate}T00:00:00`)
-        .lte('created_at', `${endDate}T23:59:59`),
-      
-      // 고객 등급별 통계
-      supabase
-        .from('users')
-        .select(`
-          customer_grade,
-          orders!inner(
-            id,
-            total_amount,
-            created_at
-          )
-        `)
-        .eq('role', 'customer')
-        .gte('orders.created_at', `${startDate}T00:00:00`)
-        .lte('orders.created_at', `${endDate}T23:59:59`)
-    ])
-
-    // 미출고 및 반품 통계
-    const [pendingShipmentsResult, returnStatementsResult] = await Promise.all([
       // 미출고 수 (임시 계산)
       supabase
         .from('order_items')
@@ -80,16 +106,16 @@ export async function GET(request: NextRequest) {
         .from('orders')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'returned')
-        .gte('created_at', `${startDate}T00:00:00`)
-        .lte('created_at', `${endDate}T23:59:59`)
+        .gte('created_at', startTimeStr)
+        .lte('created_at', endTimeStr)
     ])
 
     // 일별 통계 생성 (최근 30일)
     const dailyStats = []
-    const currentDate = new Date(endDate || new Date())
-    const startDateObj = new Date(startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+    const currentDate = new Date(endDate)
+    const dailyStartDateObj = new Date(startDate)
     
-    for (let d = new Date(startDateObj); d <= currentDate; d.setDate(d.getDate() + 1)) {
+    for (let d = new Date(dailyStartDateObj); d <= currentDate; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toISOString().split('T')[0]
       
       // 임시 데이터 생성 (실제로는 DB에서 조회)
@@ -126,7 +152,7 @@ export async function GET(request: NextRequest) {
     }).sort((a, b) => b.revenue - a.revenue)
 
     // 결과 데이터 구성
-    const totalRevenue = totalRevenueResult.data?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0
+    const totalRevenue = orders?.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0) || 0
 
     // 주문 상태별 집계
     const orderStats = {
@@ -137,7 +163,7 @@ export async function GET(request: NextRequest) {
       cancelled: 0
     }
 
-    orderStatsResult.data?.forEach(order => {
+    orders?.forEach((order: any) => {
       if (order.status in orderStats) {
         orderStats[order.status as keyof typeof orderStats]++
       }
@@ -150,7 +176,7 @@ export async function GET(request: NextRequest) {
       general: { count: 0, orders: 0, revenue: 0 }
     }
 
-    const gradeGroups = customerGradeStatsResult.data?.reduce((acc: any, user: any) => {
+    const gradeGroups = companyOrders.data?.reduce((acc: any, user: any) => {
       const grade = user.customer_grade || 'general'
       if (!acc[grade]) acc[grade] = []
       acc[grade].push(user)
@@ -172,7 +198,7 @@ export async function GET(request: NextRequest) {
 
     const statisticsData = {
       overview: {
-        totalOrders: totalOrdersResult.count || 0,
+        totalOrders: orders.data?.length || 0,
         totalRevenue,
         totalCustomers: totalCustomersResult.count || 0,
         totalProducts: totalProductsResult.count || 0,

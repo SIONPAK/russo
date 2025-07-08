@@ -397,6 +397,8 @@ export function OrdersPage() {
     switch (status) {
       case 'allocated': return 'text-green-600 bg-green-100'
       case 'partial': return 'text-orange-600 bg-orange-100'
+      case 'partial_shipped': return 'text-blue-600 bg-blue-100'
+      case 'shipped': return 'text-green-800 bg-green-200'
       case 'insufficient': return 'text-red-600 bg-red-100'
       default: return 'text-gray-600 bg-gray-100'
     }
@@ -406,6 +408,8 @@ export function OrdersPage() {
     switch (status) {
       case 'allocated': return '할당완료'
       case 'partial': return '부분할당'
+      case 'partial_shipped': return '부분출고'
+      case 'shipped': return '출고완료'
       case 'insufficient': return '재고부족'
       default: return '대기중'
     }

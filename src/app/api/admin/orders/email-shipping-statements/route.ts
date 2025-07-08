@@ -61,20 +61,18 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    const emailResults = []
-    const failedEmails = []
-
-    for (const order of orders) {
+    // 이메일 발송을 위한 병렬 처리 함수
+    const sendEmailBatch = async (order: any) => {
       try {
         // 고객 이메일 확인
         if (!order.users?.email) {
-          failedEmails.push({
+          return {
+            success: false,
             orderId: order.id,
             orderNumber: order.order_number,
             customerName: order.users?.company_name,
             error: '고객 이메일 주소가 없습니다.'
-          })
-          continue
+          }
         }
 
         // 실제 출고된 상품만 필터링
@@ -83,13 +81,13 @@ export async function POST(request: NextRequest) {
         )
 
         if (shippedItems.length === 0) {
-          failedEmails.push({
+          return {
+            success: false,
             orderId: order.id,
             orderNumber: order.order_number,
             customerName: order.users?.company_name,
             error: '출고된 상품이 없습니다.'
-          })
-          continue
+          }
         }
 
         // 출고 명세서 데이터 구성
@@ -127,17 +125,7 @@ export async function POST(request: NextRequest) {
         )
 
         if (emailResult.success) {
-          emailResults.push({
-            orderId: order.id,
-            orderNumber: order.order_number,
-            customerName: order.users?.company_name,
-            customerEmail: order.users?.email,
-            status: 'sent',
-            messageId: emailResult.messageId,
-            sentAt: new Date().toISOString()
-          })
-
-          // 이메일 발송 성공 이력 기록 (PostgreSQL NOW() 사용)
+          // 이메일 발송 성공 이력 기록
           await supabase
             .from('email_logs')
             .insert({
@@ -150,14 +138,17 @@ export async function POST(request: NextRequest) {
               sent_at: new Date().toISOString()
             })
 
-        } else {
-          failedEmails.push({
+          return {
+            success: true,
             orderId: order.id,
             orderNumber: order.order_number,
             customerName: order.users?.company_name,
-            error: emailResult.error || '이메일 발송 실패'
-          })
-
+            customerEmail: order.users?.email,
+            status: 'sent',
+            messageId: emailResult.messageId,
+            sentAt: new Date().toISOString()
+          }
+        } else {
           // 이메일 발송 실패 이력 기록
           await supabase
             .from('email_logs')
@@ -169,16 +160,75 @@ export async function POST(request: NextRequest) {
               status: 'failed',
               error_message: emailResult.error || '이메일 발송 실패'
             })
+
+          return {
+            success: false,
+            orderId: order.id,
+            orderNumber: order.order_number,
+            customerName: order.users?.company_name,
+            error: emailResult.error || '이메일 발송 실패'
+          }
         }
 
       } catch (error) {
         console.error(`Email sending error for order ${order.order_number}:`, error)
-        failedEmails.push({
+        return {
+          success: false,
           orderId: order.id,
           orderNumber: order.order_number,
           customerName: order.users?.company_name,
           error: error instanceof Error ? error.message : '이메일 발송 중 오류 발생'
-        })
+        }
+      }
+    }
+
+    // 병렬 처리 (배치 크기 제한: 5개씩)
+    const batchSize = 5
+    const emailResults: any[] = []
+    const failedEmails: any[] = []
+
+    for (let i = 0; i < orders.length; i += batchSize) {
+      const batch = orders.slice(i, i + batchSize)
+      const batchResults = await Promise.allSettled(
+        batch.map(order => sendEmailBatch(order))
+      )
+
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          const emailResult = result.value
+          if (emailResult.success) {
+            emailResults.push({
+              orderId: emailResult.orderId,
+              orderNumber: emailResult.orderNumber,
+              customerName: emailResult.customerName,
+              customerEmail: emailResult.customerEmail,
+              status: 'sent',
+              messageId: emailResult.messageId,
+              sentAt: emailResult.sentAt
+            })
+          } else {
+            failedEmails.push({
+              orderId: emailResult.orderId,
+              orderNumber: emailResult.orderNumber,
+              customerName: emailResult.customerName,
+              error: emailResult.error
+            })
+          }
+        } else {
+          const order = batch[index]
+          console.error(`Batch processing error for order ${order.order_number}:`, result.reason)
+          failedEmails.push({
+            orderId: order.id,
+            orderNumber: order.order_number,
+            customerName: order.users?.company_name,
+            error: '이메일 발송 중 오류 발생'
+          })
+        }
+      })
+
+      // 각 배치 간 잠시 대기 (SMTP 서버 부하 방지)
+      if (i + batchSize < orders.length) {
+        await new Promise(resolve => setTimeout(resolve, 500))
       }
     }
 
