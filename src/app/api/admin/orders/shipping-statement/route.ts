@@ -372,16 +372,13 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
 // 환경에 따라 다른 Puppeteer 설정 (Vercel 커뮤니티 해결책 적용)
 async function getBrowser() {
   const isDev = process.env.NODE_ENV === 'development'
-  // 실제 존재하는 v137.0.1 릴리즈 사용, 아키텍처별 파일명 적용
-  const REMOTE_PATH = process.env.CHROMIUM_REMOTE_EXEC_PATH || 'https://github.com/Sparticuz/chromium/releases/download/v137.0.1/chromium-v137.0.1-pack.x64.tar'
-  const LOCAL_PATH = process.env.CHROMIUM_LOCAL_EXEC_PATH
   
   if (isDev) {
     console.log('🔧 개발 환경: 로컬 Chrome 사용 시도')
     
     // 로컬 Chrome 경로들 시도
     const possiblePaths = [
-      LOCAL_PATH,
+      process.env.CHROMIUM_LOCAL_EXEC_PATH,
       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       '/Applications/Chromium.app/Contents/MacOS/Chromium',
       '/usr/bin/google-chrome',
@@ -390,7 +387,6 @@ async function getBrowser() {
     
     for (const path of possiblePaths) {
       try {
-        const fs = await import('fs')
         if (fs.existsSync(path)) {
           console.log(`✅ 로컬 Chrome 발견: ${path}`)
           const puppeteer = await import('puppeteer')
@@ -412,26 +408,22 @@ async function getBrowser() {
     }
     
     console.log('⚠️ 개발 환경에서 Chrome을 찾을 수 없습니다.')
-    console.log('🔧 Chrome 설치 방법:')
-    console.log('   - brew install --cask google-chrome')
-    console.log('   - 또는 .env.local에 CHROMIUM_LOCAL_EXEC_PATH 설정')
-    console.log('📋 현재는 Excel 다운로드로 대체됩니다.')
-    
     throw new Error('개발 환경에서 Chrome을 찾을 수 없습니다. Excel 다운로드로 전환됩니다.')
   }
   
-  // 프로덕션 환경: @sparticuz/chromium-min 사용
+  // 프로덕션 환경: 표준 Vercel + Puppeteer 방식
   console.log('🏭 프로덕션 환경: @sparticuz/chromium-min 사용')
-  console.log('🔍 원격 Chromium 경로:', REMOTE_PATH)
   
   const chromium = await import('@sparticuz/chromium-min')
   const puppeteer = await import('puppeteer-core')
   
-  const executablePath = await chromium.default.executablePath(REMOTE_PATH)
-  
   return await puppeteer.default.launch({
-    args: chromium.default.args,
-    executablePath,
+    args: [
+      ...chromium.default.args,
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+    ],
+    executablePath: await chromium.default.executablePath(),
     headless: true,
     timeout: 120000
   })
@@ -460,22 +452,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     await page.setViewport({ width: 1240, height: 1754 }) // A4 크기
     await page.setDefaultTimeout(30000) // 30초 타임아웃
     
-    // 리소스 요청 차단 해제 (폰트 로딩을 위해)
+    // 모든 리소스 요청 허용 (폰트 로딩을 위해)
     console.log('🔓 모든 리소스 요청 허용 (폰트 로딩을 위해)')
-    // await page.setRequestInterception(false) // 완전히 해제
-    
-    // 폰트 파일을 직접 읽어서 base64로 변환
-    console.log('📁 폰트 파일 로딩 중...')
-    let fontBase64 = ''
-    try {
-      const fontPath = path.join(process.cwd(), 'public/fonts/PretendardVariable.woff2')
-      const fontBuffer = fs.readFileSync(fontPath)
-      fontBase64 = fontBuffer.toString('base64')
-      console.log('✅ 폰트 파일 로딩 완료:', fontBuffer.length, 'bytes')
-    } catch (fontError) {
-      console.error('⚠️ 폰트 파일 로딩 실패:', fontError)
-      console.log('📋 fallback 폰트 사용')
-    }
     
     // 현재 환경에 맞는 폰트 경로 설정
     const baseUrl = process.env.NODE_ENV === 'production' 
@@ -489,30 +467,26 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-          ${fontBase64 ? `
           @font-face {
             font-family: 'Pretendard';
-            src: url('data:font/woff2;base64,${fontBase64}') format('woff2');
+            src: url('${baseUrl}/fonts/PretendardVariable.woff2') format('woff2');
             font-weight: 100 900;
             font-style: normal;
             font-display: block;
           }
-          ` : `
-          /* 폰트 파일 로딩 실패 - fallback만 사용 */
-          `}
           
           @page {
             size: A4;
             margin: 15mm;
           }
           
-          /* 강제 폰트 적용 */
+          /* 한글 폰트 우선 사용 */
           * {
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           body {
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-size: 11px;
             line-height: 1.2;
             margin: 0;
@@ -531,7 +505,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 각 셀 스타일 */
@@ -539,7 +513,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border: 1px solid #9a9a9a;
             padding: 2px;
             vertical-align: bottom;
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 제목 셀 */
@@ -551,7 +525,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             font-size: 20px;
             font-weight: bold;
             padding: 5px;
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 기본 셀 크기들 */
@@ -574,7 +548,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 폰트 스타일 */
           .font-bold { 
             font-weight: bold; 
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .font-11 { font-size: 11px; }
           .font-20 { font-size: 20px; }
@@ -582,18 +556,18 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 특별 스타일 */
           .company-info {
             font-size: 11px;
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .amount-text {
             font-size: 11px;
             font-weight: bold;
             text-align: center;
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .total-row {
             background-color: #f5f5f5;
             font-weight: bold;
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 빈 셀 최소 높이 */
@@ -603,12 +577,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           /* 한글 텍스트 강제 적용 */
           .korean-text {
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-weight: 400;
           }
           
           .korean-text-bold {
-            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-weight: 700;
           }
         </style>
@@ -875,14 +849,9 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     timeout: 30000
   })
   
-  // 폰트가 CSS에 임베드되어 있으므로 짧은 대기만 필요
-  if (fontBase64) {
-    console.log('⚡ 임베드된 폰트 사용 - 짧은 대기 (2초)')
-    await new Promise(resolve => setTimeout(resolve, 2000))
-  } else {
-    console.log('⏳ fallback 폰트 사용 - 일반 대기 (5초)')
-    await new Promise(resolve => setTimeout(resolve, 5000))
-  }
+  // 폰트 로딩 대기
+  console.log('⏳ 폰트 로딩 대기 중... (5초)')
+  await new Promise(resolve => setTimeout(resolve, 5000))
   
   console.log('📄 PDF 생성 중...')
   const pdfBuffer = await page.pdf({

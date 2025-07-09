@@ -4,11 +4,5 @@
       "path": "/api/admin/bankda/auto-sync",
       "schedule": "*/5 * * * *"
     }
-  ],
-  "functions": {
-    "src/app/api/**/route.ts": {
-      "runtime": "nodejs20.x",
-      "maxDuration": 300
-    }
-  }
-}
+  ]
+} 
