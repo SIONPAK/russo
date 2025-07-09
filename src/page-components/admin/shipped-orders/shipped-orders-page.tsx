@@ -11,7 +11,8 @@ import {
   Users,
   Search,
   ChevronDown,
-  ArrowLeft
+  ArrowLeft,
+  Upload
 } from 'lucide-react'
 import { showSuccess, showError, showInfo } from '@/shared/lib/toast'
 import { useRouter } from 'next/navigation'
@@ -60,6 +61,12 @@ export function ShippedOrdersPage() {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
   const [sortBy, setSortBy] = useState<'company_name' | 'shipped_at' | 'total_amount'>('shipped_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [isStatementDropdownOpen, setIsStatementDropdownOpen] = useState(false)
+  
+  // 다운로드 진행 상태 관리
+  const [downloadingPDF, setDownloadingPDF] = useState(false)
+  const [downloadingExcel, setDownloadingExcel] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState('')
 
   // 출고 완료된 주문 목록 조회
   const fetchShippedOrders = async (date?: string) => {
@@ -145,10 +152,185 @@ export function ShippedOrdersPage() {
     fetchShippedOrders(date)
   }
 
+  // 출고명세서 개별 다운로드
+  const handleDownloadShippingStatement = async () => {
+    if (selectedOrders.length === 0) {
+      showInfo('명세서를 출력할 주문을 선택해주세요.')
+      return
+    }
+
+    try {
+      // 각 선택된 주문에 대해 개별 거래명세서 생성
+      for (const orderId of selectedOrders) {
+        const response = await fetch(`/api/admin/orders/${orderId}/statement`)
+
+        if (response.ok) {
+          const blob = await response.blob()
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `거래명세서_${orderId}_${selectedDate}.xlsx`
+          document.body.appendChild(a)
+          a.click()
+          window.URL.revokeObjectURL(url)
+          document.body.removeChild(a)
+        }
+      }
+      
+      showSuccess(`${selectedOrders.length}건의 거래명세서가 다운로드되었습니다.`)
+    } catch (error) {
+      console.error('Shipping statement error:', error)
+      showError('명세서 생성에 실패했습니다.')
+    }
+  }
+
+  // 🎯 최종 명세서 PDF 일괄 다운로드
+  const handleDownloadShippingStatementPDF = async () => {
+    if (selectedOrders.length === 0) {
+      showInfo('PDF 명세서를 출력할 주문을 선택해주세요.')
+      return
+    }
+
+    // 다운로드 중이면 중단
+    if (downloadingPDF) {
+      showInfo('PDF 다운로드가 진행 중입니다. 잠시만 기다려주세요.')
+      return
+    }
+
+    try {
+      setDownloadingPDF(true)
+      setDownloadProgress('PDF 생성 중입니다... 페이지를 새로고침하지 마세요')
+      
+      const response = await fetch('/api/admin/orders/shipping-statement', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderIds: selectedOrders,
+          format: 'pdf'
+        }),
+      })
+
+      if (response.ok) {
+        setDownloadProgress('PDF 파일 처리 중...')
+        
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        
+        // PDF 폴백 확인
+        const isPDFFallback = response.headers.get('X-PDF-Fallback') === 'true'
+        const fallbackReason = response.headers.get('X-Fallback-Reason')
+        
+        if (isPDFFallback) {
+          // PDF 생성 실패로 Excel로 폴백된 경우
+          a.download = `출고명세서_${selectedDate}_${selectedOrders.length}건.zip`
+          document.body.appendChild(a)
+          a.click()
+          window.URL.revokeObjectURL(url)
+          document.body.removeChild(a)
+          
+          showSuccess(`PDF 생성에 실패하여 Excel 파일로 다운로드되었습니다. (${selectedOrders.length}건)`)
+        } else {
+          // 정상적인 PDF 다운로드
+          a.download = `출고명세서_${selectedDate}_${selectedOrders.length}건.pdf`
+          document.body.appendChild(a)
+          a.click()
+          window.URL.revokeObjectURL(url)
+          document.body.removeChild(a)
+          
+          showSuccess(`${selectedOrders.length}건의 출고명세서 PDF가 다운로드되었습니다.`)
+        }
+      } else {
+        const errorData = await response.json()
+        console.error('PDF 생성 실패:', errorData)
+        showError(`PDF 다운로드 실패: ${errorData.error || '서버 오류가 발생했습니다.'}`)
+      }
+    } catch (error) {
+      console.error('PDF download error:', error)
+      showError(`PDF 다운로드 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    } finally {
+      setDownloadingPDF(false)
+      setDownloadProgress('')
+    }
+  }
+
+  // 🎯 최종 명세서 엑셀 일괄 다운로드 (ZIP 파일)
+  const handleDownloadShippingStatementExcel = async () => {
+    if (selectedOrders.length === 0) {
+      showInfo('엑셀 명세서를 출력할 주문을 선택해주세요.')
+      return
+    }
+
+    // 다운로드 중이면 중단
+    if (downloadingExcel) {
+      showInfo('Excel 다운로드가 진행 중입니다. 잠시만 기다려주세요.')
+      return
+    }
+
+    try {
+      setDownloadingExcel(true)
+      setDownloadProgress('Excel 파일 생성 중입니다... 페이지를 새로고침하지 마세요')
+      
+      const response = await fetch('/api/admin/orders/shipping-statement', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderIds: selectedOrders,
+          format: 'excel'
+        }),
+      })
+
+      if (response.ok) {
+        setDownloadProgress('ZIP 파일 처리 중...')
+        
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `출고영수증_bulk_download_${selectedDate}_${selectedOrders.length}건.zip`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        
+        showSuccess(`${selectedOrders.length}건의 출고영수증 ZIP 파일이 다운로드되었습니다.`)
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'ZIP 파일 생성에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('ZIP download error:', error)
+      showError('ZIP 파일 다운로드에 실패했습니다.')
+    } finally {
+      setDownloadingExcel(false)
+      setDownloadProgress('')
+    }
+  }
+
   // 초기 로딩
   useEffect(() => {
     fetchShippedOrders()
   }, [])
+
+  // 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const dropdown = document.getElementById('statement-dropdown')
+      if (dropdown && !dropdown.contains(event.target as Node)) {
+        setIsStatementDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isStatementDropdownOpen])
 
   // 주문 관리로 돌아가기
   const handleBackToOrders = () => {
@@ -157,6 +339,17 @@ export function ShippedOrdersPage() {
 
   return (
     <div className="p-6 max-w-full">
+      {/* 다운로드 진행 상태 표시 */}
+      {(downloadingPDF || downloadingExcel) && downloadProgress && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-3 shadow-lg">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-3"></div>
+            <span className="font-medium text-sm">{downloadProgress}</span>
+            <span className="ml-3 text-xs opacity-90">⚠️ 창을 닫거나 새로고침하지 마세요</span>
+          </div>
+        </div>
+      )}
+      
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -240,14 +433,66 @@ export function ShippedOrdersPage() {
           </div>
           
           <div className="flex gap-2">
-            <Button
-              onClick={() => {}}
-              disabled={selectedOrders.length === 0}
-              variant="outline"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              출고내역 엑셀 다운로드 ({selectedOrders.length})
-            </Button>
+            {/* 명세서 다운로드 드롭다운 */}
+            <div className="relative" id="statement-dropdown">
+              <Button
+                onClick={() => setIsStatementDropdownOpen(!isStatementDropdownOpen)}
+                disabled={selectedOrders.length === 0 || downloadingPDF || downloadingExcel}
+                variant="outline"
+                className={`${
+                  downloadingPDF || downloadingExcel
+                    ? 'bg-yellow-50 text-yellow-700 border-yellow-300'
+                    : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300'
+                }`}
+              >
+                {downloadingPDF || downloadingExcel ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mr-2"></div>
+                ) : (
+                  <FileText className="w-4 h-4 mr-2" />
+                )}
+                {downloadingPDF || downloadingExcel ? '다운로드 중...' : `출고명세서 다운로드 (${selectedOrders.length})`}
+                <ChevronDown className="w-4 h-4 ml-2" />
+              </Button>
+              
+              {isStatementDropdownOpen && !downloadingPDF && !downloadingExcel && (
+                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        handleDownloadShippingStatement()
+                        setIsStatementDropdownOpen(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    >
+                      <FileText className="w-4 h-4 mr-2 text-orange-600" />
+                      개별 Excel 다운로드
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleDownloadShippingStatementPDF()
+                        setIsStatementDropdownOpen(false)
+                      }}
+                      disabled={downloadingPDF}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
+                    >
+                      <FileText className="w-4 h-4 mr-2 text-red-600" />
+                      📄 PDF 일괄 다운로드
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleDownloadShippingStatementExcel()
+                        setIsStatementDropdownOpen(false)
+                      }}
+                      disabled={downloadingExcel}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
+                    >
+                      <FileText className="w-4 h-4 mr-2 text-blue-600" />
+                      📦 ZIP 파일 (여러 영수증)
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -263,7 +508,8 @@ export function ShippedOrdersPage() {
                     type="checkbox"
                     checked={orders.length > 0 && selectedOrders.length === orders.length}
                     onChange={toggleAllSelection}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    disabled={downloadingPDF || downloadingExcel}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                   />
                 </th>
                 <th 
@@ -340,7 +586,8 @@ export function ShippedOrdersPage() {
                         type="checkbox"
                         checked={selectedOrders.includes(order.id)}
                         onChange={() => toggleOrderSelection(order.id)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        disabled={downloadingPDF || downloadingExcel}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
