@@ -770,17 +770,20 @@ export function OrdersPage() {
                       <FileText className="w-4 h-4 mr-2 text-orange-600" />
                       확정 전 명세서 출력 (개별)
                     </button>
-                    <button
-                      onClick={() => {
-                        handleDownloadShippingStatementPDF()
-                        setIsStatementDropdownOpen(false)
-                      }}
-                      disabled={downloadingPDF}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
-                    >
-                      <FileText className="w-4 h-4 mr-2 text-red-600" />
-                      📄 PDF 일괄 다운로드
-                    </button>
+                    {/* PDF 다운로드 임시 숨김 */}
+                    {false && (
+                      <button
+                        onClick={() => {
+                          handleDownloadShippingStatementPDF()
+                          setIsStatementDropdownOpen(false)
+                        }}
+                        disabled={downloadingPDF}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
+                      >
+                        <FileText className="w-4 h-4 mr-2 text-red-600" />
+                        📄 PDF 일괄 다운로드
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         handleDownloadShippingStatementExcel()

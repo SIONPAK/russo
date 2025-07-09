@@ -467,17 +467,20 @@ export function ShippedOrdersPage() {
                       <FileText className="w-4 h-4 mr-2 text-orange-600" />
                       개별 Excel 다운로드
                     </button>
-                    <button
-                      onClick={() => {
-                        handleDownloadShippingStatementPDF()
-                        setIsStatementDropdownOpen(false)
-                      }}
-                      disabled={downloadingPDF}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
-                    >
-                      <FileText className="w-4 h-4 mr-2 text-red-600" />
-                      📄 PDF 일괄 다운로드
-                    </button>
+                                         {/* PDF 다운로드 임시 숨김 */}
+                     {false && (
+                       <button
+                         onClick={() => {
+                           handleDownloadShippingStatementPDF()
+                           setIsStatementDropdownOpen(false)
+                         }}
+                         disabled={downloadingPDF}
+                         className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
+                       >
+                         <FileText className="w-4 h-4 mr-2 text-red-600" />
+                         📄 PDF 일괄 다운로드
+                       </button>
+                     )}
                     <button
                       onClick={() => {
                         handleDownloadShippingStatementExcel()
