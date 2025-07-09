@@ -718,6 +718,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             <td class="col1 row-10 empty-cell"></td>
             <td colspan="2" class="col2 row-10 korean-text">아래와 같이 영수 드립니다</td>
             <td class="col5 row-10 empty-cell"></td>
+            <td class="col5 row-10 empty-cell"></td>
             <td class="col6 row-10 empty-cell"></td>
             <td class="col6 row-10 empty-cell"></td>
             <td class="col6 row-10 empty-cell"></td>

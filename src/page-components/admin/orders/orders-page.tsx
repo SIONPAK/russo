@@ -49,6 +49,11 @@ export function OrdersPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [isStatementDropdownOpen, setIsStatementDropdownOpen] = useState(false) // 명세서 드롭다운 상태
   const [editingItem, setEditingItem] = useState<{orderId: string, itemId: string, field: 'quantity' | 'shipped_quantity'} | null>(null)
+  
+  // 다운로드 진행 상태 관리
+  const [downloadingPDF, setDownloadingPDF] = useState(false)
+  const [downloadingExcel, setDownloadingExcel] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState('')
 
   // 정렬된 주문 목록
   const sortedOrders = [...orders].sort((a, b) => {
@@ -247,8 +252,15 @@ export function OrdersPage() {
       return
     }
 
+    // 다운로드 중이면 중단
+    if (downloadingPDF) {
+      showInfo('PDF 다운로드가 진행 중입니다. 잠시만 기다려주세요.')
+      return
+    }
+
     try {
-      showInfo('PDF 생성 중입니다. 잠시만 기다려주세요...')
+      setDownloadingPDF(true)
+      setDownloadProgress('PDF 생성 중입니다... 페이지를 새로고침하지 마세요')
       
       const response = await fetch('/api/admin/orders/shipping-statement', {
         method: 'POST',
@@ -262,6 +274,8 @@ export function OrdersPage() {
       })
 
       if (response.ok) {
+        setDownloadProgress('PDF 파일 처리 중...')
+        
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -298,6 +312,9 @@ export function OrdersPage() {
     } catch (error) {
       console.error('PDF download error:', error)
       showError(`PDF 다운로드 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+    } finally {
+      setDownloadingPDF(false)
+      setDownloadProgress('')
     }
   }
 
@@ -308,7 +325,16 @@ export function OrdersPage() {
       return
     }
 
+    // 다운로드 중이면 중단
+    if (downloadingExcel) {
+      showInfo('Excel 다운로드가 진행 중입니다. 잠시만 기다려주세요.')
+      return
+    }
+
     try {
+      setDownloadingExcel(true)
+      setDownloadProgress('Excel 파일 생성 중입니다... 페이지를 새로고침하지 마세요')
+      
       const response = await fetch('/api/admin/orders/shipping-statement', {
         method: 'POST',
         headers: {
@@ -321,6 +347,8 @@ export function OrdersPage() {
       })
 
       if (response.ok) {
+        setDownloadProgress('ZIP 파일 처리 중...')
+        
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -339,6 +367,9 @@ export function OrdersPage() {
     } catch (error) {
       console.error('ZIP download error:', error)
       showError('ZIP 파일 다운로드에 실패했습니다.')
+    } finally {
+      setDownloadingExcel(false)
+      setDownloadProgress('')
     }
   }
 
@@ -578,6 +609,17 @@ export function OrdersPage() {
 
   return (
     <div className="p-6 max-w-full">
+      {/* 다운로드 진행 상태 표시 */}
+      {(downloadingPDF || downloadingExcel) && downloadProgress && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-3 shadow-lg">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-3"></div>
+            <span className="font-medium text-sm">{downloadProgress}</span>
+            <span className="ml-3 text-xs opacity-90">⚠️ 창을 닫거나 새로고침하지 마세요</span>
+          </div>
+        </div>
+      )}
+      
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">주문관리</h1>
         <p className="text-sm text-gray-600">
@@ -647,7 +689,7 @@ export function OrdersPage() {
           <div className="flex gap-2">
             <Button
               onClick={handleFinalizeStatements}
-              disabled={selectedOrders.length === 0 || updating}
+              disabled={selectedOrders.length === 0 || updating || downloadingPDF || downloadingExcel}
               className="bg-purple-600 hover:bg-purple-700"
             >
               <FileText className="w-4 h-4 mr-2" />
@@ -655,7 +697,7 @@ export function OrdersPage() {
             </Button>
             <Button
               onClick={handleBulkShipping}
-              disabled={selectedOrders.length === 0 || updating}
+              disabled={selectedOrders.length === 0 || updating || downloadingPDF || downloadingExcel}
               className="bg-green-600 hover:bg-green-700"
             >
               <Package className="w-4 h-4 mr-2" />
@@ -667,7 +709,7 @@ export function OrdersPage() {
             
             <Button
               onClick={handleDownloadExcel}
-              disabled={orders.length === 0}
+              disabled={orders.length === 0 || downloadingPDF || downloadingExcel}
               variant="outline"
             >
               <Download className="w-4 h-4 mr-2" />
@@ -678,11 +720,13 @@ export function OrdersPage() {
                 type="file"
                 accept=".xlsx,.xls"
                 onChange={handleUploadExcel}
+                disabled={downloadingPDF || downloadingExcel}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
               <Button
                 variant="outline"
-                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                disabled={downloadingPDF || downloadingExcel}
+                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300 disabled:opacity-50"
               >
                 <Upload className="w-4 h-4 mr-2" />
                 운송장번호 업로드
@@ -696,16 +740,24 @@ export function OrdersPage() {
             <div className="relative" id="statement-dropdown">
               <Button
                 onClick={() => setIsStatementDropdownOpen(!isStatementDropdownOpen)}
-                disabled={selectedOrders.length === 0}
+                disabled={selectedOrders.length === 0 || downloadingPDF || downloadingExcel}
                 variant="outline"
-                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
+                className={`${
+                  downloadingPDF || downloadingExcel
+                    ? 'bg-yellow-50 text-yellow-700 border-yellow-300'
+                    : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300'
+                }`}
               >
-                <FileText className="w-4 h-4 mr-2" />
-                명세서 다운로드 ({selectedOrders.length})
+                {downloadingPDF || downloadingExcel ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mr-2"></div>
+                ) : (
+                  <FileText className="w-4 h-4 mr-2" />
+                )}
+                {downloadingPDF || downloadingExcel ? '다운로드 중...' : `명세서 다운로드 (${selectedOrders.length})`}
                 <ChevronDown className="w-4 h-4 ml-2" />
               </Button>
               
-              {isStatementDropdownOpen && (
+              {isStatementDropdownOpen && !downloadingPDF && !downloadingExcel && (
                 <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-md shadow-lg z-50">
                   <div className="py-1">
                     <button
@@ -723,7 +775,8 @@ export function OrdersPage() {
                         handleDownloadShippingStatementPDF()
                         setIsStatementDropdownOpen(false)
                       }}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                      disabled={downloadingPDF}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
                     >
                       <FileText className="w-4 h-4 mr-2 text-red-600" />
                       📄 PDF 일괄 다운로드
@@ -733,7 +786,8 @@ export function OrdersPage() {
                         handleDownloadShippingStatementExcel()
                         setIsStatementDropdownOpen(false)
                       }}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                      disabled={downloadingExcel}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
                     >
                       <FileText className="w-4 h-4 mr-2 text-blue-600" />
                       📦 ZIP 파일 (여러 영수증)
@@ -757,7 +811,8 @@ export function OrdersPage() {
                     type="checkbox"
                     checked={orders.length > 0 && selectedOrders.length === orders.length}
                     onChange={toggleAllSelection}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    disabled={downloadingPDF || downloadingExcel}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                   />
                 </th>
                 <th 
@@ -842,7 +897,8 @@ export function OrdersPage() {
                           type="checkbox"
                           checked={selectedOrders.includes(order.id)}
                           onChange={() => toggleOrderSelection(order.id)}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          disabled={downloadingPDF || downloadingExcel}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                         />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
