@@ -58,14 +58,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 명세서 확정 상태 확인
-    const unconfirmedOrders = orders.filter(order => order.status !== 'confirmed')
+    // 명세서 확정 상태 확인 (미출고건 제외)
+    const unconfirmedOrders = orders.filter(order => {
+      // 출고수량이 0인 주문(미출고)은 확정명세서 없이 출고처리 가능
+      const totalShipped = order.order_items?.reduce((sum: number, item: any) => sum + (item.shipped_quantity || 0), 0) || 0
+      const isUnshipped = totalShipped === 0
+      
+      return order.status !== 'confirmed' && !isUnshipped
+    })
     
     if (unconfirmedOrders.length > 0) {
       const orderNumbers = unconfirmedOrders.map(order => order.order_number).join(', ')
       return NextResponse.json({
         success: false,
-        error: `명세서가 확정되지 않은 주문이 있습니다: ${orderNumbers}`
+        error: `명세서가 확정되지 않은 주문이 있습니다: ${orderNumbers} (※ 미출고건은 확정명세서 없이 출고처리 가능)`
       }, { status: 400 })
     }
 

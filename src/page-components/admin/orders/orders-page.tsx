@@ -530,16 +530,43 @@ export function OrdersPage() {
       return
     }
 
-    // 명세서 확정 상태 확인
-    const unconfirmedOrders = selectedOrdersData.filter(order => order.status !== 'confirmed')
+    // 명세서 확정 상태 확인 (미출고건 제외)
+    const unconfirmedOrders = selectedOrdersData.filter(order => {
+      // 출고수량이 0인 주문(미출고)은 확정명세서 없이 출고처리 가능
+      const totalShipped = order.order_items?.reduce((sum: number, item: any) => sum + (item.shipped_quantity || 0), 0) || 0
+      const isUnshipped = totalShipped === 0
+      
+      return order.status !== 'confirmed' && !isUnshipped
+    })
     
     if (unconfirmedOrders.length > 0) {
       const orderNumbers = unconfirmedOrders.map(order => order.order_number).join(', ')
-      showError(`출고처리를 위해서는 모든 주문의 명세서가 확정되어야 합니다.\n\n명세서 미확정 주문 (${unconfirmedOrders.length}건):\n${orderNumbers}\n\n먼저 확정 명세서를 생성해주세요.`)
+      showError(`출고처리를 위해서는 모든 주문의 명세서가 확정되어야 합니다.\n\n명세서 미확정 주문 (${unconfirmedOrders.length}건):\n${orderNumbers}\n\n먼저 확정 명세서를 생성해주세요.\n\n※ 미출고건(출고수량 0)은 확정명세서 없이 출고처리 가능합니다.`)
       return
     }
 
-    if (!confirm(`선택된 ${selectedOrders.length}건의 주문을 출고처리하시겠습니까?\n\n⚠️ 처리 시 다음 작업이 수행됩니다:\n• 주문 상태 '출고완료'로 변경\n• 출고내역으로 이동\n\n이 작업은 되돌릴 수 없습니다.`)) {
+    // 미출고건 개수 확인
+    const unshippedOrders = selectedOrdersData.filter(order => {
+      const totalShipped = order.order_items?.reduce((sum: number, item: any) => sum + (item.shipped_quantity || 0), 0) || 0
+      return totalShipped === 0
+    })
+    const normalOrders = selectedOrdersData.filter(order => {
+      const totalShipped = order.order_items?.reduce((sum: number, item: any) => sum + (item.shipped_quantity || 0), 0) || 0
+      return totalShipped > 0
+    })
+    
+    let confirmMessage = `선택된 ${selectedOrders.length}건의 주문을 출고처리하시겠습니까?\n\n⚠️ 처리 시 다음 작업이 수행됩니다:\n• 주문 상태 '출고완료'로 변경\n• 출고내역으로 이동`
+    
+    if (unshippedOrders.length > 0) {
+      confirmMessage += `\n\n📦 미출고건 ${unshippedOrders.length}건 포함 (확정명세서 없이 처리)`
+    }
+    if (normalOrders.length > 0) {
+      confirmMessage += `\n📋 일반 출고건 ${normalOrders.length}건 포함 (확정명세서 완료)`
+    }
+    
+    confirmMessage += `\n\n이 작업은 되돌릴 수 없습니다.`
+    
+    if (!confirm(confirmMessage)) {
       return
     }
 
