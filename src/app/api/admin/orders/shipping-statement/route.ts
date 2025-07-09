@@ -344,120 +344,70 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
   return Buffer.from(zipBuffer)
 }
 
-// PDF 생성 함수
-// 환경에 따라 다른 Puppeteer 설정
-async function getPuppeteerConfig() {
+// 환경에 따라 다른 Puppeteer 설정 (Vercel 커뮤니티 해결책 적용)
+async function getBrowser() {
   const isDev = process.env.NODE_ENV === 'development'
+  const REMOTE_PATH = process.env.CHROMIUM_REMOTE_EXEC_PATH || 'https://github.com/Sparticuz/chromium/releases/download/v137.0.1/chromium-v137.0.1-pack.tar'
+  const LOCAL_PATH = process.env.CHROMIUM_LOCAL_EXEC_PATH
   
   if (isDev) {
-    console.log('🔧 개발 환경: 로컬 Chrome 사용')
-    return {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ],
-      timeout: 120000,
-      protocolTimeout: 120000
-    }
-  } else {
-    console.log('🏭 프로덕션 환경: @sparticuz/chromium 사용')
-    try {
-      const chromium = await import('@sparticuz/chromium')
-      
-      // Vercel 환경 변수 설정 (GitHub 이슈 #41 해결책)
-      process.env.FONTCONFIG_PATH = '/tmp'
-      process.env.FC_CONFIG_FILE = '/tmp/fonts.conf'
-      
-      // Vercel 환경에서의 올바른 호출 방식
-      let executablePath
+    console.log('🔧 개발 환경: 로컬 Chrome 사용 시도')
+    
+    // 로컬 Chrome 경로들 시도
+    const possiblePaths = [
+      LOCAL_PATH,
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium-browser'
+    ].filter(Boolean)
+    
+    for (const path of possiblePaths) {
       try {
-        // args를 먼저 가져와서 사용 가능한지 확인
-        console.log('🔍 Chromium args 확인:', chromium.default.args.length, '개')
-        executablePath = await chromium.default.executablePath()
-      } catch (pathError: any) {
-        console.log('⚠️  기본 경로 실패, 대안 시도:', pathError.message)
-        
-        // GitHub 이슈에서 제시된 대안: chromium을 직접 다운로드하여 사용
-        if (pathError.message.includes('brotli') || pathError.message.includes('input directory')) {
-          console.log('🔧 Brotli 파일 문제 감지, 대안 경로 사용')
-          executablePath = '/tmp/chromium'
-        } else {
-          executablePath = null
+        const fs = await import('fs')
+        if (fs.existsSync(path as string)) {
+          console.log('✅ 로컬 Chrome 발견:', path)
+          const puppeteer = await import('puppeteer-core')
+          return await puppeteer.default.launch({
+            executablePath: path as string,
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu'
+            ]
+          })
         }
+      } catch (error) {
+        console.log('❌ Chrome 경로 시도 실패:', path, error)
+        continue
       }
-      
-      console.log('✅ Chromium 실행 파일 경로:', executablePath || '자동 감지')
-      
-      // 폰트 설정은 chromium.args에 포함되어 있음
-      
-      const config = {
-        args: [
-          ...chromium.default.args,
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--single-process',
-          '--no-zygote',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-default-apps',
-          '--disable-sync',
-          '--disable-translate',
-          '--hide-scrollbars',
-          '--metrics-recording-only',
-          '--mute-audio',
-          '--no-first-run',
-          '--safebrowsing-disable-auto-update',
-          '--ignore-ssl-errors',
-          '--ignore-certificate-errors',
-          '--ignore-certificate-errors-spki-list',
-          '--ignore-certificate-errors-ssl-errors',
-          '--allow-running-insecure-content',
-          '--disable-webgl',
-          '--disable-threaded-animation',
-          '--disable-threaded-scrolling',
-          '--disable-in-process-stack-traces',
-          '--disable-histogram-customizer',
-          '--disable-gl-extensions',
-          '--disable-composited-antialiasing',
-          '--disable-canvas-aa',
-          '--disable-3d-apis',
-          '--disable-accelerated-2d-canvas',
-          '--disable-accelerated-jpeg-decoding',
-          '--disable-accelerated-mjpeg-decode',
-          '--disable-app-list-dismiss-on-blur',
-          '--disable-accelerated-video-decode',
-          '--num-raster-threads=1',
-          '--font-render-hinting=none'
-        ],
-        headless: true,
-        timeout: 60000,
-        protocolTimeout: 60000,
-        ...(executablePath && { executablePath })
-      }
-      
-      return config
-    } catch (error) {
-      console.error('❌ Chromium 설정 실패:', error)
-      
-      // Vercel 환경에서 @sparticuz/chromium이 작동하지 않는 경우를 위한 최종 폴백
-      if (error instanceof Error && (
-        error.message.includes('brotli') || 
-        error.message.includes('input directory') ||
-        error.message.includes('executablePath')
-      )) {
-        console.log('🚨 Vercel chromium 문제 감지, PDF 생성을 Excel로 완전 전환합니다.')
-        throw new Error('VERCEL_CHROMIUM_FALLBACK: Vercel 환경에서 Chromium을 사용할 수 없습니다.')
-      }
-      
-      throw new Error(`Chromium 설정 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
     }
+    
+    // 로컬에서 Chrome을 찾을 수 없는 경우
+    console.log('⚠️  개발 환경에서 로컬 Chrome을 찾을 수 없습니다.')
+    console.log('📋 해결 방법:')
+    console.log('1. Google Chrome 설치: https://www.google.com/chrome/')
+    console.log('2. 환경 변수 설정: CHROMIUM_LOCAL_EXEC_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"')
+    console.log('3. 또는 개발 환경에서는 Excel 다운로드만 사용')
+    
+    throw new Error('DEV_CHROME_NOT_FOUND: 개발 환경에서 Chrome을 찾을 수 없습니다.')
   }
+  
+  // 프로덕션 환경: @sparticuz/chromium-min 사용
+  console.log('🏭 프로덕션 환경: @sparticuz/chromium-min 사용')
+  const chromium = await import('@sparticuz/chromium-min')
+  const puppeteer = await import('puppeteer-core')
+  
+  console.log('🔍 원격 Chromium 경로:', REMOTE_PATH)
+  
+  return await puppeteer.default.launch({
+    args: chromium.default.args,
+    executablePath: await chromium.default.executablePath(REMOTE_PATH),
+    headless: true,
+    timeout: 60000
+  })
 }
 
 async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
@@ -465,150 +415,124 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
   try {
     console.log('🚀 PDF 생성 시작 - 주문 수:', orders.length)
     
-    // Puppeteer 설정 가져오기
-    let puppeteerConfig
-    try {
-      puppeteerConfig = await getPuppeteerConfig()
-      console.log('🔍 Puppeteer 설정 완료')
-    } catch (configError) {
-      console.error('❌ Puppeteer 설정 실패:', configError)
-      throw configError
-    }
+    // 브라우저 시작
+    browser = await getBrowser()
+    console.log('✅ 브라우저 시작 완료')
     
-    // 브라우저 시작 시도
-    let retries = 3
-    while (retries > 0) {
-      try {
-        const puppeteer = isDev ? 
-      await import('puppeteer') : 
-      await import('puppeteer-core')
+    const page = await browser.newPage()
     
-    browser = await puppeteer.default.launch(puppeteerConfig)
-        console.log('✅ 브라우저 시작 완료')
-        break
-      } catch (launchError) {
-        retries--
-        console.error(`❌ 브라우저 시작 실패 (${3 - retries}/3 시도):`, launchError)
-        
-        if (retries === 0) {
-          throw launchError
-        }
-        
-        // 재시도 전 잠시 대기
-        await new Promise(resolve => setTimeout(resolve, 1000))
+    // 페이지 오류 핸들링
+    page.on('pageerror', (err: Error) => {
+      console.error('페이지 오류:', err)
+    })
+    page.on('error', (err: Error) => {
+      console.error('페이지 런타임 오류:', err)
+    })
+    
+    // Vercel 환경에서 최적화된 페이지 설정
+    await page.setViewport({ width: 1240, height: 1754 }) // A4 크기
+    await page.setDefaultTimeout(30000) // 30초 타임아웃
+    
+    // 메모리 사용량 최적화
+    await page.setRequestInterception(true)
+    page.on('request', (req: any) => {
+      if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet' || req.resourceType() === 'font') {
+        req.abort()
+      } else {
+        req.continue()
       }
-    }
-  
-  if (!browser) {
-    throw new Error('브라우저 시작에 실패했습니다.')
-  }
-  
-  const page = await browser.newPage()
-  
-  // Vercel 환경에서 최적화된 페이지 설정
-  await page.setViewport({ width: 1240, height: 1754 }) // A4 크기
-  await page.setDefaultTimeout(30000) // 30초 타임아웃
-  
-  // 메모리 사용량 최적화
-  await page.setRequestInterception(true)
-  page.on('request', (req: any) => {
-    if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet' || req.resourceType() === 'font') {
-      req.abort()
-    } else {
-      req.continue()
-    }
-  })
-  
-  let htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        @page {
-          size: A4;
-          margin: 15mm;
-        }
-        body {
-          font-family: 'Apple SD Gothic Neo', Arial, sans-serif;
-          font-size: 11px;
-          line-height: 1.2;
-          margin: 0;
-          padding: 0;
-        }
-        .page-break {
-          page-break-before: always;
-        }
-        
-        /* 영수증 테이블 스타일 */
-        table.receipt {
-          border-collapse: collapse;
-          width: 100%;
-          margin: 20px 0;
-        }
-        
-        /* 각 셀 스타일 */
-        .receipt td {
-          border: 1px solid #9a9a9a;
-          padding: 2px;
-          vertical-align: bottom;
-        }
-        
-        /* 제목 셀 */
-        .title-cell {
-          width: 100%;
-          height: 29px;
-          background-color: #ffffff;
-          text-align: center;
-          font-size: 20px;
-          font-weight: bold;
-          padding: 5px;
-        }
-        
-        /* 기본 셀 크기들 */
-        .col1 { width: 38px; }
-        .col2 { width: 25px; }
-        .col3 { width: 145px; }
-        .col4 { width: 85px; }
-        .col5 { width: 43px; }
-        .col6 { width: 67px; }
-        
-        /* 행 높이 */
-        .row-11 { height: 11px; }
-        .row-10 { height: 10px; }
-        .row-24 { height: 24px; }
-        
-        /* 텍스트 정렬 */
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        
-        /* 폰트 스타일 */
-        .font-bold { font-weight: bold; }
-        .font-11 { font-size: 11px; }
-        .font-20 { font-size: 20px; }
-        
-        /* 특별 스타일 */
-        .company-info {
-          font-size: 11px;
-        }
-        .amount-text {
-          font-size: 11px;
-          font-weight: bold;
-          text-align: center;
-        }
-        .total-row {
-          background-color: #f5f5f5;
-          font-weight: bold;
-        }
-        
-        /* 빈 셀 최소 높이 */
-        .empty-cell {
-          min-height: 14px;
-        }
-      </style>
-    </head>
-    <body>
-  `
+    })
+    
+    let htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          @page {
+            size: A4;
+            margin: 15mm;
+          }
+          body {
+            font-family: 'Apple SD Gothic Neo', Arial, sans-serif;
+            font-size: 11px;
+            line-height: 1.2;
+            margin: 0;
+            padding: 0;
+          }
+          .page-break {
+            page-break-before: always;
+          }
+          
+          /* 영수증 테이블 스타일 */
+          table.receipt {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+          }
+          
+          /* 각 셀 스타일 */
+          .receipt td {
+            border: 1px solid #9a9a9a;
+            padding: 2px;
+            vertical-align: bottom;
+          }
+          
+          /* 제목 셀 */
+          .title-cell {
+            width: 100%;
+            height: 29px;
+            background-color: #ffffff;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            padding: 5px;
+          }
+          
+          /* 기본 셀 크기들 */
+          .col1 { width: 38px; }
+          .col2 { width: 25px; }
+          .col3 { width: 145px; }
+          .col4 { width: 85px; }
+          .col5 { width: 43px; }
+          .col6 { width: 67px; }
+          
+          /* 행 높이 */
+          .row-11 { height: 11px; }
+          .row-10 { height: 10px; }
+          .row-24 { height: 24px; }
+          
+          /* 텍스트 정렬 */
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          
+          /* 폰트 스타일 */
+          .font-bold { font-weight: bold; }
+          .font-11 { font-size: 11px; }
+          .font-20 { font-size: 20px; }
+          
+          /* 특별 스타일 */
+          .company-info {
+            font-size: 11px;
+          }
+          .amount-text {
+            font-size: 11px;
+            font-weight: bold;
+            text-align: center;
+          }
+          .total-row {
+            background-color: #f5f5f5;
+            font-weight: bold;
+          }
+          
+          /* 빈 셀 최소 높이 */
+          .empty-cell {
+            min-height: 14px;
+          }
+        </style>
+      </head>
+      <body>
+    `
   
   orders.forEach((order: any, orderIndex: number) => {
     const customer = order.users
@@ -889,7 +813,10 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
       console.error('에러 메시지:', error.message)
       console.error('에러 스택:', error.stack)
       
-      if (error.message.includes('Protocol error')) {
+      if (error.message.includes('DEV_CHROME_NOT_FOUND')) {
+        console.error('🔧 개발 환경에서 로컬 Chrome을 찾을 수 없습니다.')
+        console.error('   → Excel 다운로드로 자동 전환됩니다.')
+      } else if (error.message.includes('Protocol error')) {
         console.error('🔍 Chrome 프로세스 관련 오류 - Vercel 환경에서 Chrome 프로세스가 올바르게 시작되지 않았습니다.')
       } else if (error.message.includes('spawn')) {
         console.error('🔍 실행 파일 관련 오류 - @sparticuz/chromium 패키지가 올바르게 설치되었는지 확인하세요.')

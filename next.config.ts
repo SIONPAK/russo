@@ -8,8 +8,8 @@ const nextConfig: NextConfig = {
     TZ: 'Asia/Seoul'
   },
   
-  // 서버 측 렌더링 시 시간대 설정
-  serverExternalPackages: ['@supabase/supabase-js', '@sparticuz/chromium', 'puppeteer-core']
+  // Vercel 환경에서 Chromium 사용을 위한 설정
+  serverExternalPackages: ['@supabase/supabase-js', '@sparticuz/chromium-min', 'puppeteer-core']
 };
 
 export default nextConfig;
