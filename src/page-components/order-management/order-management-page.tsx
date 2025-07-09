@@ -1193,6 +1193,7 @@ export function OrderManagementPage() {
                         <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency(order.total_amount)}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            order.tracking_number === '미출고' ? 'bg-gray-100 text-gray-800' :
                             order.total_amount < 0 && order.status === 'confirmed' ? 
                               (order.return_statement_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                order.return_statement_status === 'approved' ? 'bg-blue-100 text-blue-800' :
@@ -1206,7 +1207,8 @@ export function OrderManagementPage() {
                             order.status === 'shipped' ? 'bg-purple-100 text-purple-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>
-                            {order.total_amount < 0 && order.status === 'confirmed' ? 
+                            {order.tracking_number === '미출고' ? '미출고' :
+                             order.total_amount < 0 && order.status === 'confirmed' ? 
                               (order.return_statement_status === 'pending' ? '반품 대기중' :
                                order.return_statement_status === 'approved' ? '반품 승인됨' :
                                order.return_statement_status === 'rejected' ? '반품 거절됨' :
@@ -1222,10 +1224,7 @@ export function OrderManagementPage() {
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {order.tracking_number ? (
                             order.tracking_number === '미출고' ? (
-                              <div className="flex items-center">
-                                <AlertTriangle className="h-3 w-3 text-red-600 mr-1" />
-                                <span className="text-red-600 font-medium">미출고</span>
-                              </div>
+                              <span className="text-gray-500">-</span>
                             ) : (
                               <div className="flex items-center">
                                 <Truck className="h-3 w-3 text-blue-600 mr-1" />
