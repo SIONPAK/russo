@@ -850,8 +850,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
         const isUnshipped = order.tracking_number === '미출고'
         const unitPrice = isUnshipped ? 0 : item.unit_price
         const quantity = isUnshipped ? 0 : item.shipped_quantity
-        const supplyAmount = isUnshipped ? 0 : Math.floor(item.unit_price * item.shipped_quantity / 1.1)
-        const taxAmount = isUnshipped ? 0 : (item.unit_price * item.shipped_quantity) - supplyAmount
+        const supplyAmount = isUnshipped ? 0 : item.unit_price * item.shipped_quantity
+        const taxAmount = isUnshipped ? 0 : Math.floor(supplyAmount * 0.1)
         
         htmlContent += `
           <tr>
@@ -885,8 +885,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     
     // "미출고" 건은 합계 금액도 0원 처리
     const isUnshipped = order.tracking_number === '미출고'
-    const totalSupplyAmount = isUnshipped ? 0 : Math.floor(statementData.amounts.shippedTotal / 1.1)
-    const totalTaxAmount = isUnshipped ? 0 : statementData.amounts.shippedTotal - totalSupplyAmount
+    const totalSupplyAmount = isUnshipped ? 0 : statementData.amounts.shippedTotal
+    const totalTaxAmount = isUnshipped ? 0 : Math.floor(totalSupplyAmount * 0.1)
     
     htmlContent += `
           <tr class="total-row">
