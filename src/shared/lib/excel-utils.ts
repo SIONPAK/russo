@@ -958,3 +958,80 @@ export function downloadSampleShippingExcel(samples: any[], filename?: string) {
   const fileName = filename || `샘플배송정보_${formatDate(new Date()).replace(/\./g, '')}.xlsx`
   XLSX.writeFile(wb, fileName)
 } 
+
+// 운송장 템플릿 다운로드 (발주번호|상호명|운송장번호 형식)
+export function downloadTrackingNumberTemplate(orders: AdminOrderItem[], filename?: string) {
+  const wb = XLSX.utils.book_new()
+  
+  // 운송장 등록 템플릿 데이터 생성
+  const templateData = orders.map(order => ({
+    '발주번호': order.order_number,
+    '상호명': order.user.company_name,
+    '운송장번호': '' // 비워둠
+  }))
+  
+  // 데이터가 없을 경우 예시 데이터 추가
+  if (templateData.length === 0) {
+    templateData.push({
+      '발주번호': 'PO0000000000000',
+      '상호명': '샘플 업체명',
+      '운송장번호': ''
+    })
+  }
+  
+  const ws = XLSX.utils.json_to_sheet(templateData)
+  
+  // 워크시트 범위를 명시적으로 3개 열로 제한
+  const rowCount = templateData.length + 1 // 헤더 포함
+  ws['!ref'] = `A1:C${rowCount}`
+  
+  // 열 너비 설정 (3개 열만)
+  ws['!cols'] = [
+    { wch: 25 }, // A열: 발주번호
+    { wch: 20 }, // B열: 상호명
+    { wch: 20 }, // C열: 운송장번호
+  ]
+  
+  // 헤더 스타일 설정
+  const headerStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFF' } },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { rgb: '4F81BD' } },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
+    }
+  }
+  
+  // 헤더에 스타일 적용 (A1, B1, C1만)
+  if (ws['A1']) ws['A1'].s = headerStyle
+  if (ws['B1']) ws['B1'].s = headerStyle
+  if (ws['C1']) ws['C1'].s = headerStyle
+  
+  // 데이터 셀에 테두리 추가 (A, B, C 열만)
+  for (let i = 2; i <= templateData.length + 1; i++) {
+    const borderStyle = {
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      }
+    }
+    if (ws[`A${i}`]) ws[`A${i}`].s = borderStyle
+    if (ws[`B${i}`]) ws[`B${i}`].s = borderStyle
+    if (ws[`C${i}`]) ws[`C${i}`].s = borderStyle
+  }
+  
+  XLSX.utils.book_append_sheet(wb, ws, '운송장템플릿')
+  
+  // 파일명 생성
+  const fileName = filename || `운송장템플릿_${new Date().toISOString().split('T')[0]}.xlsx`
+  
+  // 엑셀 파일 생성 및 다운로드 (saveAs 사용)
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  saveAs(blob, fileName)
+} 

@@ -7,6 +7,7 @@ import { useOrderManagement } from '@/features/admin/order-management/model/use-
 import { 
   downloadOrdersExcel, 
   downloadOrderShippingExcel,
+  downloadTrackingNumberTemplate,
   parseTrackingExcel,
   type AdminOrderItem
 } from '@/shared/lib/excel-utils'
@@ -184,6 +185,49 @@ export function OrdersPage() {
     } catch (error) {
       console.error('Excel download error:', error)
       showError('엑셀 다운로드에 실패했습니다.')
+    }
+  }
+
+  // 운송장 템플릿 다운로드
+  const handleDownloadTrackingTemplate = async () => {
+    try {
+      const adminOrders: AdminOrderItem[] = orders.map(order => ({
+        id: order.id,
+        order_number: order.order_number,
+        user: {
+          company_name: order.users?.company_name || '',
+          representative_name: order.users?.representative_name || '',
+          phone: order.users?.phone || '',
+          address: ''
+        },
+        total_amount: order.total_amount,
+        shipping_fee: order.shipping_fee || 0,
+        status: order.status,
+        tracking_number: order.tracking_number,
+        shipping_name: order.shipping_name,
+        shipping_phone: order.shipping_phone,
+        shipping_address: order.shipping_address,
+        shipping_postal_code: order.shipping_postal_code,
+        notes: order.notes,
+        created_at: order.created_at,
+        order_items: order.order_items?.map(item => ({
+          id: item.id,
+          product_name: item.product_name,
+          color: item.color,
+          size: item.size,
+          quantity: item.quantity,
+          shipped_quantity: item.shipped_quantity || 0,
+          unit_price: item.unit_price,
+          total_price: item.total_price,
+          product_code: item.products?.code || ''
+        })) || []
+      }))
+
+      downloadTrackingNumberTemplate(adminOrders, `운송장템플릿_${selectedDate}`)
+      showSuccess('운송장 템플릿이 다운로드되었습니다.')
+    } catch (error) {
+      console.error('Template download error:', error)
+      showError('운송장 템플릿 다운로드에 실패했습니다.')
     }
   }
 
@@ -671,6 +715,9 @@ export function OrdersPage() {
         <p className="text-sm text-gray-600">
           동대문 도매 특성에 맞춘 발주 관리 시스템 (오후 3시 기준 조회)
         </p>
+        <p className="text-sm text-gray-600 font-bold">
+          3시 이후 주문은 다음날로 조회가 가능합니다.
+        </p>
       </div>
 
       {/* 통계 카드 */}
@@ -760,6 +807,14 @@ export function OrdersPage() {
             >
               <Download className="w-4 h-4 mr-2" />
               배송정보 엑셀
+            </Button>
+            <Button
+              onClick={handleDownloadTrackingTemplate}
+              disabled={orders.length === 0 || downloadingPDF || downloadingExcel}
+              variant="outline"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              운송장 템플릿
             </Button>
             <div className="relative">
               <input

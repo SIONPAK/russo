@@ -322,18 +322,16 @@ export function OrderManagementPage() {
       if (result.success && Array.isArray(result.data)) {
         const products: ProductSearchResult[] = result.data
           .map((product: any) => {
-            // inventory_options에서 재고가 있는 옵션들만 필터링
-            const availableOptions = product.inventory_options 
-              ? product.inventory_options.filter((opt: any) => (opt.stock_quantity || 0) > 0)
-              : []
+            // 모든 inventory_options 포함 (재고 여부와 상관없이)
+            const allOptions = product.inventory_options || []
             
-            // 재고가 있는 옵션들로부터 색상과 사이즈 추출
-            const colors = availableOptions.length > 0
-              ? [...new Set(availableOptions.map((opt: any) => opt.color).filter(Boolean))]
+            // 모든 옵션들로부터 색상과 사이즈 추출
+            const colors = allOptions.length > 0
+              ? [...new Set(allOptions.map((opt: any) => opt.color).filter(Boolean))]
               : ['기본']
             
-            const sizes = availableOptions.length > 0
-              ? [...new Set(availableOptions.map((opt: any) => opt.size).filter(Boolean))]
+            const sizes = allOptions.length > 0
+              ? [...new Set(allOptions.map((opt: any) => opt.size).filter(Boolean))]
               : ['기본']
 
             return {
@@ -344,17 +342,10 @@ export function OrderManagementPage() {
               sizes: sizes.length > 0 ? sizes : ['기본'],
               price: product.price,
               stock: product.stock_quantity || 0,
-              inventory_options: availableOptions
+              inventory_options: allOptions
             }
           })
-          .filter((product: any) => {
-            // 재고가 있는 옵션이 하나도 없는 상품은 제외
-            if (product.inventory_options.length === 0) {
-              // inventory_options가 없는 경우 기본 재고량 확인
-              return (product.stock || 0) > 0
-            }
-            return product.inventory_options.length > 0
-          })
+          // 품절 상품 필터링 제거 - 모든 상품 포함
         setSearchResults(products)
       } else {
         setSearchResults([])
@@ -859,6 +850,7 @@ export function OrderManagementPage() {
             <p><strong>*'행추가'버튼을 누르고 발주하실 상품을 추가 후, 발주서 저장을 눌러주세요.</strong></p>
             <p><strong>*반품의 경우, 수량에 (-)음수 값을 입력하여 발주서를 생성해주세요.</strong></p>
             <p><strong>*협의되지 않은 반품은 불가능하며, 즉시 착불 반송처리 됩니다.</strong></p>
+            <p><strong>*3시 이후 주문은 다음날로 조회가 가능합니다.</strong></p>
           </div>
         </div>
       </div>
@@ -1583,4 +1575,4 @@ export function OrderManagementPage() {
       )}
     </div>
   )
-} 
+}
