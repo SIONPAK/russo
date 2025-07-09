@@ -7,8 +7,8 @@
   ],
   "functions": {
     "src/app/api/**/route.ts": {
-      "runtime": "nodejs18.x",
+      "runtime": "nodejs20.x",
       "maxDuration": 300
     }
   }
-} 
+}
