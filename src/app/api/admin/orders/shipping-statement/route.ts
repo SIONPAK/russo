@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import * as XLSX from 'xlsx'
-import puppeteer from 'puppeteer-core'
-import chromium from '@sparticuz/chromium'
+// 환경에 따라 다른 패키지 import
+const isDev = process.env.NODE_ENV === 'development'
+const puppeteer = isDev ? require('puppeteer') : require('puppeteer-core')
+const chromium = isDev ? null : require('@sparticuz/chromium')
 import path from 'path'
 import fs from 'fs'
 import { getKoreaTime, getKoreaDate, getKoreaDateFormatted } from '@/shared/lib/utils'
@@ -345,24 +347,48 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
 }
 
 // PDF 생성 함수
-// Vercel 환경에서 Puppeteer 설정
+// 환경에 따라 다른 Puppeteer 설정
 async function getPuppeteerConfig() {
   const isDev = process.env.NODE_ENV === 'development'
   
   if (isDev) {
-    // 개발 환경에서는 로컬 Chrome 사용
+    console.log('🔧 개발 환경: 로컬 Chrome 사용')
     return {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      timeout: 60000
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ],
+      timeout: 120000,
+      protocolTimeout: 120000
     }
   } else {
-    // 프로덕션 환경(Vercel)에서는 @sparticuz/chromium 사용
-    return {
-      args: chromium.args,
-      executablePath: await chromium.executablePath(),
-      headless: true,
-      timeout: 60000
+    console.log('🏭 프로덕션 환경: @sparticuz/chromium 사용')
+    try {
+      const executablePath = await chromium.executablePath()
+      console.log('✅ Chromium 실행 파일 경로:', executablePath)
+      
+      return {
+        args: [
+          ...chromium.args,
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--single-process',
+          '--no-zygote',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding'
+        ],
+        executablePath,
+        headless: true,
+        timeout: 60000,
+        protocolTimeout: 60000
+      }
+    } catch (error) {
+      console.error('❌ Chromium 설정 실패:', error)
+      throw new Error(`Chromium 설정 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
     }
   }
 }
@@ -373,13 +399,38 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     console.log('🚀 PDF 생성 시작 - 주문 수:', orders.length)
     
     // Puppeteer 설정 가져오기
-    const puppeteerConfig = await getPuppeteerConfig()
+    let puppeteerConfig
+    try {
+      puppeteerConfig = await getPuppeteerConfig()
+      console.log('🔍 Puppeteer 설정 완료')
+    } catch (configError) {
+      console.error('❌ Puppeteer 설정 실패:', configError)
+      throw configError
+    }
     
-    console.log('🔍 Puppeteer 설정:', puppeteerConfig)
-    
-    browser = await puppeteer.launch(puppeteerConfig)
-    
-    console.log('✅ 브라우저 시작 완료')
+    // 브라우저 시작 시도
+    let retries = 3
+    while (retries > 0) {
+      try {
+        browser = await puppeteer.launch(puppeteerConfig)
+        console.log('✅ 브라우저 시작 완료')
+        break
+      } catch (launchError) {
+        retries--
+        console.error(`❌ 브라우저 시작 실패 (${3 - retries}/3 시도):`, launchError)
+        
+        if (retries === 0) {
+          throw launchError
+        }
+        
+        // 재시도 전 잠시 대기
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+  
+  if (!browser) {
+    throw new Error('브라우저 시작에 실패했습니다.')
+  }
   
   const page = await browser.newPage()
   
@@ -389,7 +440,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
   
   // 메모리 사용량 최적화
   await page.setRequestInterception(true)
-  page.on('request', (req) => {
+  page.on('request', (req: any) => {
     if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet' || req.resourceType() === 'font') {
       req.abort()
     } else {
@@ -775,6 +826,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
         console.error('🔍 타임아웃 오류 - Vercel 함수 실행 시간이 초과되었습니다.')
       } else if (error.message.includes('executablePath')) {
         console.error('🔍 Chromium 경로 오류 - Vercel 환경에서 Chromium을 찾을 수 없습니다.')
+      } else if (error.message.includes('brotli')) {
+        console.error('🔍 Brotli 파일 오류 - @sparticuz/chromium의 압축 파일을 찾을 수 없습니다.')
+        console.error('   해결 방법: 패키지를 재설치하거나 다른 버전을 시도하세요.')
+      } else if (error.message.includes('input directory')) {
+        console.error('🔍 디렉터리 오류 - Chromium 바이너리 파일이 올바르게 설치되지 않았습니다.')
+        console.error('   해결 방법: yarn add @sparticuz/chromium@126.0.0 로 재설치하세요.')
       }
     }
     
