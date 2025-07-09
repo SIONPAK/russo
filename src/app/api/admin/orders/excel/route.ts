@@ -115,8 +115,10 @@ export async function POST(request: NextRequest) {
       try {
         const { orderNumber, companyName, trackingNumber } = item
         
+        console.log(`운송장 업로드 처리 중: ${JSON.stringify(item)}`)
+        
         if (!orderNumber || !trackingNumber) {
-          errors.push(`주문번호 또는 운송장번호가 누락됨: ${JSON.stringify(item)}`)
+          errors.push(`발주번호 또는 운송장번호가 누락됨: ${JSON.stringify(item)}`)
           continue
         }
 

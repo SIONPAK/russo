@@ -130,6 +130,38 @@ export async function GET(request: NextRequest) {
           }))
 
           order.order_items = convertedItems
+          
+          // 반품명세서의 최신 총액을 주문 총액에 반영 (음수로)
+          order.total_amount = -returnStatements.total_amount
+        }
+      } else if (order.order_type === 'mixed') {
+        // 혼합 주문의 경우 반품명세서 정보도 함께 가져오기
+        const { data: returnStatements, error: returnError } = await supabase
+          .from('return_statements')
+          .select('*')
+          .eq('order_id', order.id)
+
+        if (!returnError && returnStatements && returnStatements.length > 0) {
+          // 반품명세서가 있는 경우 추가 정보 포함
+          const returnStatement = returnStatements[0]
+          
+          // 반품명세서 items를 order_items에 추가
+          const returnItems = returnStatement.items?.map((item: any, index: number) => ({
+            id: `return-${index}`,
+            order_id: order.id,
+            product_id: item.product_id || null,
+            product_name: item.product_name,
+            color: item.color || '',
+            size: item.size || '',
+            quantity: -item.quantity, // 반품이므로 음수로 변환
+            unit_price: item.unit_price,
+            total_price: -item.total_price, // 반품이므로 음수로 변환
+            shipped_quantity: 0,
+            products: null
+          })) || []
+
+          // 기존 order_items에 반품 items 추가
+          order.order_items = [...(order.order_items || []), ...returnItems]
         }
       }
 
@@ -218,18 +250,34 @@ export async function GET(request: NextRequest) {
         .map(order => order.id)
 
       if (returnOrderIds.length > 0) {
-        // 반품명세서 상태 조회
+        // 반품명세서 상태 및 총액 조회
         const { data: returnStatements, error: returnError } = await supabase
           .from('return_statements')
-          .select('order_id, status')
+          .select('order_id, status, total_amount')
           .in('order_id', returnOrderIds)
 
         if (!returnError && returnStatements) {
-          // 반품명세서 상태를 주문에 추가
+          // 반품명세서 상태를 주문에 추가하고 총액 업데이트
           ordersWithReturnStatus = orders.map(order => {
             const returnStatement = returnStatements.find(rs => rs.order_id === order.id)
+            
+            // 반품명세서가 있는 경우 총액 업데이트
+            let updatedTotalAmount = order.total_amount
+            if (returnStatement) {
+              if (order.order_type === 'return_only') {
+                // 반품 전용 주문: 반품명세서 총액을 음수로 적용
+                updatedTotalAmount = -returnStatement.total_amount
+              } else if (order.order_type === 'mixed') {
+                // 혼합 주문: 기존 양수 주문 총액에서 반품 총액 차감
+                // 이 경우 이미 반품명세서 수정 시 orders 테이블의 total_amount가 업데이트됨
+                // 따라서 DB에서 가져온 값 사용
+                updatedTotalAmount = order.total_amount
+              }
+            }
+            
             return {
               ...order,
+              total_amount: updatedTotalAmount,
               return_statement_status: returnStatement?.status || null
             }
           })

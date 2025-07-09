@@ -593,13 +593,13 @@ export function parseTrackingExcel(file: File): Promise<TrackingUploadData[]> {
         const trackingData: TrackingUploadData[] = []
         
         jsonData.forEach((row: any, index) => {
-          // 간단한 형식의 엑셀 파싱 (주문번호, 상호명, 운송장번호)
-          const orderNumber = row['주문번호']?.toString().trim()
+          // 간단한 형식의 엑셀 파싱 (발주번호/주문번호, 상호명, 운송장번호)
+          const orderNumber = (row['발주번호'] || row['주문번호'])?.toString().trim()
           const companyName = row['상호명']?.toString().trim()
           const trackingNumber = row['운송장번호']?.toString().trim()
           
           if (!orderNumber || !trackingNumber) {
-            console.warn(`행 ${index + 2}: 주문번호 또는 운송장번호가 누락되었습니다.`)
+            console.warn(`행 ${index + 2}: 발주번호(주문번호) 또는 운송장번호가 누락되었습니다.`)
             return
           }
           
