@@ -415,6 +415,17 @@ export function OrdersPage() {
 
     const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
 
+    // 🎯 운송장 번호 유효성 검사
+    const ordersWithoutTracking = selectedOrdersData.filter(order => 
+      !order.tracking_number || order.tracking_number.trim() === ''
+    )
+
+    if (ordersWithoutTracking.length > 0) {
+      const orderNumbers = ordersWithoutTracking.map(order => order.order_number).join(', ')
+      showError(`일괄 출고를 위해서는 모든 주문에 운송장 번호가 필요합니다.\n\n운송장 미입력 주문 (${ordersWithoutTracking.length}건):\n${orderNumbers}\n\n먼저 운송장 번호를 입력해주세요.`)
+      return
+    }
+
     if (!confirm(`선택된 ${selectedOrders.length}건의 주문을 출고 처리하시겠습니까?\n\n⚠️ 출고 처리 시:\n• 주문이 출고내역조회로 이동됩니다\n• 주문 상태가 '출고완료'로 변경됩니다\n\n이 작업은 되돌릴 수 없습니다.`)) {
       return
     }
@@ -450,6 +461,19 @@ export function OrdersPage() {
   const handleFinalizeStatements = async () => {
     if (selectedOrders.length === 0) {
       showInfo('최종 명세서를 확정할 주문을 선택해주세요.')
+      return
+    }
+
+    const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
+
+    // 🎯 운송장 번호 유효성 검사
+    const ordersWithoutTracking = selectedOrdersData.filter(order => 
+      !order.tracking_number || order.tracking_number.trim() === ''
+    )
+
+    if (ordersWithoutTracking.length > 0) {
+      const orderNumbers = ordersWithoutTracking.map(order => order.order_number).join(', ')
+      showError(`최종 명세서 확정을 위해서는 모든 주문에 운송장 번호가 필요합니다.\n\n운송장 미입력 주문 (${ordersWithoutTracking.length}건):\n${orderNumbers}\n\n먼저 운송장 번호를 입력해주세요.`)
       return
     }
 
@@ -878,6 +902,9 @@ export function OrdersPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   출고 상태
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  운송장 상태
+                </th>
                 <th 
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('total_amount')}
@@ -896,7 +923,7 @@ export function OrdersPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center">
+                  <td colSpan={10} className="px-6 py-12 text-center">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                       <span className="ml-2 text-gray-500">로딩 중...</span>
@@ -905,7 +932,7 @@ export function OrdersPage() {
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
                     선택한 날짜에 주문이 없습니다.
                   </td>
                 </tr>
@@ -936,7 +963,15 @@ export function OrdersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {formatDateTime(order.created_at)}
+                          {new Date(order.created_at).toLocaleString('ko-KR', {
+                            timeZone: 'Asia/Seoul',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                          })}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -1059,6 +1094,23 @@ export function OrdersPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        {(() => {
+                          const trackingStatus = getTrackingStatus(order)
+                          return (
+                            <div className="space-y-1">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${trackingStatus.color}`}>
+                                {trackingStatus.text}
+                              </span>
+                              {order.tracking_number && (
+                                <div className="text-xs text-gray-500">
+                                  {order.tracking_number}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
                           {formatCurrency(order.total_amount)}
                         </div>
@@ -1078,7 +1130,7 @@ export function OrdersPage() {
           <h3 className="text-sm font-medium text-blue-900 mb-2">
             선택된 주문 정보 ({selectedOrders.length}건)
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-blue-700">총 주문 금액:</span>
               <span className="font-medium text-blue-900 ml-2">
@@ -1100,6 +1152,32 @@ export function OrdersPage() {
               <span className="font-medium text-blue-900 ml-2">
                 {new Set(selectedOrdersData.map(order => order.users?.company_name)).size}개
               </span>
+            </div>
+            <div>
+              {(() => {
+                const ordersWithoutTracking = selectedOrdersData.filter(order => 
+                  !order.tracking_number || order.tracking_number.trim() === ''
+                )
+                if (ordersWithoutTracking.length > 0) {
+                  return (
+                    <div>
+                      <span className="text-red-700 font-medium">⚠️ 운송장 미입력:</span>
+                      <span className="font-medium text-red-900 ml-2">
+                        {ordersWithoutTracking.length}건
+                      </span>
+                    </div>
+                  )
+                } else {
+                  return (
+                    <div>
+                      <span className="text-green-700">✓ 운송장 입력:</span>
+                      <span className="font-medium text-green-900 ml-2">
+                        모두 완료
+                      </span>
+                    </div>
+                  )
+                }
+              })()}
             </div>
           </div>
         </div>
