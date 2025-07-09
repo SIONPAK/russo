@@ -49,7 +49,7 @@ export function OrdersPage() {
   const [sortBy, setSortBy] = useState<'company_name' | 'created_at' | 'total_amount'>('company_name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [isStatementDropdownOpen, setIsStatementDropdownOpen] = useState(false) // 명세서 드롭다운 상태
-  const [editingItem, setEditingItem] = useState<{orderId: string, itemId: string, field: 'quantity' | 'shipped_quantity'} | null>(null)
+  const [editingItem, setEditingItem] = useState<{orderId: string, itemId: string} | null>(null)
   
   // 다운로드 진행 상태 관리
   const [downloadingPDF, setDownloadingPDF] = useState(false)
@@ -572,8 +572,8 @@ export function OrdersPage() {
     })
   }
 
-  // 주문 아이템 수정 함수
-  const handleUpdateOrderItem = async (orderId: string, itemId: string, field: 'quantity' | 'shipped_quantity', value: number) => {
+  // 주문 아이템 수정 함수 (수량만 변경 가능)
+  const handleUpdateOrderItem = async (orderId: string, itemId: string, value: number) => {
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/items`, {
         method: 'PUT',
@@ -582,22 +582,22 @@ export function OrdersPage() {
         },
         body: JSON.stringify({
           orderItemId: itemId,
-          [field]: value
+          quantity: value
         }),
       })
 
       const result = await response.json()
 
       if (result.success) {
-        showSuccess('주문 아이템이 수정되었습니다.')
-        // 주문 목록 새로고침
-        await fetchOrders()
+        showSuccess('주문 수량이 수정되었습니다.')
+        // 현재 날짜로 주문 목록 새로고침 (전체 목록 변경 방지)
+        await fetchTodayOrders()
       } else {
-        showError(result.error || '주문 아이템 수정에 실패했습니다.')
+        showError(result.error || '주문 수량 수정에 실패했습니다.')
       }
     } catch (error) {
-      console.error('주문 아이템 수정 오류:', error)
-      showError('주문 아이템 수정 중 오류가 발생했습니다.')
+      console.error('주문 수량 수정 오류:', error)
+      showError('주문 수량 수정 중 오류가 발생했습니다.')
     } finally {
       setEditingItem(null)
     }
@@ -1047,7 +1047,7 @@ export function OrdersPage() {
                                   <div className="flex items-center gap-2 mt-1">
                                     <div className="flex items-center gap-1">
                                       <span className="text-gray-700">수량:</span>
-                                      {editingItem?.orderId === order.id && editingItem?.itemId === item.id && editingItem?.field === 'quantity' ? (
+                                      {editingItem?.orderId === order.id && editingItem?.itemId === item.id ? (
                                         <input
                                           type="number"
                                           min="0"
@@ -1057,7 +1057,7 @@ export function OrdersPage() {
                                           onBlur={(e) => {
                                             const value = parseInt(e.target.value) || 0
                                             if (value !== item.quantity) {
-                                              handleUpdateOrderItem(order.id, item.id, 'quantity', value)
+                                              handleUpdateOrderItem(order.id, item.id, value)
                                             } else {
                                               setEditingItem(null)
                                             }
@@ -1073,7 +1073,7 @@ export function OrdersPage() {
                                       ) : (
                                         <span 
                                           className="text-gray-700 cursor-pointer hover:text-blue-600 hover:underline"
-                                          onClick={() => setEditingItem({orderId: order.id, itemId: item.id, field: 'quantity'})}
+                                          onClick={() => setEditingItem({orderId: order.id, itemId: item.id})}
                                         >
                                           {item.quantity}개
                                         </span>
@@ -1082,39 +1082,7 @@ export function OrdersPage() {
                                     {(item.shipped_quantity || 0) > 0 && (
                                       <div className="flex items-center gap-1">
                                         <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
-                                          출고: 
-                                          {editingItem?.orderId === order.id && editingItem?.itemId === item.id && editingItem?.field === 'shipped_quantity' ? (
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              max={item.quantity}
-                                              defaultValue={item.shipped_quantity}
-                                              className="w-12 ml-1 px-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                              autoFocus
-                                              onBlur={(e) => {
-                                                const value = parseInt(e.target.value) || 0
-                                                if (value !== item.shipped_quantity) {
-                                                  handleUpdateOrderItem(order.id, item.id, 'shipped_quantity', value)
-                                                } else {
-                                                  setEditingItem(null)
-                                                }
-                                              }}
-                                              onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                  e.currentTarget.blur()
-                                                } else if (e.key === 'Escape') {
-                                                  setEditingItem(null)
-                                                }
-                                              }}
-                                            />
-                                          ) : (
-                                            <span 
-                                              className="cursor-pointer hover:underline ml-1"
-                                              onClick={() => setEditingItem({orderId: order.id, itemId: item.id, field: 'shipped_quantity'})}
-                                            >
-                                              {item.shipped_quantity}개
-                                            </span>
-                                          )}
+                                          출고: {item.shipped_quantity}개
                                         </span>
                                       </div>
                                     )}
