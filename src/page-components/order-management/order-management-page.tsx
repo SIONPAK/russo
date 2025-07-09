@@ -1344,18 +1344,6 @@ export function OrderManagementPage() {
                             <p className="text-sm text-gray-600">코드: {product.code}</p>
                             <p className="text-sm text-gray-600">가격: {formatCurrency(product.price)}</p>
                           </div>
-                          <div className="text-right">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              product.stock === 0 ? 'bg-red-100 text-red-800' :
-                              product.stock < 10 ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-green-100 text-green-800'
-                            }`}>
-                              {product.stock === 0 ? '품절' : `재고 ${product.stock}개`}
-                            </span>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {product.stock === 0 ? '주문 가능' : ''}
-                            </p>
-                          </div>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
