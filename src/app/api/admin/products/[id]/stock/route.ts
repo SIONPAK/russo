@@ -182,6 +182,19 @@ export async function PATCH(
         console.log(`🔄 재고 증가로 자동 할당 시작 - 상품: ${productId}, 증가량: ${adjustment}`)
         allocationResults = await autoAllocateToUnshippedOrders(supabase, productId)
         console.log(`🔄 자동 할당 결과:`, allocationResults)
+
+        // 🎯 전체 재할당 수행 (부분 할당된 주문들 재할당)
+        console.log(`🔄 전체 재할당 시작...`)
+        try {
+          const globalReallocationResult = await performGlobalReallocation(supabase)
+          console.log(`✅ 전체 재할당 완료:`, globalReallocationResult)
+          // allocationResults에 전체 재할당 정보 추가
+          if (allocationResults && allocationResults.success) {
+            (allocationResults as any).globalReallocation = globalReallocationResult
+          }
+        } catch (error) {
+          console.error(`❌ 전체 재할당 실패:`, error)
+        }
       }
     }
 
