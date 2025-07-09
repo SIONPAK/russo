@@ -432,7 +432,7 @@ async function getBrowser() {
     args: chromium.default.args,
     executablePath,
     headless: true,
-    timeout: 120000
+    timeout: 30000
   })
 }
 
@@ -457,7 +457,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     
     // Vercel 환경에서 최적화된 페이지 설정
     await page.setViewport({ width: 1240, height: 1754 }) // A4 크기
-    await page.setDefaultTimeout(30000) // 30초 타임아웃
+    await page.setDefaultTimeout(10000) // 10초 타임아웃
     
     // 모든 리소스 요청 허용 (폰트 로딩을 위해)
     console.log('🔓 모든 리소스 요청 허용 (폰트 로딩을 위해)')
@@ -681,8 +681,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           <tr>
             <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10 korean-text">날 짜 :</td>
-            <td class="col3 row-10 korean-text">${statementData.issueDate}</td>
+            <td colspan="2" class="col2 row-10 korean-text">날 짜 : ${statementData.issueDate}</td>
             <td class="col4 row-10 empty-cell"></td>
             <td class="col5 row-10 empty-cell"></td>
             <td colspan="4" rowspan="2" class="row-24 company-info korean-text">
@@ -692,16 +691,14 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           <tr>
             <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10 korean-text">수 신 :</td>
-            <td class="col3 row-10 korean-text">${statementData.customer.companyName}</td>
+            <td colspan="2" class="col2 row-10 korean-text">수 신 : ${statementData.customer.companyName}</td>
             <td class="col4 row-10 empty-cell"></td>
             <td class="col5 row-10 empty-cell"></td>
           </tr>
           
           <tr>
             <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10 korean-text">참 조 :</td>
-            <td class="col3 row-10 empty-cell"></td>
+            <td colspan="2" class="col2 row-10 korean-text">참 조 :</td>
             <td class="col4 row-10 empty-cell"></td>
             <td class="col5 row-10 empty-cell"></td>
             <td colspan="4" rowspan="2" class="row-24 company-info korean-text">
@@ -719,9 +716,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           <tr>
             <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10 korean-text">아래와 같이 영수 드립니다</td>
-            <td class="col3 row-10 empty-cell"></td>
-            <td class="col4 row-10 empty-cell"></td>
+            <td colspan="2" class="col2 row-10 korean-text">아래와 같이 영수 드립니다</td>
             <td class="col5 row-10 empty-cell"></td>
             <td class="col6 row-10 empty-cell"></td>
             <td class="col6 row-10 empty-cell"></td>
@@ -744,8 +739,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-11 empty-cell"></td>
             <td colspan="2" class="row-11 korean-text">합계금액</td>
-            <td colspan="4" rowspan="2" class="row-24 amount-text korean-text">
-              ${convertToKoreanNumber(statementData.amounts.finalTotal)}
+            <td colspan="4" rowspan="2" class="row-24 amount-text korean-text-bold">
+              ${convertToKoreanNumber(statementData.amounts.finalTotal)} 정
             </td>
             <td colspan="2" rowspan="2" class="row-24 text-center">
               ${statementData.amounts.finalTotal.toLocaleString()}
@@ -822,8 +817,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-11 empty-cell"></td>
             <td class="col2 row-11 empty-cell"></td>
-            <td class="col3 row-11 korean-text">국민은행 573701-04-214209 주식회사 루소</td>
-            <td class="col4 row-11 empty-cell"></td>
+            <td colspan="2" class="col3 row-11 korean-text">국민은행 573701-04-214209 주식회사 루소</td>
             <td class="col5 row-11 empty-cell"></td>
             <td class="col6 row-11 empty-cell"></td>
             <td class="col6 row-11 empty-cell"></td>
@@ -834,8 +828,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-10 empty-cell"></td>
             <td class="col2 row-10 empty-cell"></td>
-            <td class="col3 row-10 korean-text">부가세 포함 입금, 계산서는 자동발행입니다.</td>
-            <td class="col4 row-10 empty-cell"></td>
+            <td colspan="2" class="col3 row-10 korean-text">부가세 포함 입금, 계산서는 자동발행입니다.</td>
             <td class="col5 row-10 empty-cell"></td>
             <td class="col6 row-10 empty-cell"></td>
             <td class="col6 row-10 empty-cell"></td>
@@ -846,8 +839,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-11 empty-cell"></td>
             <td class="col2 row-11 empty-cell"></td>
-            <td class="col3 row-11 korean-text">감사합니다</td>
-            <td class="col4 row-11 empty-cell"></td>
+            <td colspan="2" class="col3 row-11 korean-text">감사합니다</td>
             <td class="col5 row-11 empty-cell"></td>
             <td class="col6 row-11 empty-cell"></td>
             <td class="col6 row-11 empty-cell"></td>
@@ -867,12 +859,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
   console.log('📄 HTML 콘텐츠 로드 중...')
   await page.setContent(htmlContent, {
     waitUntil: 'networkidle0',
-    timeout: 30000
+    timeout: 10000
   })
   
-  // 폰트 로딩 대기
-  console.log('⏳ 폰트 로딩 대기 중... (5초)')
-  await new Promise(resolve => setTimeout(resolve, 5000))
+  // 폰트 로딩 대기 (단축)
+  console.log('⏳ 폰트 로딩 대기 중... (1초)')
+  await new Promise(resolve => setTimeout(resolve, 1000))
   
   console.log('📄 PDF 생성 중...')
   const pdfBuffer = await page.pdf({
