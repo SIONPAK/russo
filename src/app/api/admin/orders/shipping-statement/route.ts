@@ -460,15 +460,9 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     await page.setViewport({ width: 1240, height: 1754 }) // A4 크기
     await page.setDefaultTimeout(30000) // 30초 타임아웃
     
-    // 메모리 사용량 최적화 (폰트는 허용)
-    await page.setRequestInterception(true)
-    page.on('request', (req: any) => {
-      if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet') {
-        req.abort()
-      } else {
-        req.continue()
-      }
-    })
+    // 리소스 요청 차단 해제 (폰트 로딩을 위해)
+    console.log('🔓 모든 리소스 요청 허용 (폰트 로딩을 위해)')
+    // await page.setRequestInterception(false) // 완전히 해제
     
     // 현재 환경에 맞는 폰트 경로 설정
     const baseUrl = process.env.NODE_ENV === 'production' 
@@ -487,7 +481,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             src: url('${baseUrl}/fonts/PretendardVariable.woff2') format('woff2');
             font-weight: 100 900;
             font-style: normal;
-            font-display: swap;
+            font-display: block;
           }
           
           @page {
@@ -495,13 +489,13 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             margin: 15mm;
           }
           
-          /* 로컬 폰트 우선 사용 */
+          /* 강제 폰트 적용 */
           * {
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           body {
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-size: 11px;
             line-height: 1.2;
             margin: 0;
@@ -520,7 +514,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 각 셀 스타일 */
@@ -528,7 +522,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border: 1px solid #9a9a9a;
             padding: 2px;
             vertical-align: bottom;
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 제목 셀 */
@@ -540,7 +534,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             font-size: 20px;
             font-weight: bold;
             padding: 5px;
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 기본 셀 크기들 */
@@ -563,7 +557,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 폰트 스타일 */
           .font-bold { 
             font-weight: bold; 
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .font-11 { font-size: 11px; }
           .font-20 { font-size: 20px; }
@@ -571,18 +565,18 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 특별 스타일 */
           .company-info {
             font-size: 11px;
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .amount-text {
             font-size: 11px;
             font-weight: bold;
             text-align: center;
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .total-row {
             background-color: #f5f5f5;
             font-weight: bold;
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 빈 셀 최소 높이 */
@@ -592,12 +586,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           /* 한글 텍스트 강제 적용 */
           .korean-text {
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-weight: 400;
           }
           
           .korean-text-bold {
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-weight: 700;
           }
         </style>
@@ -864,9 +858,9 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     timeout: 30000
   })
   
-  // 폰트 로딩 완료 대기 (5초 대기)
-  console.log('⏳ 폰트 로딩 대기 중...')
-  await new Promise(resolve => setTimeout(resolve, 5000))
+  // 폰트 로딩 완료 대기 (더 긴 시간)
+  console.log('⏳ 폰트 로딩 대기 중... (10초)')
+  await new Promise(resolve => setTimeout(resolve, 10000))
   
   console.log('📄 PDF 생성 중...')
   const pdfBuffer = await page.pdf({
