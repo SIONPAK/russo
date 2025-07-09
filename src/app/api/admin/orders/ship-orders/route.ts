@@ -80,6 +80,14 @@ export async function POST(request: NextRequest) {
     
     for (const order of orders) {
       try {
+        // 출고수량 확인 (미출고건 로그용)
+        const totalShipped = order.order_items?.reduce((sum: number, item: any) => sum + (item.shipped_quantity || 0), 0) || 0
+        const isUnshipped = totalShipped === 0
+        
+        if (isUnshipped) {
+          console.log(`📦 미출고건 처리: ${order.order_number} - 출고수량 0개, 마일리지 차감 0원`)
+        }
+
         // 주문 상태를 shipped로 업데이트 (출고완료)
         const { error: orderUpdateError } = await supabase
           .from('orders')

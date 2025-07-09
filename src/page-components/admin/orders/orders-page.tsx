@@ -305,10 +305,10 @@ export function OrdersPage() {
         }
       }
       
-      showSuccess(`${selectedOrders.length}건의 거래명세서가 다운로드되었습니다.`)
-      
-      // 다운로드 후 데이터 새로고침
-      await fetchOrders()
+              showSuccess(`${selectedOrders.length}건의 거래명세서가 다운로드되었습니다.`)
+        
+        // 다운로드 후 데이터 새로고침 (현재 날짜 기준 유지)
+        await fetchTodayOrders()
     } catch (error) {
       console.error('Shipping statement error:', error)
       showError('명세서 생성에 실패했습니다.')
@@ -375,8 +375,8 @@ export function OrdersPage() {
           showSuccess(`${selectedOrders.length}건의 거래명세서 PDF가 다운로드되었습니다.`)
         }
         
-        // 다운로드 후 데이터 새로고침
-        await fetchOrders()
+        // 다운로드 후 데이터 새로고침 (현재 날짜 기준 유지)
+        await fetchTodayOrders()
       } else {
         const errorData = await response.json()
         console.error('PDF 생성 실패:', errorData)
@@ -434,8 +434,8 @@ export function OrdersPage() {
         
         showSuccess(`${selectedOrders.length}건의 영수증 ZIP 파일이 다운로드되었습니다.`)
         
-        // 다운로드 후 데이터 새로고침
-        await fetchOrders()
+        // 다운로드 후 데이터 새로고침 (현재 날짜 기준 유지)
+        await fetchTodayOrders()
       } else {
         const errorData = await response.json()
         showError(errorData.error || 'ZIP 파일 생성에 실패했습니다.')
