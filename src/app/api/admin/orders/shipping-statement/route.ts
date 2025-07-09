@@ -372,13 +372,16 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
 // 환경에 따라 다른 Puppeteer 설정 (Vercel 커뮤니티 해결책 적용)
 async function getBrowser() {
   const isDev = process.env.NODE_ENV === 'development'
+  // 실제 존재하는 v137.0.1 릴리즈 사용, 아키텍처별 파일명 적용
+  const REMOTE_PATH = process.env.CHROMIUM_REMOTE_EXEC_PATH || 'https://github.com/Sparticuz/chromium/releases/download/v137.0.1/chromium-v137.0.1-pack.x64.tar'
+  const LOCAL_PATH = process.env.CHROMIUM_LOCAL_EXEC_PATH
   
   if (isDev) {
     console.log('🔧 개발 환경: 로컬 Chrome 사용 시도')
     
     // 로컬 Chrome 경로들 시도
     const possiblePaths = [
-      process.env.CHROMIUM_LOCAL_EXEC_PATH,
+      LOCAL_PATH,
       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       '/Applications/Chromium.app/Contents/MacOS/Chromium',
       '/usr/bin/google-chrome',
@@ -408,22 +411,26 @@ async function getBrowser() {
     }
     
     console.log('⚠️ 개발 환경에서 Chrome을 찾을 수 없습니다.')
+    console.log('🔧 Chrome 설치 방법:')
+    console.log('   - brew install --cask google-chrome')
+    console.log('   - 또는 .env.local에 CHROMIUM_LOCAL_EXEC_PATH 설정')
+    console.log('📋 현재는 Excel 다운로드로 대체됩니다.')
+    
     throw new Error('개발 환경에서 Chrome을 찾을 수 없습니다. Excel 다운로드로 전환됩니다.')
   }
   
-  // 프로덕션 환경: 표준 Vercel + Puppeteer 방식
+  // 프로덕션 환경: @sparticuz/chromium-min 사용
   console.log('🏭 프로덕션 환경: @sparticuz/chromium-min 사용')
+  console.log('🔍 원격 Chromium 경로:', REMOTE_PATH)
   
   const chromium = await import('@sparticuz/chromium-min')
   const puppeteer = await import('puppeteer-core')
   
+  const executablePath = await chromium.default.executablePath(REMOTE_PATH)
+  
   return await puppeteer.default.launch({
-    args: [
-      ...chromium.default.args,
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-    ],
-    executablePath: await chromium.default.executablePath(),
+    args: chromium.default.args,
+    executablePath,
     headless: true,
     timeout: 120000
   })
