@@ -122,8 +122,10 @@ export async function POST(request: NextRequest) {
         return new NextResponse(zipBuffer, {
           status: 200,
           headers: {
-            'Content-Type': 'application/zip',
-            'Content-Disposition': `attachment; filename="receipts_bulk_download_${getKoreaDateFormatted()}.zip"`,
+            'Content-Type': 'application/zip; charset=utf-8',
+            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`receipts_bulk_download_${getKoreaDateFormatted()}.zip`)}`,
+            'Content-Length': zipBuffer.length.toString(),
+            'Cache-Control': 'no-cache',
             'X-PDF-Fallback': 'true',
             'X-Fallback-Reason': 'PDF generation failed, automatically switched to Excel'
           }
@@ -136,8 +138,10 @@ export async function POST(request: NextRequest) {
       return new NextResponse(zipBuffer, {
         status: 200,
         headers: {
-          'Content-Type': 'application/zip',
-          'Content-Disposition': `attachment; filename="receipts_bulk_download_${getKoreaDateFormatted()}.zip"`
+          'Content-Type': 'application/zip; charset=utf-8',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`receipts_bulk_download_${getKoreaDateFormatted()}.zip`)}`,
+          'Content-Length': zipBuffer.length.toString(),
+          'Cache-Control': 'no-cache'
         }
       })
     }
@@ -248,16 +252,28 @@ export async function GET(request: NextRequest) {
         return new NextResponse(excelBuffer, {
           status: 200,
           headers: {
-            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition': `attachment; filename="receipt_${order.order_number}.xlsx"`,
-            'X-PDF-Fallback': 'true',
-            'X-Fallback-Reason': 'PDF generation failed, automatically switched to Excel'
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8',
+            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`receipt_${order.order_number}.xlsx`)}`,
+            'Content-Length': excelBuffer.length.toString(),
+            'Cache-Control': 'no-cache'
           }
         })
       }
     } else {
       // 개별 영수증 생성 (단일 엑셀 파일)
       const shippedItems = order.order_items.filter((item: any) => item.shipped_quantity > 0)
+      
+      // 프로덕션 환경에서 데이터 확인을 위한 로깅
+      console.log('🔍 주문 데이터 확인:', {
+        orderNumber: order.order_number,
+        companyName: order.users.company_name,
+        environment: process.env.NODE_ENV,
+        shippedItemsCount: shippedItems.length,
+        firstItem: shippedItems[0] ? {
+          productName: shippedItems[0].products?.name || shippedItems[0].product_name,
+          color: shippedItems[0].color
+        } : null
+      })
       
       const shippingStatementData = {
         orderNumber: order.order_number,
@@ -280,15 +296,24 @@ export async function GET(request: NextRequest) {
         totalAmount: shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
       }
       
+      console.log('🔍 Excel 전달 데이터:', {
+        companyName: shippingStatementData.companyName,
+        itemsCount: shippingStatementData.items.length,
+        firstItemName: shippingStatementData.items[0]?.productName,
+        firstItemColor: shippingStatementData.items[0]?.color
+      })
+      
       const excelBuffer = await generateShippingStatement(shippingStatementData)
       
-      return new NextResponse(excelBuffer, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Disposition': `attachment; filename="receipt_${order.order_number}.xlsx"`
-        }
-      })
+              return new NextResponse(excelBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=utf-8',
+            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`receipt_${order.order_number}.xlsx`)}`,
+            'Content-Length': excelBuffer.length.toString(),
+            'Cache-Control': 'no-cache'
+          }
+        })
     }
     
   } catch (error) {
@@ -347,7 +372,8 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
 // 환경에 따라 다른 Puppeteer 설정 (Vercel 커뮤니티 해결책 적용)
 async function getBrowser() {
   const isDev = process.env.NODE_ENV === 'development'
-  const REMOTE_PATH = process.env.CHROMIUM_REMOTE_EXEC_PATH || 'https://github.com/Sparticuz/chromium/releases/download/v137.0.1/chromium-v137.0.1-pack.tar'
+  // 실제 존재하는 v137.0.1 릴리즈 사용, 아키텍처별 파일명 적용
+  const REMOTE_PATH = process.env.CHROMIUM_REMOTE_EXEC_PATH || 'https://github.com/Sparticuz/chromium/releases/download/v137.0.1/chromium-v137.0.1-pack.x64.tar'
   const LOCAL_PATH = process.env.CHROMIUM_LOCAL_EXEC_PATH
   
   if (isDev) {
@@ -360,16 +386,16 @@ async function getBrowser() {
       '/Applications/Chromium.app/Contents/MacOS/Chromium',
       '/usr/bin/google-chrome',
       '/usr/bin/chromium-browser'
-    ].filter(Boolean)
+    ].filter(Boolean) as string[]
     
     for (const path of possiblePaths) {
       try {
         const fs = await import('fs')
-        if (fs.existsSync(path as string)) {
-          console.log('✅ 로컬 Chrome 발견:', path)
-          const puppeteer = await import('puppeteer-core')
+        if (fs.existsSync(path)) {
+          console.log(`✅ 로컬 Chrome 발견: ${path}`)
+          const puppeteer = await import('puppeteer')
           return await puppeteer.default.launch({
-            executablePath: path as string,
+            executablePath: path,
             headless: true,
             args: [
               '--no-sandbox',
@@ -380,33 +406,34 @@ async function getBrowser() {
           })
         }
       } catch (error) {
-        console.log('❌ Chrome 경로 시도 실패:', path, error)
+        console.log(`⚠️ 경로 확인 실패: ${path}`)
         continue
       }
     }
     
-    // 로컬에서 Chrome을 찾을 수 없는 경우
-    console.log('⚠️  개발 환경에서 로컬 Chrome을 찾을 수 없습니다.')
-    console.log('📋 해결 방법:')
-    console.log('1. Google Chrome 설치: https://www.google.com/chrome/')
-    console.log('2. 환경 변수 설정: CHROMIUM_LOCAL_EXEC_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"')
-    console.log('3. 또는 개발 환경에서는 Excel 다운로드만 사용')
+    console.log('⚠️ 개발 환경에서 Chrome을 찾을 수 없습니다.')
+    console.log('🔧 Chrome 설치 방법:')
+    console.log('   - brew install --cask google-chrome')
+    console.log('   - 또는 .env.local에 CHROMIUM_LOCAL_EXEC_PATH 설정')
+    console.log('📋 현재는 Excel 다운로드로 대체됩니다.')
     
-    throw new Error('DEV_CHROME_NOT_FOUND: 개발 환경에서 Chrome을 찾을 수 없습니다.')
+    throw new Error('개발 환경에서 Chrome을 찾을 수 없습니다. Excel 다운로드로 전환됩니다.')
   }
   
   // 프로덕션 환경: @sparticuz/chromium-min 사용
   console.log('🏭 프로덕션 환경: @sparticuz/chromium-min 사용')
+  console.log('🔍 원격 Chromium 경로:', REMOTE_PATH)
+  
   const chromium = await import('@sparticuz/chromium-min')
   const puppeteer = await import('puppeteer-core')
   
-  console.log('🔍 원격 Chromium 경로:', REMOTE_PATH)
+  const executablePath = await chromium.default.executablePath(REMOTE_PATH)
   
   return await puppeteer.default.launch({
     args: chromium.default.args,
-    executablePath: await chromium.default.executablePath(REMOTE_PATH),
+    executablePath,
     headless: true,
-    timeout: 60000
+    timeout: 120000
   })
 }
 
@@ -813,7 +840,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
       console.error('에러 메시지:', error.message)
       console.error('에러 스택:', error.stack)
       
-      if (error.message.includes('DEV_CHROME_NOT_FOUND')) {
+      if (error.message.includes('개발 환경에서 Chrome을 찾을 수 없습니다.')) {
         console.error('🔧 개발 환경에서 로컬 Chrome을 찾을 수 없습니다.')
         console.error('   → Excel 다운로드로 자동 전환됩니다.')
       } else if (error.message.includes('Protocol error')) {

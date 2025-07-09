@@ -109,13 +109,30 @@ const numberToKorean = (num: number): string => {
 
 // 공통 템플릿 처리 함수
 const processTemplate = (data: any, title: string, items: any[], specialNote?: string, isShippingStatement = false) => {
-  // 템플릿 파일 로드
+  console.log('🔍 processTemplate 호출:', {
+    companyName: data.companyName,
+    title,
+    itemsCount: items.length,
+    environment: process.env.NODE_ENV
+  })
+
+  // 템플릿 파일 로드 (인코딩 명시)
   const templatePath = path.join(process.cwd(), 'public/templates/루소_영수증.xlsx')
-  const templateBuffer = fs.readFileSync(templatePath)
+  console.log('📁 템플릿 경로:', templatePath)
   
-  const workbook = XLSX.read(templateBuffer, { type: 'buffer' })
+  const templateBuffer = fs.readFileSync(templatePath)
+  console.log('📄 템플릿 로드 완료, 크기:', templateBuffer.length)
+  
+  // XLSX 옵션에 인코딩 명시
+  const workbook = XLSX.read(templateBuffer, { 
+    type: 'buffer',
+    codepage: 65001, // UTF-8
+    cellText: false,
+    cellDates: true
+  })
   const worksheetName = workbook.SheetNames[0]
   const worksheet = workbook.Sheets[worksheetName]
+  console.log('📊 워크시트 로드 완료:', worksheetName)
 
   // 색상별 상품 그룹화
   const groupItemsByColorAndProduct = (items: any[]) => {
@@ -164,6 +181,11 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   }
 
   const groupedItems = groupItemsByColorAndProduct(items)
+  console.log('🔍 그룹화된 아이템:', groupedItems.map(item => ({
+    productName: item.productName,
+    color: item.color,
+    quantity: item.totalQuantity
+  })))
 
   // 제목 및 병합 설정
   if (!worksheet['!merges']) {
@@ -171,11 +193,12 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   }
   worksheet['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } })
   
+  // 제목 설정 (명시적 UTF-8 문자열)
   worksheet['A1'] = {
     t: 's',
-    v: title,
+    v: String(title),
     s: {
-      font: { bold: true, sz: 20 },
+      font: { bold: true, sz: 20, name: 'Arial Unicode MS' },
       alignment: { horizontal: 'center', vertical: 'center' }
     }
   }
@@ -186,9 +209,26 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   }
   worksheet['!rows'][0] = { hpt: 32 }
   
-  // 기본 정보 입력
-  worksheet['C3'] = { t: 's', v: new Date(data.date).toLocaleDateString('ko-KR') } // 날짜
-  worksheet['C4'] = { t: 's', v: data.companyName } // 회사명
+  // 기본 정보 입력 (한글 데이터 명시적 처리)
+  const dateValue = data.date || data.shippedAt
+  const formattedDate = dateValue ? new Date(dateValue).toLocaleDateString('ko-KR') : new Date().toLocaleDateString('ko-KR')
+  
+  worksheet['C3'] = { 
+    t: 's', 
+    v: String(formattedDate),
+    s: { font: { name: 'Arial Unicode MS' } }
+  }
+  
+  worksheet['C4'] = { 
+    t: 's', 
+    v: String(data.companyName || ''),
+    s: { font: { name: 'Arial Unicode MS' } }
+  }
+  
+  console.log('🔍 기본 정보 설정:', {
+    date: formattedDate,
+    companyName: data.companyName
+  })
 
   // 합계금액 (공급가액 + 세액)
   const totalSupplyAmount = groupedItems.reduce((sum, item) => sum + item.supplyAmount, 0)
@@ -197,12 +237,13 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   
   const totalAmountKorean = numberToKorean(finalTotalAmount)
   const totalAmountFormatted = finalTotalAmount.toLocaleString()
+  
   worksheet['D9'] = {
     t: 's',
-    v: totalAmountKorean,
+    v: String(totalAmountKorean),
     s: {
       alignment: { horizontal: 'center' },
-      font: { bold: true }
+      font: { bold: true, name: 'Arial Unicode MS' }
     }
   }
   worksheet['I9'] = {
@@ -210,7 +251,7 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     v: `₩${totalAmountFormatted}`,
     s: {
       alignment: { horizontal: 'center' },
-      font: { bold: true }
+      font: { bold: true, name: 'Arial Unicode MS' }
     }
   }
   
@@ -221,21 +262,29 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     if (i < groupedItems.length) {
       const item = groupedItems[i]
       
-      // 품명 (C열) - 좌측정렬
+      console.log(`🔍 상품 ${i + 1} 처리:`, {
+        productName: item.productName,
+        color: item.color,
+        quantity: item.totalQuantity
+      })
+      
+      // 품명 (C열) - 좌측정렬, UTF-8 명시
       worksheet[`C${row}`] = { 
         t: 's', 
-        v: item.productName,
+        v: String(item.productName),
         s: {
-          alignment: { horizontal: 'left' }
+          alignment: { horizontal: 'left' },
+          font: { name: 'Arial Unicode MS' }
         }
       }
       
-      // 규격/색상 (D열) - 중앙정렬
+      // 규격/색상 (D열) - 중앙정렬, UTF-8 명시
       worksheet[`D${row}`] = {
         t: 's',
-        v: item.color,
+        v: String(item.color),
         s: {
-          alignment: { horizontal: 'center' }
+          alignment: { horizontal: 'center' },
+          font: { name: 'Arial Unicode MS' }
         }
       }
       
@@ -284,7 +333,11 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
       if (!isShippingStatement && specialNote && i === 0) {
         remarks = specialNote
       }
-      worksheet[`I${row}`] = { t: 's', v: remarks }
+      worksheet[`I${row}`] = { 
+        t: 's', 
+        v: String(remarks),
+        s: { font: { name: 'Arial Unicode MS' } }
+      }
     } else {
       // 빈 행 처리 - 모든 셀을 빈 값으로
       worksheet[`C${row}`] = { t: 's', v: '' }
@@ -300,13 +353,13 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   // 합계 행 (22행)
   const summaryRow = 22
   
-  // "합    계" 텍스트 - 중앙정렬, 볼드
+  // "합    계" 텍스트 - 중앙정렬, 볼드, UTF-8 명시
   worksheet[`B${summaryRow}`] = {
     t: 's',
     v: '합    계',
     s: {
       alignment: { horizontal: 'center' },
-      font: { bold: true }
+      font: { bold: true, name: 'Arial Unicode MS' }
     }
   }
   
@@ -346,13 +399,32 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   worksheet['!cols'][7] = { width: 12 }    // H열 (세액)
   worksheet['!cols'][8] = { width: 15 }    // I열 (비고)
 
-  // 엑셀 파일 생성
-  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+  console.log('📊 엑셀 파일 생성 중...')
+  
+  // 엑셀 파일 생성 (UTF-8 인코딩 명시)
+  const buffer = XLSX.write(workbook, { 
+    type: 'buffer', 
+    bookType: 'xlsx',
+    compression: true,
+    bookSST: false,
+    cellDates: true
+  })
+  
+  console.log('✅ 엑셀 파일 생성 완료, 크기:', buffer.length)
+  return buffer
 }
 
 // 출고 명세서 생성 함수
 export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
   try {
+    console.log('🔍 Excel 생성 데이터:', {
+      companyName: data.companyName,
+      customerGrade: data.customerGrade,
+      shippedAt: data.shippedAt,
+      itemsCount: data.items.length,
+      firstItem: data.items[0]
+    })
+
     // 색상별 상품 그룹화
     const groupItemsByColorAndProduct = (items: any[]) => {
       const grouped: { [key: string]: { 
@@ -400,6 +472,7 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
     }
 
     const groupedItems = groupItemsByColorAndProduct(data.items)
+    console.log('🔍 그룹화된 아이템:', groupedItems)
 
     // 배송비 계산 (20장 미만일 때)
     const totalQuantity = groupedItems.reduce((sum, item) => sum + item.totalQuantity, 0)
@@ -418,6 +491,13 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
         taxAmount: 0
       })
     }
+
+    console.log('🔍 최종 처리 데이터:', {
+      companyName: data.companyName,
+      customerGrade: data.customerGrade,
+      date: data.shippedAt,
+      itemsCount: itemsWithShipping.length
+    })
 
     return processTemplate(
       {
