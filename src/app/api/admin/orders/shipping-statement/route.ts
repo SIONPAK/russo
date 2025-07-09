@@ -460,10 +460,10 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     await page.setViewport({ width: 1240, height: 1754 }) // A4 크기
     await page.setDefaultTimeout(30000) // 30초 타임아웃
     
-    // 메모리 사용량 최적화
+    // 메모리 사용량 최적화 (폰트는 허용)
     await page.setRequestInterception(true)
     page.on('request', (req: any) => {
-      if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet' || req.resourceType() === 'font') {
+      if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet') {
         req.abort()
       } else {
         req.continue()
@@ -475,17 +475,26 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
       <html>
       <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
         <style>
           @page {
             size: A4;
             margin: 15mm;
           }
+          * {
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif;
+          }
           body {
-            font-family: 'Apple SD Gothic Neo', Arial, sans-serif;
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif;
             font-size: 11px;
             line-height: 1.2;
             margin: 0;
             padding: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
           }
           .page-break {
             page-break-before: always;
@@ -496,6 +505,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
           }
           
           /* 각 셀 스타일 */
@@ -503,6 +513,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border: 1px solid #9a9a9a;
             padding: 2px;
             vertical-align: bottom;
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
           }
           
           /* 제목 셀 */
@@ -514,6 +525,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             font-size: 20px;
             font-weight: bold;
             padding: 5px;
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif !important;
           }
           
           /* 기본 셀 크기들 */
@@ -534,27 +546,44 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           .text-right { text-align: right; }
           
           /* 폰트 스타일 */
-          .font-bold { font-weight: bold; }
+          .font-bold { 
+            font-weight: bold; 
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
+          }
           .font-11 { font-size: 11px; }
           .font-20 { font-size: 20px; }
           
           /* 특별 스타일 */
           .company-info {
             font-size: 11px;
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
           }
           .amount-text {
             font-size: 11px;
             font-weight: bold;
             text-align: center;
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
           }
           .total-row {
             background-color: #f5f5f5;
             font-weight: bold;
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
           }
           
           /* 빈 셀 최소 높이 */
           .empty-cell {
             min-height: 14px;
+          }
+          
+          /* 한글 텍스트 강제 적용 */
+          .korean-text {
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif !important;
+            font-weight: 400;
+          }
+          
+          .korean-text-bold {
+            font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif !important;
+            font-weight: 700;
           }
         </style>
       </head>
@@ -613,7 +642,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
         <tbody>
           <tr>
             <td colspan="9" class="title-cell">
-              <span class="font-bold">영수증</span><span>(공급받는자)</span>
+              <span class="korean-text-bold">영수증</span><span class="korean-text">(공급받는자)</span>
             </td>
           </tr>
           
@@ -631,30 +660,30 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           <tr>
             <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10">날 짜 :</td>
-            <td class="col3 row-10">${statementData.issueDate}</td>
+            <td class="col2 row-10 korean-text">날 짜 :</td>
+            <td class="col3 row-10 korean-text">${statementData.issueDate}</td>
             <td class="col4 row-10 empty-cell"></td>
             <td class="col5 row-10 empty-cell"></td>
-            <td colspan="4" rowspan="2" class="row-24 company-info">
+            <td colspan="4" rowspan="2" class="row-24 company-info korean-text">
               상호 : 주식회사 루소
             </td>
           </tr>
           
           <tr>
             <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10">수 신 :</td>
-            <td class="col3 row-10">${statementData.customer.companyName}</td>
+            <td class="col2 row-10 korean-text">수 신 :</td>
+            <td class="col3 row-10 korean-text">${statementData.customer.companyName}</td>
             <td class="col4 row-10 empty-cell"></td>
             <td class="col5 row-10 empty-cell"></td>
           </tr>
           
           <tr>
             <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10">참 조 :</td>
+            <td class="col2 row-10 korean-text">참 조 :</td>
             <td class="col3 row-10 empty-cell"></td>
             <td class="col4 row-10 empty-cell"></td>
             <td class="col5 row-10 empty-cell"></td>
-            <td colspan="4" rowspan="2" class="row-24 company-info">
+            <td colspan="4" rowspan="2" class="row-24 company-info korean-text">
               전화번호 : 010-2131-7540
             </td>
           </tr>
@@ -669,7 +698,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           <tr>
             <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10">아래와 같이 영수 드립니다</td>
+            <td class="col2 row-10 korean-text">아래와 같이 영수 드립니다</td>
             <td class="col3 row-10 empty-cell"></td>
             <td class="col4 row-10 empty-cell"></td>
             <td class="col5 row-10 empty-cell"></td>
@@ -693,8 +722,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           <tr>
             <td class="col1 row-11 empty-cell"></td>
-            <td colspan="2" class="row-11">합계금액</td>
-            <td colspan="4" rowspan="2" class="row-24 amount-text">
+            <td colspan="2" class="row-11 korean-text">합계금액</td>
+            <td colspan="4" rowspan="2" class="row-24 amount-text korean-text">
               ${convertToKoreanNumber(statementData.amounts.finalTotal)}
             </td>
             <td colspan="2" rowspan="2" class="row-24 text-center">
@@ -710,13 +739,13 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-11 empty-cell"></td>
             <td class="col2 row-11 text-center">No.</td>
-            <td class="col3 row-11 text-center">품명</td>
-            <td class="col4 row-11 text-center">규격</td>
-            <td class="col5 row-11 text-center">수량</td>
-            <td class="col6 row-11 text-center">단가</td>
-            <td class="col6 row-11 text-center">공급가액</td>
-            <td class="col6 row-11 text-center">세액</td>
-            <td class="col4 row-11 text-center">비고</td>
+            <td class="col3 row-11 text-center korean-text">품명</td>
+            <td class="col4 row-11 text-center korean-text">규격</td>
+            <td class="col5 row-11 text-center korean-text">수량</td>
+            <td class="col6 row-11 text-center korean-text">단가</td>
+            <td class="col6 row-11 text-center korean-text">공급가액</td>
+            <td class="col6 row-11 text-center korean-text">세액</td>
+            <td class="col4 row-11 text-center korean-text">비고</td>
           </tr>
     `
     
@@ -731,8 +760,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-10 empty-cell"></td>
             <td class="col2 row-10 text-center">${idx + 1}</td>
-            <td class="col3 row-10">${item.products?.name || item.product_name}</td>
-            <td class="col4 row-10 text-center">${item.color || ''}</td>
+            <td class="col3 row-10 korean-text">${item.products?.name || item.product_name}</td>
+            <td class="col4 row-10 text-center korean-text">${item.color || ''}</td>
             <td class="col5 row-10 text-center">${item.shipped_quantity}</td>
             <td class="col6 row-10 text-center">${item.unit_price.toLocaleString()}</td>
             <td class="col6 row-10 text-center">${supplyAmount.toLocaleString()}</td>
@@ -763,7 +792,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     htmlContent += `
           <tr class="total-row">
             <td class="col1 row-11 empty-cell"></td>
-            <td colspan="5" class="row-11 text-center font-bold">합    계</td>
+            <td colspan="5" class="row-11 text-center font-bold korean-text-bold">합    계</td>
             <td class="col6 row-11 text-center font-bold">${totalSupplyAmount.toLocaleString()}</td>
             <td class="col6 row-11 text-center font-bold">${totalTaxAmount.toLocaleString()}</td>
             <td class="col4 row-11 empty-cell"></td>
@@ -772,7 +801,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-11 empty-cell"></td>
             <td class="col2 row-11 empty-cell"></td>
-            <td class="col3 row-11">국민은행 573701-04-214209 주식회사 루소</td>
+            <td class="col3 row-11 korean-text">국민은행 573701-04-214209 주식회사 루소</td>
             <td class="col4 row-11 empty-cell"></td>
             <td class="col5 row-11 empty-cell"></td>
             <td class="col6 row-11 empty-cell"></td>
@@ -784,7 +813,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-10 empty-cell"></td>
             <td class="col2 row-10 empty-cell"></td>
-            <td class="col3 row-10">부가세 포함 입금, 계산서는 자동발행입니다.</td>
+            <td class="col3 row-10 korean-text">부가세 포함 입금, 계산서는 자동발행입니다.</td>
             <td class="col4 row-10 empty-cell"></td>
             <td class="col5 row-10 empty-cell"></td>
             <td class="col6 row-10 empty-cell"></td>
@@ -796,7 +825,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <tr>
             <td class="col1 row-11 empty-cell"></td>
             <td class="col2 row-11 empty-cell"></td>
-            <td class="col3 row-11">감사합니다</td>
+            <td class="col3 row-11 korean-text">감사합니다</td>
             <td class="col4 row-11 empty-cell"></td>
             <td class="col5 row-11 empty-cell"></td>
             <td class="col6 row-11 empty-cell"></td>
