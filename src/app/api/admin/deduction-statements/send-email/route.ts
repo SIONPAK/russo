@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import { sendEmail } from '@/shared/lib/email-utils'
 import { getKoreaTime } from '@/shared/lib/utils'
+import { generateDeductionStatement } from '@/shared/lib/shipping-statement-utils'
 
 // 차감명세서 이메일 발송 API
 export async function POST(request: NextRequest) {
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
         // company_name으로 users 테이블에서 사용자 정보 조회
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('email, company_name, representative_name')
+          .select('email, company_name, representative_name, business_number, phone, address, postal_code, customer_grade')
           .eq('company_name', statement.company_name)
           .single()
 
@@ -79,6 +80,43 @@ export async function POST(request: NextRequest) {
           return types[type as keyof typeof types] || type
         }
 
+        // 차감명세서 엑셀 파일 생성
+        const statementData = {
+          statementNumber: statement.statement_number,
+          companyName: userData.company_name,
+          businessLicenseNumber: userData.business_number,
+          email: userData.email,
+          phone: userData.phone,
+          address: userData.address,
+          postalCode: userData.postal_code || '',
+          customerGrade: userData.customer_grade || 'BRONZE',
+          deductionDate: statement.created_at,
+          deductionReason: statement.deduction_reason,
+          deductionType: statement.deduction_type,
+          items: (statement.items || []).map((item: any) => {
+            // 차감 수량 우선 사용, 없으면 일반 수량 사용
+            const actualQuantity = item.deduction_quantity || item.quantity || 0
+            console.log('🔍 차감 아이템 수량 확인:', {
+              productName: item.product_name,
+              deduction_quantity: item.deduction_quantity,
+              quantity: item.quantity,
+              actualQuantity
+            })
+            return {
+              productName: item.product_name,
+              color: item.color || '기본',
+              size: item.size || '',
+              quantity: actualQuantity,
+              unitPrice: item.unit_price,
+              totalPrice: item.unit_price * actualQuantity
+            }
+          }),
+          totalAmount: statement.total_amount
+        }
+
+        // 차감 명세서 엑셀 파일 생성
+        const excelBuffer = await generateDeductionStatement(statementData)
+
         // 이메일 내용 생성
         const emailSubject = `[루소] 차감명세서 - ${statement.statement_number}`
         const emailBody = `
@@ -103,6 +141,14 @@ export async function POST(request: NextRequest) {
               </ul>
             </div>
             
+            <div style="background-color: #fff3e0; padding: 20px; border-radius: 5px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #f57c00;">📎 첨부파일</h3>
+              <p style="margin: 10px 0; color: #666;">
+                상세한 차감명세서가 첨부되어 있습니다.<br>
+                엑셀 파일을 다운로드하여 확인해주세요.
+              </p>
+            </div>
+            
             <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
               <p style="margin: 0; color: #856404;">
                 <strong>안내:</strong> 차감된 마일리지는 고객님의 계정에서 자동으로 차감되었습니다.
@@ -118,11 +164,18 @@ export async function POST(request: NextRequest) {
           </div>
         `
 
-        // 이메일 발송
+        // 이메일 발송 (엑셀 파일 첨부)
         await sendEmail({
           to: userEmail,
           subject: emailSubject,
-          html: emailBody
+          html: emailBody,
+          attachments: [
+            {
+              filename: `차감명세서_${statement.statement_number}.xlsx`,
+              content: excelBuffer,
+              contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            }
+          ]
         })
 
         // 이메일 발송 기록 업데이트

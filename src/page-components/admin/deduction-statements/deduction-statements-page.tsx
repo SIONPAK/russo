@@ -477,11 +477,7 @@ export default function DeductionStatementsPage() {
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-500">총 차감 금액 (세금포함)</p>
               <p className="text-2xl font-bold text-gray-900">
-                {(() => {
-                  const totalSupply = statements.reduce((sum, s) => sum + s.total_amount, 0)
-                  const totalVat = Math.floor(totalSupply * 0.1)
-                  return (totalSupply + totalVat).toLocaleString()
-                })()}원
+                {statements.reduce((sum, s) => sum + s.total_amount, 0).toLocaleString()}원
               </p>
             </div>
           </div>
@@ -580,11 +576,7 @@ export default function DeductionStatementsPage() {
                       {statement.deduction_reason}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(() => {
-                        // 기존 금액에 부가세 10% 추가
-                        const vatAmount = Math.floor(statement.total_amount * 0.1)
-                        return (statement.total_amount + vatAmount).toLocaleString()
-                      })()}원
+                      {statement.total_amount.toLocaleString()}원
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center gap-2">

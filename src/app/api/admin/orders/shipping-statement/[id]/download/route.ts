@@ -48,10 +48,11 @@ export async function GET(
       }, { status: 404 })
     }
 
-    // 실제 출고된 상품만 필터링
-    const shippedItems = order.order_items.filter((item: any) => 
-      item.shipped_quantity && item.shipped_quantity > 0
-    )
+    // 실제 출고된 상품만 필터링 (shipped_quantity가 있으면 우선 사용, 없으면 quantity 사용)
+    const shippedItems = order.order_items.filter((item: any) => {
+      const actualQuantity = item.shipped_quantity || item.quantity || 0
+      return actualQuantity > 0
+    })
 
     if (shippedItems.length === 0) {
       return NextResponse.json({ 
@@ -71,17 +72,27 @@ export async function GET(
       postalCode: (order.users as any).postal_code,
       customerGrade: (order.users as any).customer_grade,
       shippedAt: order.shipped_at,
-      items: shippedItems.map((item: any) => ({
-        productName: item.product_name,
-        color: item.color,
-        size: item.size,
-        quantity: item.shipped_quantity,
-        unitPrice: item.unit_price,
-        totalPrice: item.shipped_quantity * item.unit_price
-      })),
-      totalAmount: shippedItems.reduce((sum: number, item: any) => 
-        sum + (item.shipped_quantity * item.unit_price), 0
-      )
+      items: shippedItems.map((item: any) => {
+        const actualQuantity = item.shipped_quantity || item.quantity || 0
+        console.log('🔍 출고 명세서 다운로드 - 아이템 수량 확인:', {
+          productName: item.product_name,
+          shipped_quantity: item.shipped_quantity,
+          quantity: item.quantity,
+          actualQuantity
+        })
+        return {
+          productName: item.product_name,
+          color: item.color || '기본',
+          size: item.size || '',
+          quantity: actualQuantity,
+          unitPrice: item.unit_price,
+          totalPrice: actualQuantity * item.unit_price
+        }
+      }),
+      totalAmount: shippedItems.reduce((sum: number, item: any) => {
+        const actualQuantity = item.shipped_quantity || item.quantity || 0
+        return sum + (actualQuantity * item.unit_price)
+      }, 0)
     }
 
     // 엑셀 파일 생성

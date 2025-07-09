@@ -104,10 +104,16 @@ export async function POST(request: NextRequest) {
           shippedAt: order.shipped_at || new Date().toISOString(),
           items: shippedItems.map((item: any) => {
             const actualQuantity = item.shipped_quantity || item.quantity || 0
+            console.log('🔍 출고 명세서 이메일 발송 - 아이템 수량 확인:', {
+              productName: item.product_name,
+              shipped_quantity: item.shipped_quantity,
+              quantity: item.quantity,
+              actualQuantity
+            })
             return {
               productName: item.product_name,
-              color: item.color,
-              size: item.size,
+              color: item.color || '기본',
+              size: item.size || '',
               quantity: actualQuantity,
               unitPrice: item.unit_price,
               totalPrice: actualQuantity * item.unit_price

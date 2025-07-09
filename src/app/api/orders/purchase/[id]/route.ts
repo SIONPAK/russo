@@ -236,12 +236,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const totalAmountWithVat = supplyAmount + vat
         
         return {
+          product_id: item.product_id,
           product_name: item.product_name,
           color: item.color,
           size: item.size,
           quantity: quantity,
           unit_price: item.unit_price,
-          total_amount: totalAmountWithVat // VAT 포함 금액
+          total_price: totalAmountWithVat // VAT 포함 금액으로 필드명 일치
         }
       })
       console.log(`📦 [수정] 반품 아이템 변환 완료:`, returnItems)
@@ -254,8 +255,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         return_reason: '발주서 수정 시 반품 요청',
         return_type: 'customer_change',
         items: returnItems,
-        total_amount: returnItems.reduce((sum: number, item: any) => sum + item.total_amount, 0),
-        refund_amount: returnItems.reduce((sum: number, item: any) => sum + item.total_amount, 0),
+        total_amount: returnItems.reduce((sum: number, item: any) => sum + item.total_price, 0),
+        refund_amount: returnItems.reduce((sum: number, item: any) => sum + item.total_price, 0),
         status: 'pending',
         created_at: getKoreaTime()
       }

@@ -151,17 +151,23 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
       const key = `${item.productName}_${color}`
       
       if (grouped[key]) {
-        grouped[key].totalQuantity += item.quantity
-        grouped[key].totalPrice += item.totalPrice || (item.unitPrice * item.quantity)
+        const additionalPrice = item.totalPrice || (item.unitPrice * item.quantity)
+        // 수량 = 공급가액 / 단가
+        const additionalQuantity = additionalPrice / item.unitPrice
+        grouped[key].totalQuantity += additionalQuantity
+        grouped[key].totalPrice += additionalPrice
       } else {
         const totalPrice = item.totalPrice || (item.unitPrice * item.quantity)
         const supplyAmount = totalPrice
-        const taxAmount = Math.floor(supplyAmount * 0.1)
+        // 배송비는 부가세 없음
+        const taxAmount = item.productName === '배송비' ? 0 : Math.floor(supplyAmount * 0.1)
+        // 수량 = 공급가액 / 단가
+        const calculatedQuantity = totalPrice / item.unitPrice
         
         grouped[key] = {
           productName: item.productName,
           color,
-          totalQuantity: item.quantity,
+          totalQuantity: calculatedQuantity,
           unitPrice: item.unitPrice,
           totalPrice,
           supplyAmount,
@@ -174,7 +180,14 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     Object.keys(grouped).forEach(key => {
       const item = grouped[key]
       item.supplyAmount = item.totalPrice
-      item.taxAmount = Math.floor(item.supplyAmount * 0.1)
+      // 배송비는 부가세 없음
+      if (item.productName === '배송비') {
+        item.taxAmount = 0
+      } else {
+        item.taxAmount = Math.floor(item.supplyAmount * 0.1)
+      }
+      // 수량 재계산 (공급가액 / 단가)
+      item.totalQuantity = item.supplyAmount / item.unitPrice
     })
     
     return Object.values(grouped)
@@ -422,7 +435,15 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
       customerGrade: data.customerGrade,
       shippedAt: data.shippedAt,
       itemsCount: data.items.length,
-      firstItem: data.items[0]
+      firstItem: data.items[0],
+      allItems: data.items.map(item => ({
+        productName: item.productName,
+        color: item.color,
+        size: item.size,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice
+      }))
     })
 
     // 색상별 상품 그룹화
@@ -441,18 +462,43 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
         const color = item.color || '기본'
         const key = `${item.productName}_${color}`
         
+        console.log('🔍 아이템 그룹화 처리:', {
+          productName: item.productName,
+          color: item.color,
+          quantity: item.quantity,
+          quantityType: typeof item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice
+        })
+        
         if (grouped[key]) {
-          grouped[key].totalQuantity += item.quantity
-          grouped[key].totalPrice += item.totalPrice || (item.unitPrice * item.quantity)
+          const additionalPrice = item.totalPrice || (item.unitPrice * (item.quantity || 0))
+          // 수량 = 공급가액 / 단가
+          const additionalQuantity = additionalPrice / item.unitPrice
+          grouped[key].totalQuantity += additionalQuantity
+          grouped[key].totalPrice += additionalPrice
         } else {
-          const totalPrice = item.totalPrice || (item.unitPrice * item.quantity)
+          const quantity = item.quantity || 0
+          const totalPrice = item.totalPrice || (item.unitPrice * quantity)
           const supplyAmount = totalPrice
-          const taxAmount = Math.floor(supplyAmount * 0.1)
+          // 배송비는 부가세 없음
+          const taxAmount = item.productName === '배송비' ? 0 : Math.floor(supplyAmount * 0.1)
+          // 수량 = 공급가액 / 단가
+          const calculatedQuantity = totalPrice / item.unitPrice
+          
+          console.log('🔍 새 그룹 생성:', {
+            key,
+            originalQuantity: quantity,
+            calculatedQuantity,
+            totalPrice,
+            supplyAmount,
+            taxAmount
+          })
           
           grouped[key] = {
             productName: item.productName,
             color,
-            totalQuantity: item.quantity,
+            totalQuantity: calculatedQuantity,
             unitPrice: item.unitPrice,
             totalPrice,
             supplyAmount,
@@ -465,7 +511,14 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
       Object.keys(grouped).forEach(key => {
         const item = grouped[key]
         item.supplyAmount = item.totalPrice
-        item.taxAmount = Math.floor(item.supplyAmount * 0.1)
+        // 배송비는 부가세 없음
+        if (item.productName === '배송비') {
+          item.taxAmount = 0
+        } else {
+          item.taxAmount = Math.floor(item.supplyAmount * 0.1)
+        }
+        // 수량 재계산 (공급가액 / 단가)
+        item.totalQuantity = item.supplyAmount / item.unitPrice
       })
       
       return Object.values(grouped)

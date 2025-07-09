@@ -224,7 +224,10 @@ export async function GET(request: NextRequest) {
         console.error('개별 PDF 생성 실패, Excel로 폴백:', pdfError)
         
         // PDF 생성 실패 시 Excel로 폴백
-        const shippedItems = order.order_items.filter((item: any) => item.shipped_quantity > 0)
+        const shippedItems = order.order_items.filter((item: any) => {
+          const actualQuantity = item.shipped_quantity || item.quantity || 0
+          return actualQuantity > 0
+        })
         
         const shippingStatementData = {
           orderNumber: order.order_number,
@@ -236,15 +239,27 @@ export async function GET(request: NextRequest) {
           postalCode: order.users.postal_code || '',
           customerGrade: order.users.customer_grade || 'general',
           shippedAt: order.shipped_at || new Date().toISOString(),
-          items: shippedItems.map((item: any) => ({
-            productName: item.products?.name || item.product_name,
-            color: item.color || '기본',
-            size: item.size || '',
-            quantity: item.shipped_quantity,
-            unitPrice: item.unit_price,
-            totalPrice: item.unit_price * item.shipped_quantity
-          })),
-          totalAmount: shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
+          items: shippedItems.map((item: any) => {
+            const actualQuantity = item.shipped_quantity || item.quantity || 0
+            console.log('🔍 출고 명세서 개별 다운로드 - 아이템 수량 확인:', {
+              productName: item.products?.name || item.product_name,
+              shipped_quantity: item.shipped_quantity,
+              quantity: item.quantity,
+              actualQuantity
+            })
+            return {
+              productName: item.products?.name || item.product_name,
+              color: item.color || '기본',
+              size: item.size || '',
+              quantity: actualQuantity,
+              unitPrice: item.unit_price,
+              totalPrice: item.unit_price * actualQuantity
+            }
+          }),
+          totalAmount: shippedItems.reduce((sum: number, item: any) => {
+            const actualQuantity = item.shipped_quantity || item.quantity || 0
+            return sum + (item.unit_price * actualQuantity)
+          }, 0)
         }
         
         const excelBuffer = await generateShippingStatement(shippingStatementData)
@@ -261,7 +276,10 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // 개별 영수증 생성 (단일 엑셀 파일)
-      const shippedItems = order.order_items.filter((item: any) => item.shipped_quantity > 0)
+      const shippedItems = order.order_items.filter((item: any) => {
+        const actualQuantity = item.shipped_quantity || item.quantity || 0
+        return actualQuantity > 0
+      })
       
       // 프로덕션 환경에서 데이터 확인을 위한 로깅
       console.log('🔍 주문 데이터 확인:', {
@@ -331,7 +349,10 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
     const customer = order.users
     const orderItems = order.order_items
     
-    const shippedItems = orderItems.filter((item: any) => item.shipped_quantity > 0)
+    const shippedItems = orderItems.filter((item: any) => {
+      const actualQuantity = item.shipped_quantity || item.quantity || 0
+      return actualQuantity > 0
+    })
     
     // 영수증 생성 (개별 다운로드와 완전히 동일한 방식)
     
@@ -345,15 +366,27 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
       postalCode: customer.postal_code || '',
       customerGrade: customer.customer_grade || 'general',
       shippedAt: order.shipped_at || new Date().toISOString(),
-      items: shippedItems.map((item: any) => ({
-        productName: item.products?.name || item.product_name,
-        color: item.color || '기본',
-        size: item.size || '',
-        quantity: item.shipped_quantity,
-        unitPrice: item.unit_price,
-        totalPrice: item.unit_price * item.shipped_quantity
-      })),
-      totalAmount: shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
+      items: shippedItems.map((item: any) => {
+        const actualQuantity = item.shipped_quantity || item.quantity || 0
+        console.log('🔍 출고 명세서 다중 다운로드 - 아이템 수량 확인:', {
+          productName: item.products?.name || item.product_name,
+          shipped_quantity: item.shipped_quantity,
+          quantity: item.quantity,
+          actualQuantity
+        })
+        return {
+          productName: item.products?.name || item.product_name,
+          color: item.color || '기본',
+          size: item.size || '',
+          quantity: actualQuantity,
+          unitPrice: item.unit_price,
+          totalPrice: item.unit_price * actualQuantity
+        }
+      }),
+      totalAmount: shippedItems.reduce((sum: number, item: any) => {
+        const actualQuantity = item.shipped_quantity || item.quantity || 0
+        return sum + (item.unit_price * actualQuantity)
+      }, 0)
     }
     
     // 영수증 엑셀 생성 (개별 다운로드와 동일한 함수 사용)

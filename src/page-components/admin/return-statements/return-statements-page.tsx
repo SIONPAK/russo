@@ -216,7 +216,7 @@ export default function ReturnStatementsPage() {
       size: product.size,
       return_quantity: 1,
       unit_price: product.unitPrice,
-      total_price: product.unitPrice,
+      total_price: product.unitPrice + Math.floor(product.unitPrice * 0.1), // 부가세 포함
       available_colors: product.availableColors,
       available_sizes: product.availableSizes
     }))
@@ -444,7 +444,7 @@ export default function ReturnStatementsPage() {
         product_name: '',
         color: '',
         size: '',
-        return_quantity: 0,
+        return_quantity: 1,
         unit_price: 0,
         total_price: 0
       }]
@@ -872,11 +872,7 @@ export default function ReturnStatementsPage() {
                       {statement.return_reason}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(() => {
-                        // 기존 금액에 부가세 10% 추가
-                        const vatAmount = Math.floor(statement.refund_amount * 0.1)
-                        return (statement.refund_amount + vatAmount).toLocaleString()
-                      })()}원
+                      {statement.refund_amount.toLocaleString()}원
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(statement.status)}`}>
@@ -1197,7 +1193,13 @@ export default function ReturnStatementsPage() {
                           </div>
                           <div>
                             <span className="text-xs text-blue-600">합계</span>
-                            <div className="font-medium text-blue-600">{item.total_price?.toLocaleString()}원</div>
+                            <div className="font-medium text-blue-600">
+                              {(() => {
+                                const supplyAmount = item.return_quantity * item.unit_price
+                                const vat = Math.floor(supplyAmount * 0.1)
+                                return (supplyAmount + vat).toLocaleString()
+                              })()}원
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1221,7 +1223,11 @@ export default function ReturnStatementsPage() {
                       <div>
                         <span className="text-sm text-blue-600">총 환불 금액</span>
                         <div className="text-xl font-bold text-blue-600">
-                          {newStatement.items.reduce((sum, item) => sum + (item.total_price || 0), 0).toLocaleString()}원
+                          {newStatement.items.reduce((sum, item) => {
+                            const supplyAmount = item.return_quantity * item.unit_price
+                            const vat = Math.floor(supplyAmount * 0.1)
+                            return sum + supplyAmount + vat
+                          }, 0).toLocaleString()}원
                         </div>
                       </div>
                     </div>

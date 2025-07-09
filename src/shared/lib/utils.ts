@@ -41,38 +41,75 @@ export function getKoreanTimeISO(date?: Date): string {
 }
 
 export function formatDate(date: Date | string) {
+  // DB에 이미 한국 시간 문자열로 저장되어 있으므로 그대로 사용
+  if (typeof date === 'string') {
+    // "2025-07-09T11:07:00" 또는 "2025-07-09 11:07:00" 형태에서 날짜만 추출
+    const dateMatch = date.match(/(\d{4}-\d{2}-\d{2})/)
+    if (dateMatch) {
+      return dateMatch[1]
+    }
+  }
+  
+  // 백업으로 Date 객체 처리
   const d = new Date(date)
-  return d.toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    timeZone: 'Asia/Seoul'
-  })
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  
+  return `${year}-${month}-${day}`
 }
 
 export function formatDateTime(date: Date | string) {
+  // DB에 이미 한국 시간 문자열로 저장되어 있으므로 그대로 사용
+  if (typeof date === 'string') {
+    // "2025-07-09T11:07:00" 또는 "2025-07-09 11:07:00" 형태에서 시분까지만 추출
+    const dateTimeMatch = date.match(/(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/)
+    if (dateTimeMatch) {
+      return `${dateTimeMatch[1]} ${dateTimeMatch[2]}`
+    }
+    // 날짜만 있는 경우
+    const dateMatch = date.match(/(\d{4}-\d{2}-\d{2})/)
+    if (dateMatch) {
+      return dateMatch[1]
+    }
+  }
+  
+  // 백업으로 Date 객체 처리 (하지만 이미 변환된 경우)
   const d = new Date(date)
-  return d.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Asia/Seoul'
-  })
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hour = String(d.getHours()).padStart(2, '0')
+  const minute = String(d.getMinutes()).padStart(2, '0')
+  
+  return `${year}-${month}-${day} ${hour}:${minute}`
 }
 
 export function formatDateTimeWithSeconds(date: Date | string) {
+  // DB에 이미 한국 시간 문자열로 저장되어 있으므로 그대로 사용
+  if (typeof date === 'string') {
+    // "2025-07-09T11:07:30" 또는 "2025-07-09 11:07:30" 형태에서 초까지 추출
+    const dateTimeMatch = date.match(/(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2})/)
+    if (dateTimeMatch) {
+      return `${dateTimeMatch[1]} ${dateTimeMatch[2]}`
+    }
+    // 초가 없는 경우
+    const dateTimeNoSecMatch = date.match(/(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/)
+    if (dateTimeNoSecMatch) {
+      return `${dateTimeNoSecMatch[1]} ${dateTimeNoSecMatch[2]}:00`
+    }
+  }
+  
+  // 백업으로 Date 객체 처리
   const d = new Date(date)
-  return d.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZone: 'Asia/Seoul'
-  })
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hour = String(d.getHours()).padStart(2, '0')
+  const minute = String(d.getMinutes()).padStart(2, '0')
+  const second = String(d.getSeconds()).padStart(2, '0')
+  
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`
 }
 
 export function formatTimeAgo(date: Date | string) {

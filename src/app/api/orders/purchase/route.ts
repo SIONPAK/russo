@@ -394,15 +394,22 @@ export async function POST(request: NextRequest) {
         refunded: false,
         email_sent: false,
         created_at: getKoreaTime(),
-        items: negativeItems.map((item: any) => ({
-          product_id: item.product_id,
-          product_name: item.product_name,
-          color: item.color,
-          size: item.size,
-          quantity: Math.abs(item.quantity),
-          unit_price: item.unit_price,
-          total_price: Math.abs(item.unit_price * item.quantity)
-        }))
+        items: negativeItems.map((item: any) => {
+          const quantity = Math.abs(item.quantity)
+          const supplyAmount = quantity * item.unit_price
+          const vat = Math.floor(supplyAmount * 0.1)
+          const totalPriceWithVat = supplyAmount + vat
+          
+          return {
+            product_id: item.product_id,
+            product_name: item.product_name,
+            color: item.color,
+            size: item.size,
+            quantity: quantity,
+            unit_price: item.unit_price,
+            total_price: totalPriceWithVat // VAT 포함 금액
+          }
+        })
       }
 
       console.log(`🔍 반품명세서 생성 시도:`, returnStatementData)
