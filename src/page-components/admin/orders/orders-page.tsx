@@ -125,6 +125,25 @@ export function OrdersPage() {
     }
   }
 
+  // 운송장 상태 확인
+  const getTrackingStatus = (order: any) => {
+    if (!order.tracking_number || order.tracking_number.trim() === '') {
+      return {
+        status: 'not_entered',
+        text: '미입력',
+        color: 'text-red-600 bg-red-100',
+        textColor: 'text-red-600'
+      }
+    } else {
+      return {
+        status: 'entered',
+        text: '입력완료',
+        color: 'text-green-600 bg-green-100',
+        textColor: 'text-green-600'
+      }
+    }
+  }
+
   // 주문 내역 엑셀 다운로드 (CJ대한통운 송장 출력용)
   const handleDownloadExcel = async () => {
     try {

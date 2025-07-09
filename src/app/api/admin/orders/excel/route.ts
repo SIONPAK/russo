@@ -113,17 +113,24 @@ export async function POST(request: NextRequest) {
 
     for (const item of trackingData) {
       try {
-        const { 주문번호, 운송장번호, 택배사 } = item
+        const { 주문번호, 상호명, 운송장번호 } = item
         
         if (!주문번호 || !운송장번호) {
           errors.push(`주문번호 또는 운송장번호가 누락됨: ${JSON.stringify(item)}`)
           continue
         }
 
-        // 주문 존재 확인
+        // 주문 존재 확인 (상호명도 함께 확인)
         const { data: order, error: orderError } = await supabase
           .from('orders')
-          .select('id, order_number, status')
+          .select(`
+            id, 
+            order_number, 
+            status,
+            users!orders_user_id_fkey (
+              company_name
+            )
+          `)
           .eq('order_number', 주문번호)
           .single()
 
@@ -132,12 +139,19 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // 상호명 검증 (있을 경우만)
+        const companyName = (order.users as any)?.company_name
+        if (상호명 && companyName !== 상호명) {
+          errors.push(`상호명이 일치하지 않음: ${주문번호} (등록된 상호명: ${companyName}, 업로드된 상호명: ${상호명})`)
+          continue
+        }
+
         // 운송장 번호 업데이트
         const { error: updateError } = await supabase
           .from('orders')
           .update({
             tracking_number: 운송장번호,
-            courier: 택배사 || 'CJ대한통운',
+            courier: 'CJ대한통운', // 기본값
             status: order.status === 'confirmed' ? 'shipped' : order.status,
             shipped_at: order.status === 'confirmed' ? getKoreaTime() : null,
             updated_at: getKoreaTime()
@@ -151,12 +165,15 @@ export async function POST(request: NextRequest) {
 
         results.push({
           order_number: 주문번호,
+          company_name: companyName,
           tracking_number: 운송장번호,
           success: true
         })
 
+        console.log(`운송장 번호 업데이트 완료: ${주문번호} (${companyName}) -> ${운송장번호}`)
+
       } catch (error) {
-        errors.push(`처리 중 오류: ${JSON.stringify(item)} - ${error}`)
+        errors.push(`처리 중 오류: ${JSON.stringify(item)} - ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
       }
     }
 

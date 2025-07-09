@@ -243,7 +243,7 @@ export function SamplesPage() {
     if (viewMode === 'grouped') {
       fetchStatements()
     }
-  }, [currentPage, viewMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentPage, viewMode, fetchStatements])
 
   // 일괄 상태 업데이트 함수
   const handleBulkAction = async (status: string) => {
