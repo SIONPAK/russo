@@ -935,6 +935,18 @@ export function OrdersPage() {
                             배송 정보
                           </h4>
                           <div className="bg-white p-3 rounded-lg shadow-sm space-y-2">
+                            {/* 주문 상태 표시 */}
+                            <div className="flex items-center">
+                              <StatusIcon className="h-3 w-3 text-gray-400 mr-2" />
+                              <span className="text-sm font-medium mr-2">주문 상태:</span>
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                order.tracking_number === '미출고' 
+                                  ? 'bg-gray-100 text-gray-800' 
+                                  : statusInfo.color
+                              }`}>
+                                {order.tracking_number === '미출고' ? '미출고' : statusInfo.label}
+                              </span>
+                            </div>
                             <div className="flex items-center">
                               <User className="h-3 w-3 text-gray-400 mr-2" />
                               <span className="text-sm font-medium">{order.shipping_name}</span>
