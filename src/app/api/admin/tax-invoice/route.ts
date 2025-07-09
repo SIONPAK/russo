@@ -70,7 +70,6 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('type', 'spend')
-      .eq('source', 'order')
       .gte('created_at', startDate + 'T00:00:00+09:00')
       .lte('created_at', endDate + 'T23:59:59+09:00');
 
