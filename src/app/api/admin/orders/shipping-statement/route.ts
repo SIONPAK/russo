@@ -102,15 +102,32 @@ export async function POST(request: NextRequest) {
     
     // 포맷에 따라 다른 파일 생성
     if (format === 'pdf') {
-      const pdfBuffer = await generateMultipleStatementsPDF(orders)
-      
-      return new NextResponse(pdfBuffer, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="shipping-statements-${getKoreaDateFormatted()}.pdf"`
-        }
-      })
+      try {
+        const pdfBuffer = await generateMultipleStatementsPDF(orders)
+        
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="shipping-statements-${getKoreaDateFormatted()}.pdf"`
+          }
+        })
+      } catch (pdfError) {
+        console.error('PDF 생성 실패, Excel로 폴백:', pdfError)
+        
+        // PDF 생성 실패 시 자동으로 Excel 다운로드
+        const zipBuffer = await generateMultipleStatementsExcel(orders)
+        
+        return new NextResponse(zipBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="receipts_bulk_download_${getKoreaDateFormatted()}.zip"`,
+            'X-PDF-Fallback': 'true',
+            'X-Fallback-Reason': 'PDF generation failed, automatically switched to Excel'
+          }
+        })
+      }
     } else {
       // ZIP 파일로 개별 영수증 제공
       const zipBuffer = await generateMultipleStatementsExcel(orders)
@@ -188,15 +205,55 @@ export async function GET(request: NextRequest) {
     
     // 포맷에 따라 다른 파일 생성
     if (format === 'pdf') {
-      const pdfBuffer = await generateMultipleStatementsPDF([order])
-      
-      return new NextResponse(pdfBuffer, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="shipping-statement-${order.order_number}.pdf"`
+      try {
+        const pdfBuffer = await generateMultipleStatementsPDF([order])
+        
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="shipping-statement-${order.order_number}.pdf"`
+          }
+        })
+      } catch (pdfError) {
+        console.error('개별 PDF 생성 실패, Excel로 폴백:', pdfError)
+        
+        // PDF 생성 실패 시 Excel로 폴백
+        const shippedItems = order.order_items.filter((item: any) => item.shipped_quantity > 0)
+        
+        const shippingStatementData = {
+          orderNumber: order.order_number,
+          companyName: order.users.company_name,
+          businessLicenseNumber: order.users.business_number,
+          email: order.users.email,
+          phone: order.users.phone,
+          address: order.users.address || '',
+          postalCode: order.users.postal_code || '',
+          customerGrade: order.users.customer_grade || 'general',
+          shippedAt: order.shipped_at || new Date().toISOString(),
+          items: shippedItems.map((item: any) => ({
+            productName: item.products?.name || item.product_name,
+            color: item.color || '기본',
+            size: item.size || '',
+            quantity: item.shipped_quantity,
+            unitPrice: item.unit_price,
+            totalPrice: item.unit_price * item.shipped_quantity
+          })),
+          totalAmount: shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
         }
-      })
+        
+        const excelBuffer = await generateShippingStatement(shippingStatementData)
+        
+        return new NextResponse(excelBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="receipt_${order.order_number}.xlsx"`,
+            'X-PDF-Fallback': 'true',
+            'X-Fallback-Reason': 'PDF generation failed, automatically switched to Excel'
+          }
+        })
+      }
     } else {
       // 개별 영수증 생성 (단일 엑셀 파일)
       const shippedItems = order.order_items.filter((item: any) => item.shipped_quantity > 0)
@@ -684,6 +741,22 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
   
   } catch (error) {
     console.error('❌ PDF 생성 실패:', error)
+    
+    // 에러 타입별 상세 로깅
+    if (error instanceof Error) {
+      console.error('에러 이름:', error.name)
+      console.error('에러 메시지:', error.message)
+      console.error('에러 스택:', error.stack)
+      
+      if (error.message.includes('Protocol error')) {
+        console.error('🔍 Chrome 프로세스 관련 오류 - 서버에 Chrome이 설치되어 있는지 확인하세요.')
+      } else if (error.message.includes('spawn')) {
+        console.error('🔍 실행 파일 관련 오류 - PUPPETEER_EXECUTABLE_PATH 환경 변수 설정이 필요할 수 있습니다.')
+      } else if (error.message.includes('timeout')) {
+        console.error('🔍 타임아웃 오류 - 서버 성능 또는 메모리 부족 문제일 수 있습니다.')
+      }
+    }
+    
     throw new Error(`PDF 생성 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
   } finally {
     if (browser) {

@@ -266,34 +266,38 @@ export function OrdersPage() {
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `최종명세서_${selectedDate}_${selectedOrders.length}건.pdf`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
         
-        showSuccess(`${selectedOrders.length}건의 거래명세서 PDF가 다운로드되었습니다.`)
+        // PDF 폴백 확인
+        const isPDFFallback = response.headers.get('X-PDF-Fallback') === 'true'
+        const fallbackReason = response.headers.get('X-Fallback-Reason')
+        
+        if (isPDFFallback) {
+          // PDF 생성 실패로 Excel로 폴백된 경우
+          a.download = `최종명세서_${selectedDate}_${selectedOrders.length}건.zip`
+          document.body.appendChild(a)
+          a.click()
+          window.URL.revokeObjectURL(url)
+          document.body.removeChild(a)
+          
+          showSuccess(`PDF 생성에 실패하여 Excel 파일로 다운로드되었습니다. (${selectedOrders.length}건)`)
+        } else {
+          // 정상적인 PDF 다운로드
+          a.download = `최종명세서_${selectedDate}_${selectedOrders.length}건.pdf`
+          document.body.appendChild(a)
+          a.click()
+          window.URL.revokeObjectURL(url)
+          document.body.removeChild(a)
+          
+          showSuccess(`${selectedOrders.length}건의 거래명세서 PDF가 다운로드되었습니다.`)
+        }
       } else {
         const errorData = await response.json()
         console.error('PDF 생성 실패:', errorData)
-        
-        // PDF 생성 실패 시 Excel 다운로드를 제안
-        const userConfirm = confirm(`PDF 생성에 실패했습니다.\n\n오류: ${errorData.error || 'PDF 생성 서버 오류'}\n\n대신 Excel 파일로 다운로드 하시겠습니까?`)
-        
-        if (userConfirm) {
-          // Excel 다운로드 실행
-          handleDownloadShippingStatementExcel()
-        }
+        showError(`PDF 다운로드 실패: ${errorData.error || '서버 오류가 발생했습니다.'}`)
       }
     } catch (error) {
       console.error('PDF download error:', error)
-      
-      // 네트워크 오류 또는 기타 오류 시 Excel 다운로드 제안
-      const userConfirm = confirm(`PDF 다운로드 중 오류가 발생했습니다.\n\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n대신 Excel 파일로 다운로드 하시겠습니까?`)
-      
-      if (userConfirm) {
-        handleDownloadShippingStatementExcel()
-      }
+      showError(`PDF 다운로드 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
     }
   }
 
