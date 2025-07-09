@@ -288,12 +288,38 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
 
 // PDF 생성 함수
 async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  })
+  let browser
+  try {
+    console.log('🚀 PDF 생성 시작 - 주문 수:', orders.length)
+    
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--memory-pressure-off',
+        '--max_old_space_size=4096'
+      ],
+      timeout: 90000, // 90초 타임아웃
+      protocolTimeout: 90000,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+    })
+    
+    console.log('✅ 브라우저 시작 완료')
   
   const page = await browser.newPage()
+  
+  // 메모리 사용량 최적화
+  await page.setViewport({ width: 1240, height: 1754 }) // A4 크기
+  await page.setDefaultTimeout(30000) // 30초 타임아웃
   
   let htmlContent = `
     <!DOCTYPE html>
@@ -640,6 +666,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
   `
   
   await page.setContent(htmlContent)
+  
+  console.log('📄 PDF 생성 중...')
   const pdfBuffer = await page.pdf({
     format: 'A4',
     printBackground: true,
@@ -651,6 +679,20 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     }
   })
   
-  await browser.close()
+  console.log('✅ PDF 생성 완료')
   return Buffer.from(pdfBuffer)
+  
+  } catch (error) {
+    console.error('❌ PDF 생성 실패:', error)
+    throw new Error(`PDF 생성 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
+  } finally {
+    if (browser) {
+      try {
+        await browser.close()
+        console.log('🔒 브라우저 종료 완료')
+      } catch (closeError) {
+        console.error('브라우저 종료 중 오류:', closeError)
+      }
+    }
+  }
 }
