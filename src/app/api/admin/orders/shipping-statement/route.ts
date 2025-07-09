@@ -366,12 +366,34 @@ async function getPuppeteerConfig() {
     console.log('🏭 프로덕션 환경: @sparticuz/chromium 사용')
     try {
       const chromium = await import('@sparticuz/chromium')
-      const executablePath = await chromium.default.executablePath()
-      console.log('✅ Chromium 실행 파일 경로:', executablePath)
+      
+      // Vercel 환경 변수 설정 (GitHub 이슈 #41 해결책)
+      process.env.FONTCONFIG_PATH = '/tmp'
+      process.env.FC_CONFIG_FILE = '/tmp/fonts.conf'
+      
+      // Vercel 환경에서의 올바른 호출 방식
+      let executablePath
+      try {
+        // args를 먼저 가져와서 사용 가능한지 확인
+        console.log('🔍 Chromium args 확인:', chromium.default.args.length, '개')
+        executablePath = await chromium.default.executablePath()
+      } catch (pathError: any) {
+        console.log('⚠️  기본 경로 실패, 대안 시도:', pathError.message)
+        
+        // GitHub 이슈에서 제시된 대안: chromium을 직접 다운로드하여 사용
+        if (pathError.message.includes('brotli') || pathError.message.includes('input directory')) {
+          console.log('🔧 Brotli 파일 문제 감지, 대안 경로 사용')
+          executablePath = '/tmp/chromium'
+        } else {
+          executablePath = null
+        }
+      }
+      
+      console.log('✅ Chromium 실행 파일 경로:', executablePath || '자동 감지')
       
       // 폰트 설정은 chromium.args에 포함되어 있음
       
-      return {
+      const config = {
         args: [
           ...chromium.default.args,
           '--disable-dev-shm-usage',
@@ -413,13 +435,26 @@ async function getPuppeteerConfig() {
           '--num-raster-threads=1',
           '--font-render-hinting=none'
         ],
-        executablePath,
         headless: true,
         timeout: 60000,
-        protocolTimeout: 60000
+        protocolTimeout: 60000,
+        ...(executablePath && { executablePath })
       }
+      
+      return config
     } catch (error) {
       console.error('❌ Chromium 설정 실패:', error)
+      
+      // Vercel 환경에서 @sparticuz/chromium이 작동하지 않는 경우를 위한 최종 폴백
+      if (error instanceof Error && (
+        error.message.includes('brotli') || 
+        error.message.includes('input directory') ||
+        error.message.includes('executablePath')
+      )) {
+        console.log('🚨 Vercel chromium 문제 감지, PDF 생성을 Excel로 완전 전환합니다.')
+        throw new Error('VERCEL_CHROMIUM_FALLBACK: Vercel 환경에서 Chromium을 사용할 수 없습니다.')
+      }
+      
       throw new Error(`Chromium 설정 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
     }
   }
