@@ -470,6 +470,11 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
       }
     })
     
+    // 현재 환경에 맞는 폰트 경로 설정
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? 'https://russo-seven.vercel.app'
+      : 'http://localhost:3000'
+    
     let htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -477,18 +482,26 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
+          @font-face {
+            font-family: 'Pretendard';
+            src: url('${baseUrl}/fonts/PretendardVariable.woff2') format('woff2');
+            font-weight: 100 900;
+            font-style: normal;
+            font-display: swap;
+          }
+          
           @page {
             size: A4;
             margin: 15mm;
           }
           
-          /* 시스템 폰트 우선 사용 */
+          /* 로컬 폰트 우선 사용 */
           * {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
           }
           
           body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
             font-size: 11px;
             line-height: 1.2;
             margin: 0;
@@ -507,7 +520,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
           }
           
           /* 각 셀 스타일 */
@@ -515,7 +528,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border: 1px solid #9a9a9a;
             padding: 2px;
             vertical-align: bottom;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
           }
           
           /* 제목 셀 */
@@ -527,7 +540,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             font-size: 20px;
             font-weight: bold;
             padding: 5px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
           }
           
           /* 기본 셀 크기들 */
@@ -550,7 +563,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 폰트 스타일 */
           .font-bold { 
             font-weight: bold; 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
           }
           .font-11 { font-size: 11px; }
           .font-20 { font-size: 20px; }
@@ -558,18 +571,18 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 특별 스타일 */
           .company-info {
             font-size: 11px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
           }
           .amount-text {
             font-size: 11px;
             font-weight: bold;
             text-align: center;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
           }
           .total-row {
             background-color: #f5f5f5;
             font-weight: bold;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
           }
           
           /* 빈 셀 최소 높이 */
@@ -579,12 +592,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           /* 한글 텍스트 강제 적용 */
           .korean-text {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
             font-weight: 400;
           }
           
           .korean-text-bold {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', Dotum, '돋움', Gulim, '굴림', sans-serif !important;
             font-weight: 700;
           }
         </style>
