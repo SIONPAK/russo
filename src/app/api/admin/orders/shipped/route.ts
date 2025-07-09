@@ -60,11 +60,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '출고 내역 조회 중 오류가 발생했습니다.' }, { status: 500 })
     }
 
-    // 출고 수량이 있는 아이템만 필터링
-    const processedOrders = orders?.map(order => ({
-      ...order,
-      order_items: order.order_items?.filter((item: any) => item.shipped_quantity > 0)
-    })).filter(order => order.order_items?.length > 0) || []
+    // 출고 수량이 있는 아이템만 필터링 (단, 미출고 주문은 예외)
+    const processedOrders = orders?.map(order => {
+      const isUnshipped = order.tracking_number === '미출고'
+      return {
+        ...order,
+        order_items: isUnshipped 
+          ? order.order_items // 미출고 주문은 모든 아이템 표시
+          : order.order_items?.filter((item: any) => item.shipped_quantity > 0)
+      }
+    }).filter(order => {
+      // 미출고 주문(tracking_number가 "미출고")은 출고 수량이 0이어도 포함
+      const isUnshipped = order.tracking_number === '미출고'
+      return order.order_items?.length > 0 || isUnshipped
+    }) || []
 
     return NextResponse.json({
       success: true,
