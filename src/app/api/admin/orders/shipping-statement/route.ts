@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import * as XLSX from 'xlsx'
-import puppeteer from 'puppeteer'
+import puppeteer from 'puppeteer-core'
+import chromium from '@sparticuz/chromium'
 import path from 'path'
 import fs from 'fs'
 import { getKoreaTime, getKoreaDate, getKoreaDateFormatted } from '@/shared/lib/utils'
@@ -344,39 +345,57 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
 }
 
 // PDF 생성 함수
+// Vercel 환경에서 Puppeteer 설정
+async function getPuppeteerConfig() {
+  const isDev = process.env.NODE_ENV === 'development'
+  
+  if (isDev) {
+    // 개발 환경에서는 로컬 Chrome 사용
+    return {
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      timeout: 60000
+    }
+  } else {
+    // 프로덕션 환경(Vercel)에서는 @sparticuz/chromium 사용
+    return {
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      timeout: 60000
+    }
+  }
+}
+
 async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
   let browser
   try {
     console.log('🚀 PDF 생성 시작 - 주문 수:', orders.length)
     
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
-        '--memory-pressure-off',
-        '--max_old_space_size=4096'
-      ],
-      timeout: 90000, // 90초 타임아웃
-      protocolTimeout: 90000,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-    })
+    // Puppeteer 설정 가져오기
+    const puppeteerConfig = await getPuppeteerConfig()
+    
+    console.log('🔍 Puppeteer 설정:', puppeteerConfig)
+    
+    browser = await puppeteer.launch(puppeteerConfig)
     
     console.log('✅ 브라우저 시작 완료')
   
   const page = await browser.newPage()
   
-  // 메모리 사용량 최적화
+  // Vercel 환경에서 최적화된 페이지 설정
   await page.setViewport({ width: 1240, height: 1754 }) // A4 크기
   await page.setDefaultTimeout(30000) // 30초 타임아웃
+  
+  // 메모리 사용량 최적화
+  await page.setRequestInterception(true)
+  page.on('request', (req) => {
+    if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet' || req.resourceType() === 'font') {
+      req.abort()
+    } else {
+      req.continue()
+    }
+  })
   
   let htmlContent = `
     <!DOCTYPE html>
@@ -749,11 +768,13 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
       console.error('에러 스택:', error.stack)
       
       if (error.message.includes('Protocol error')) {
-        console.error('🔍 Chrome 프로세스 관련 오류 - 서버에 Chrome이 설치되어 있는지 확인하세요.')
+        console.error('🔍 Chrome 프로세스 관련 오류 - Vercel 환경에서 Chrome 프로세스가 올바르게 시작되지 않았습니다.')
       } else if (error.message.includes('spawn')) {
-        console.error('🔍 실행 파일 관련 오류 - PUPPETEER_EXECUTABLE_PATH 환경 변수 설정이 필요할 수 있습니다.')
+        console.error('🔍 실행 파일 관련 오류 - @sparticuz/chromium 패키지가 올바르게 설치되었는지 확인하세요.')
       } else if (error.message.includes('timeout')) {
-        console.error('🔍 타임아웃 오류 - 서버 성능 또는 메모리 부족 문제일 수 있습니다.')
+        console.error('🔍 타임아웃 오류 - Vercel 함수 실행 시간이 초과되었습니다.')
+      } else if (error.message.includes('executablePath')) {
+        console.error('🔍 Chromium 경로 오류 - Vercel 환경에서 Chromium을 찾을 수 없습니다.')
       }
     }
     
