@@ -462,10 +462,9 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     // 모든 리소스 요청 허용 (폰트 로딩을 위해)
     console.log('🔓 모든 리소스 요청 허용 (폰트 로딩을 위해)')
     
-    // 현재 환경에 맞는 폰트 경로 설정
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? 'https://russo-seven.vercel.app'
-      : 'http://localhost:3000'
+    // 폰트 파일을 base64로 읽어서 CSS에 직접 임베드 (사용자 제안 방법 적용)
+    const fontPath = path.join(process.cwd(), 'public/fonts/NotoSansKR-Regular.otf')
+    const notoKoreanFont = fs.readFileSync(fontPath).toString('base64')
     
     let htmlContent = `
       <!DOCTYPE html>
@@ -475,11 +474,16 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           @font-face {
-            font-family: 'Pretendard';
-            src: url('${baseUrl}/fonts/PretendardVariable.woff2') format('woff2');
-            font-weight: 100 900;
+            font-family: 'Noto Sans Korean';
             font-style: normal;
-            font-display: block;
+            font-weight: normal;
+            src: url(data:font/otf;charset=utf-8;base64,${notoKoreanFont}) format('opentype');
+          }
+          
+          /* 한글 텍스트에 우선 적용될 폰트 패밀리 */
+          @font-face {
+            font-family: 'KoreanFont';
+            src: local('Noto Sans CJK KR'), local('Noto Sans KR'), local('Malgun Gothic'), local('맑은 고딕'), local('Nanum Gothic'), local('나눔고딕'), local('Dotum'), local('돋움'), local('Gulim'), local('굴림');
           }
           
           @page {
@@ -487,13 +491,13 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             margin: 15mm;
           }
           
-          /* 한글 폰트 우선 사용 */
+          /* 한글 폰트 우선 사용 - base64 임베드 폰트 적용 */
           * {
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           body {
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-size: 11px;
             line-height: 1.2;
             margin: 0;
@@ -501,6 +505,14 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             font-feature-settings: "liga" off;
+          }
+          
+          /* 폰트 로딩 테스트 요소 */
+          .font-test {
+            position: absolute;
+            top: -1000px;
+            font-family: 'Noto Sans Korean';
+            font-size: 12px;
           }
           
           .page-break {
@@ -512,7 +524,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 각 셀 스타일 */
@@ -520,7 +532,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border: 1px solid #9a9a9a;
             padding: 2px;
             vertical-align: bottom;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 제목 셀 */
@@ -532,7 +544,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             font-size: 20px;
             font-weight: bold;
             padding: 5px;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 기본 셀 크기들 */
@@ -555,7 +567,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 폰트 스타일 */
           .font-bold { 
             font-weight: bold; 
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .font-11 { font-size: 11px; }
           .font-20 { font-size: 20px; }
@@ -563,18 +575,18 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 특별 스타일 */
           .company-info {
             font-size: 11px;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .amount-text {
             font-size: 11px;
             font-weight: bold;
             text-align: center;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .total-row {
             background-color: #f5f5f5;
             font-weight: bold;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 빈 셀 최소 높이 */
@@ -584,17 +596,19 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           /* 한글 텍스트 강제 적용 */
           .korean-text {
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-weight: 400;
           }
           
           .korean-text-bold {
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: 'Noto Sans Korean', 'KoreanFont', 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', '나눔고딕', 'Dotum', '돋움', 'Gulim', '굴림', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-weight: 700;
           }
         </style>
       </head>
       <body>
+        <!-- 폰트 로딩 테스트 요소 -->
+        <div class="font-test">한글 테스트 Korean Test</div>
     `
   
   orders.forEach((order: any, orderIndex: number) => {
