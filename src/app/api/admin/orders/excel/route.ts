@@ -113,9 +113,9 @@ export async function POST(request: NextRequest) {
 
     for (const item of trackingData) {
       try {
-        const { 주문번호, 상호명, 운송장번호 } = item
+        const { orderNumber, companyName, trackingNumber } = item
         
-        if (!주문번호 || !운송장번호) {
+        if (!orderNumber || !trackingNumber) {
           errors.push(`주문번호 또는 운송장번호가 누락됨: ${JSON.stringify(item)}`)
           continue
         }
@@ -131,18 +131,18 @@ export async function POST(request: NextRequest) {
               company_name
             )
           `)
-          .eq('order_number', 주문번호)
+          .eq('order_number', orderNumber)
           .single()
 
         if (orderError || !order) {
-          errors.push(`주문을 찾을 수 없음: ${주문번호}`)
+          errors.push(`주문을 찾을 수 없음: ${orderNumber}`)
           continue
         }
 
         // 상호명 검증 (있을 경우만)
-        const companyName = (order.users as any)?.company_name
-        if (상호명 && companyName !== 상호명) {
-          errors.push(`상호명이 일치하지 않음: ${주문번호} (등록된 상호명: ${companyName}, 업로드된 상호명: ${상호명})`)
+        const dbCompanyName = (order.users as any)?.company_name
+        if (companyName && dbCompanyName !== companyName) {
+          errors.push(`상호명이 일치하지 않음: ${orderNumber} (등록된 상호명: ${dbCompanyName}, 업로드된 상호명: ${companyName})`)
           continue
         }
 
@@ -150,8 +150,7 @@ export async function POST(request: NextRequest) {
         const { error: updateError } = await supabase
           .from('orders')
           .update({
-            tracking_number: 운송장번호,
-            courier: 'CJ대한통운', // 기본값
+            tracking_number: trackingNumber,
             status: order.status === 'confirmed' ? 'shipped' : order.status,
             shipped_at: order.status === 'confirmed' ? getKoreaTime() : null,
             updated_at: getKoreaTime()
@@ -159,18 +158,18 @@ export async function POST(request: NextRequest) {
           .eq('id', order.id)
 
         if (updateError) {
-          errors.push(`업데이트 실패: ${주문번호} - ${updateError.message}`)
+          errors.push(`업데이트 실패: ${orderNumber} - ${updateError.message}`)
           continue
         }
 
         results.push({
-          order_number: 주문번호,
-          company_name: companyName,
-          tracking_number: 운송장번호,
+          order_number: orderNumber,
+          company_name: dbCompanyName,
+          tracking_number: trackingNumber,
           success: true
         })
 
-        console.log(`운송장 번호 업데이트 완료: ${주문번호} (${companyName}) -> ${운송장번호}`)
+        console.log(`운송장 번호 업데이트 완료: ${orderNumber} (${dbCompanyName}) -> ${trackingNumber}`)
 
       } catch (error) {
         errors.push(`처리 중 오류: ${JSON.stringify(item)} - ${error instanceof Error ? error.message : '알 수 없는 오류'}`)

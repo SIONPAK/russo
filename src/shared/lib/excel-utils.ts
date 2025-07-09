@@ -593,32 +593,27 @@ export function parseTrackingExcel(file: File): Promise<TrackingUploadData[]> {
         const trackingData: TrackingUploadData[] = []
         
         jsonData.forEach((row: any, index) => {
-          // 새로운 형식의 엑셀 파싱 (받는분 성명, 받는분 전화번호, 받는분 주소, 품목명, 내품명, 내품수량, 배송메세지, 운송장번호, 회사명)
-          const receiverName = row['받는분 성명']?.toString().trim()
-          const receiverPhone = row['받는분 전화번호']?.toString().trim()
-          const receiverAddress = row['받는분 주소']?.toString().trim()
+          // 간단한 형식의 엑셀 파싱 (주문번호, 상호명, 운송장번호)
+          const orderNumber = row['주문번호']?.toString().trim()
+          const companyName = row['상호명']?.toString().trim()
           const trackingNumber = row['운송장번호']?.toString().trim()
-          const companyName = row['회사명']?.toString().trim()
-          const itemName = row['내품명']?.toString().trim() // 상품명 (색상/사이즈) 형식
-          const itemQuantity = row['내품수량']?.toString().trim()
           
-          if (!receiverName || !receiverPhone || !trackingNumber) {
-            console.warn(`행 ${index + 2}: 필수 정보가 누락되었습니다.`)
+          if (!orderNumber || !trackingNumber) {
+            console.warn(`행 ${index + 2}: 주문번호 또는 운송장번호가 누락되었습니다.`)
             return
           }
           
-          // 배송 정보를 기반으로 주문 찾기 (받는분 성명, 전화번호로 매칭)
           trackingData.push({
-            orderNumber: '', // 주문번호는 서버에서 매칭
+            orderNumber,
             trackingNumber,
-            courier: '', // 택배사는 별도 입력
-            notes: row['배송메세지']?.toString().trim() || '',
-            receiverName,
-            receiverPhone,
-            receiverAddress,
             companyName,
-            itemName, // 내품명 정보 추가
-            itemQuantity // 내품수량 정보 추가
+            courier: 'CJ대한통운', // 기본값
+            notes: '',
+            receiverName: '',
+            receiverPhone: '',
+            receiverAddress: '',
+            itemName: '',
+            itemQuantity: ''
           })
         })
         

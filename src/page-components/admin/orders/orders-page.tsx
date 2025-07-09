@@ -206,7 +206,7 @@ export function OrdersPage() {
       }
 
       // API 호출하여 운송장 번호 업데이트
-      const response = await fetch('/api/admin/orders/bulk-tracking', {
+      const response = await fetch('/api/admin/orders/excel', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -217,7 +217,10 @@ export function OrdersPage() {
       const result = await response.json()
 
       if (result.success) {
-        showSuccess(`${result.data.updated}건의 운송장 번호가 업데이트되었습니다.`)
+        showSuccess(`${result.data.success}건의 운송장 번호가 업데이트되었습니다.`)
+        if (result.data.errors.length > 0) {
+          console.error('운송장 업데이트 오류:', result.data.errors)
+        }
         // 주문 목록 새로고침
         fetchTodayOrders()
       } else {
