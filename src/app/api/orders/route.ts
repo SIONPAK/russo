@@ -72,6 +72,41 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate') || ''
     const includeUnshipped = searchParams.get('includeUnshipped') === 'true'
     const userId = searchParams.get('userId')
+    const orderNumber = searchParams.get('orderNumber')
+
+    // orderNumber로 단일 주문 조회
+    if (orderNumber) {
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          order_items (
+            *,
+            products (
+              name,
+              price,
+              images:product_images!product_images_product_id_fkey (
+                image_url,
+                is_main
+              )
+            )
+          )
+        `)
+        .eq('order_number', orderNumber)
+        .single()
+
+      if (orderError || !order) {
+        return NextResponse.json({ 
+          success: false, 
+          error: '주문을 찾을 수 없습니다.' 
+        }, { status: 404 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: order
+      })
+    }
 
     // userId가 없으면 오류 반환
     if (!userId) {
