@@ -67,7 +67,7 @@ interface PurchaseOrder {
 export function OrderManagementPage() {
   const { user, isAuthenticated } = useAuthStore()
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'unshipped'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'list'>('create')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(false)
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null)
@@ -92,9 +92,7 @@ export function OrderManagementPage() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   
-  // 미발송 내역 관련 상태
-  const [unshippedStatements, setUnshippedStatements] = useState<any[]>([])
-  const [isLoadingUnshipped, setIsLoadingUnshipped] = useState(false)
+
   
   // 로컬 스토리지 키
   const STORAGE_KEY = 'order-management-items'
@@ -229,34 +227,7 @@ export function OrderManagementPage() {
     }
   }
 
-  // 미발송 내역 조회
-  const fetchUnshippedStatements = async () => {
-    if (!user) return
-    
-    try {
-      setIsLoadingUnshipped(true)
-      
-      const params = new URLSearchParams({
-        userId: user.id,
-        includeUnshipped: 'true'
-      })
-      
-      const response = await fetch(`/api/orders?${params}`)
-      const result = await response.json()
-      
-      if (response.ok) {
-        setUnshippedStatements(result.unshippedStatements || [])
-      } else {
-        console.error('미발송 내역 조회 실패:', result.error)
-        setUnshippedStatements([])
-      }
-    } catch (error) {
-      console.error('미발송 내역 조회 오류:', error)
-      setUnshippedStatements([])
-    } finally {
-      setIsLoadingUnshipped(false)
-    }
-  }
+
 
   // URL 파라미터로 전달된 상품 자동 추가
   useEffect(() => {
@@ -312,8 +283,6 @@ export function OrderManagementPage() {
   useEffect(() => {
     if (activeTab === 'list') {
       fetchPurchaseOrders(selectedDate)
-    } else if (activeTab === 'unshipped') {
-      fetchUnshippedStatements()
     }
   }, [activeTab, selectedDate, isAuthenticated, user])
 
@@ -915,19 +884,7 @@ export function OrderManagementPage() {
           <List className="h-4 w-4" />
           <span>발주 내역</span>
         </Button>
-        <Button
-          variant={activeTab === 'unshipped' ? 'default' : 'outline'}
-          onClick={() => setActiveTab('unshipped')}
-          className="flex items-center space-x-2"
-        >
-          <AlertTriangle className="h-4 w-4" />
-          <span>미발송 내역</span>
-          {unshippedStatements.length > 0 && (
-            <span className="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 bg-red-600 rounded-full">
-              {unshippedStatements.length}
-            </span>
-          )}
-        </Button>
+
       </div>
 
       {/* 발주서 작성 탭 */}
@@ -1264,15 +1221,22 @@ export function OrderManagementPage() {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {order.tracking_number ? (
-                            <div className="flex items-center">
-                              <Truck className="h-3 w-3 text-blue-600 mr-1" />
-                              <button
-                                onClick={() => window.open(`https://trace.cjlogistics.com/next/tracking.html?wblNo=${order.tracking_number}`, '_blank')}
-                                className="text-blue-600 hover:text-blue-800 underline font-medium"
-                              >
-                                {order.tracking_number}
-                              </button>
-                            </div>
+                            order.tracking_number === '미출고' ? (
+                              <div className="flex items-center">
+                                <AlertTriangle className="h-3 w-3 text-red-600 mr-1" />
+                                <span className="text-red-600 font-medium">미출고</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center">
+                                <Truck className="h-3 w-3 text-blue-600 mr-1" />
+                                <button
+                                  onClick={() => window.open(`https://trace.cjlogistics.com/next/tracking.html?wblNo=${order.tracking_number}`, '_blank')}
+                                  className="text-blue-600 hover:text-blue-800 underline font-medium"
+                                >
+                                  {order.tracking_number}
+                                </button>
+                              </div>
+                            )
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
@@ -1320,113 +1284,7 @@ export function OrderManagementPage() {
         </>
       )}
 
-      {/* 미발송 내역 탭 */}
-      {activeTab === 'unshipped' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">미발송 내역</h2>
-            <Button
-              onClick={fetchUnshippedStatements}
-              variant="outline"
-              disabled={isLoadingUnshipped}
-            >
-              {isLoadingUnshipped ? '조회 중...' : '새로고침'}
-            </Button>
-          </div>
 
-          {isLoadingUnshipped ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-4 text-gray-500">미발송 내역을 조회하는 중...</p>
-            </div>
-          ) : unshippedStatements.length === 0 ? (
-            <div className="text-center py-8">
-              <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-              <p className="text-gray-500">미발송 내역이 없습니다.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {unshippedStatements.map((statement) => (
-                <div key={statement.id} className="bg-red-50 border border-red-200 rounded-lg p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-medium text-red-900">
-                        명세서 #{statement.statement_number}
-                      </h3>
-                      <p className="text-sm text-red-700 mt-1">
-                        원 주문번호: {statement.original_order_number}
-                      </p>
-                      <p className="text-sm text-red-700">
-                        미발송 사유: {statement.reason}
-                      </p>
-                      <p className="text-sm text-red-600">
-                        생성일: {new Date(statement.created_at).toLocaleString('ko-KR')}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        미발송
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="border border-red-200 rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-red-100">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider">
-                            상품명
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider">
-                            옵션
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-red-700 uppercase tracking-wider">
-                            주문수량
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-red-700 uppercase tracking-wider">
-                            출고수량
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-red-700 uppercase tracking-wider">
-                            미발송수량
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-red-200">
-                        {statement.items?.map((item: any, index: number) => (
-                          <tr key={index} className="hover:bg-red-50">
-                            <td className="px-4 py-3 text-sm text-gray-900">
-                              {item.product_name}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">
-                              {item.color && item.size ? `${item.color} / ${item.size}` : '-'}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-center text-gray-900">
-                              {item.ordered_quantity}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-center text-blue-600">
-                              {item.shipped_quantity}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-center text-red-600 font-medium">
-                              {item.unshipped_quantity}
-                            </td>
-                          </tr>
-                        )) || (
-                          <tr>
-                            <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                              상품 정보를 불러오는 중...
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* 상품 검색 팝업 */}
       {isProductSearchOpen && (
