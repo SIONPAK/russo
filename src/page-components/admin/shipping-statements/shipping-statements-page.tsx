@@ -84,7 +84,8 @@ export default function ShippingStatementsPage() {
           status: order.status,
           email_sent: false, // 임시로 false로 설정
           email_sent_at: null,
-          total_amount: order.total_amount,
+          total_amount: order.order_items?.reduce((sum: number, item: any) => 
+            sum + (item.shipped_quantity * item.unit_price), 0) || 0,
           items: order.order_items?.filter((item: any) => item.shipped_quantity > 0).map((item: any) => ({
             product_name: item.product_name,
             color: item.color,
@@ -399,7 +400,7 @@ export default function ShippingStatementsPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">주문번호</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">업체명</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">주문일시</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">주문금액</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">출고금액</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">주문상태</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">이메일 발송</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작업</th>

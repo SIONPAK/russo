@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx-js-style'
 import fs from 'fs'
 import path from 'path'
+import { getKoreaDate } from './utils'
 
 // 출고 명세서 데이터 인터페이스
 export interface ShippingStatementData {
@@ -268,7 +269,9 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   
   // 기본 정보 입력 (한글 데이터 명시적 처리)
   const dateValue = data.date || data.shippedAt
-  const formattedDate = dateValue ? new Date(dateValue).toLocaleDateString('ko-KR') : new Date().toLocaleDateString('ko-KR')
+  const formattedDate = dateValue ? 
+    getKoreaDate() : 
+    getKoreaDate()
   
   worksheet['C3'] = { 
     t: 's', 
@@ -571,23 +574,8 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
     const groupedItems = groupItemsByColorAndProduct(data.items)
     console.log('🔍 그룹화된 아이템:', groupedItems)
 
-    // 배송비 계산 (20장 미만일 때)
-    const totalQuantity = groupedItems.reduce((sum, item) => sum + item.totalQuantity, 0)
-    const actualShippingFee = totalQuantity >= 20 ? 0 : 3000
-
-    // 배송비 항목 추가 (20장 미만일 때)
+    // 배송비 제거 - 출고명세서에는 배송비 포함하지 않음
     const itemsWithShipping = [...groupedItems]
-    if (actualShippingFee > 0) {
-      itemsWithShipping.push({
-        productName: '배송비',
-        color: '-',
-        totalQuantity: 1,
-        unitPrice: actualShippingFee,
-        totalPrice: actualShippingFee,
-        supplyAmount: actualShippingFee,
-        taxAmount: 0
-      })
-    }
 
     console.log('🔍 최종 처리 데이터:', {
       companyName: data.companyName,

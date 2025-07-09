@@ -126,7 +126,7 @@ export function useOrderManagement() {
 
   const [filters, setFilters] = useState<OrderFilters>({
     search: '',
-    status: 'all',
+    status: 'not_shipped',  // 기본값을 not_shipped로 설정
     startDate: '',
     endDate: '',
     page: 1,
@@ -230,7 +230,7 @@ export function useOrderManagement() {
     updateFilters({ 
       startDate: today,
       is_3pm_based: true,
-      status: 'all'  // 모든 상태 조회 후 클라이언트에서 필터링
+      status: 'not_shipped'  // shipped 상태 제외하고 조회
     })
   }
 
@@ -310,7 +310,7 @@ export function useOrderManagement() {
   const resetFilters = () => {
     const resetFilters = {
       search: '',
-      status: 'all',
+      status: 'not_shipped',  // 리셋 시에도 not_shipped로 설정
       startDate: '',
       endDate: '',
       page: 1,

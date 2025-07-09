@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/shared/lib/supabase/server';
+import { getKoreaDate } from '@/shared/lib/utils';
 
 // GET - 마일리지 실패 로그 조회
 export async function GET(request: NextRequest) {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     // 오늘 날짜 필터링 (옵션)
     const today = searchParams.get('today');
     if (today === 'true') {
-      const koreanDate = new Date().toISOString().split('T')[0];
+      const koreanDate = getKoreaDate();
       query = query.gte('created_at', koreanDate);
     }
     

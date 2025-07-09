@@ -810,8 +810,12 @@ export function OrdersPage() {
                           </div>
                         </div>
                         <div className="flex items-center space-x-3">
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusInfo.color}`}>
-                            {statusInfo.label}
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                            order.tracking_number === '미출고' 
+                              ? 'bg-gray-100 text-gray-800' 
+                              : statusInfo.color
+                          }`}>
+                            {order.tracking_number === '미출고' ? '미출고' : statusInfo.label}
                           </span>
                           <Button
                             onClick={() => toggleOrderExpand(order.id)}
@@ -827,12 +831,25 @@ export function OrdersPage() {
                       {/* 주문 요약 */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                         <div className="bg-white p-3 rounded-lg">
-                          <span className="text-xs text-gray-500 block">주문 금액</span>
-                          <span className="text-sm font-semibold text-gray-900">{formatCurrency(order.total_amount)}</span>
+                          <span className="text-xs text-gray-500 block">실제 출고 금액</span>
+                          <span className="text-sm font-semibold text-gray-900">
+                            {formatCurrency(
+                              order.tracking_number === '미출고' 
+                                ? 0 
+                                : order.order_items.reduce((sum, item) => 
+                                    sum + (item.unit_price * (item.shipped_quantity || 0)), 0
+                                  )
+                            )}
+                          </span>
                         </div>
                         <div className="bg-white p-3 rounded-lg">
-                          <span className="text-xs text-gray-500 block">상품 수</span>
-                          <span className="text-sm font-semibold text-gray-900">{order.order_items.length}개</span>
+                          <span className="text-xs text-gray-500 block">출고 수량</span>
+                          <span className="text-sm font-semibold text-gray-900">
+                            {order.tracking_number === '미출고' 
+                              ? 0 
+                              : order.order_items.reduce((sum, item) => sum + (item.shipped_quantity || 0), 0)
+                            }개
+                          </span>
                         </div>
                         <div className="bg-white p-3 rounded-lg">
                           <span className="text-xs text-gray-500 block">받는 분</span>
@@ -883,23 +900,31 @@ export function OrdersPage() {
                             주문 상품
                           </h4>
                           <div className="space-y-2">
-                            {order.order_items.map((item) => (
-                              <div key={item.id} className="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-sm">
-                                <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                                  <Package className="h-6 w-6 text-gray-400" />
+                            {order.order_items.map((item) => {
+                              const shippedQuantity = order.tracking_number === '미출고' ? 0 : (item.shipped_quantity || 0)
+                              const shippedAmount = shippedQuantity * item.unit_price
+                              
+                              return (
+                                <div key={item.id} className="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-sm">
+                                  <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                    <Package className="h-6 w-6 text-gray-400" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h5 className="text-sm font-medium text-gray-900">{item.product_name}</h5>
+                                    <p className="text-xs text-gray-500">
+                                      {item.color} / {item.size}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      주문: {item.quantity}개 → 출고: {shippedQuantity}개
+                                    </p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-semibold text-gray-900">{formatCurrency(shippedAmount)}</p>
+                                    <p className="text-xs text-gray-500">{formatCurrency(item.unit_price)}/개</p>
+                                  </div>
                                 </div>
-                                <div className="flex-1">
-                                  <h5 className="text-sm font-medium text-gray-900">{item.product_name}</h5>
-                                  <p className="text-xs text-gray-500">
-                                    {item.color} / {item.size} × {item.quantity}
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm font-semibold text-gray-900">{formatCurrency(item.total_price)}</p>
-                                  <p className="text-xs text-gray-500">{formatCurrency(item.unit_price)}/개</p>
-                                </div>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         </div>
 
@@ -929,12 +954,16 @@ export function OrdersPage() {
                               <div className="flex items-center">
                                 <Truck className="h-3 w-3 text-gray-400 mr-2" />
                                 <span className="text-sm font-medium mr-2">송장번호:</span>
-                                <button
-                                  onClick={() => window.open(`https://trace.cjlogistics.com/next/tracking.html?wblNo=${order.tracking_number}`, '_blank')}
-                                  className="text-sm text-blue-600 hover:text-blue-800 underline font-medium"
-                                >
-                                  {order.tracking_number}
-                                </button>
+                                {order.tracking_number === '미출고' ? (
+                                  <span className="text-sm text-gray-500">-</span>
+                                ) : (
+                                  <button
+                                    onClick={() => window.open(`https://trace.cjlogistics.com/next/tracking.html?wblNo=${order.tracking_number}`, '_blank')}
+                                    className="text-sm text-blue-600 hover:text-blue-800 underline font-medium"
+                                  >
+                                    {order.tracking_number}
+                                  </button>
+                                )}
                               </div>
                             )}
                             {order.notes && (
@@ -1230,12 +1259,16 @@ export function OrdersPage() {
                       <div className="flex items-center">
                         <Truck className="h-4 w-4 text-blue-600 mr-2" />
                         <span className="text-sm text-blue-800 font-medium mr-2">송장번호:</span>
-                        <button
-                          onClick={() => window.open(`https://trace.cjlogistics.com/next/tracking.html?wblNo=${order.tracking_number}`, '_blank')}
-                          className="text-sm text-blue-600 hover:text-blue-800 underline font-medium"
-                        >
-                          {order.tracking_number}
-                        </button>
+                        {order.tracking_number === '미출고' ? (
+                          <span className="text-sm text-gray-500">-</span>
+                        ) : (
+                          <button
+                            onClick={() => window.open(`https://trace.cjlogistics.com/next/tracking.html?wblNo=${order.tracking_number}`, '_blank')}
+                            className="text-sm text-blue-600 hover:text-blue-800 underline font-medium"
+                          >
+                            {order.tracking_number}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

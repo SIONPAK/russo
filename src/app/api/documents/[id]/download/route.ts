@@ -8,6 +8,7 @@ import {
   ReturnStatementData, 
   DeductionStatementData 
 } from '@/shared/lib/shipping-statement-utils'
+import { getKoreaDate } from '@/shared/lib/utils'
 
 // GET - 문서 다운로드
 export async function GET(
@@ -112,18 +113,8 @@ export async function GET(
         }, { status: 401 })
       }
 
-      // 실제 출고된 상품만 필터링 (shipped_quantity가 없으면 전체 수량으로 간주)
-      const shippedItems = order.order_items.filter((item: any) => {
-        const shippedQty = item.shipped_quantity || item.quantity || 0
-        return shippedQty > 0
-      })
-
-      if (shippedItems.length === 0) {
-        return NextResponse.json({
-          success: false,
-          error: '출고된 상품이 없습니다.'
-        }, { status: 400 })
-      }
+      // 모든 상품 포함 (미출고 상품도 품명과 규격 표시)
+      const allItems = order.order_items
 
       const statementData: ShippingStatementData = {
         orderNumber: order.order_number,
@@ -134,26 +125,28 @@ export async function GET(
         address: orderUser.address || '',
         postalCode: '',
         customerGrade: orderUser.customer_grade || 'BRONZE',
-        shippedAt: order.shipped_at || order.created_at,
-        items: shippedItems.map((item: any) => {
-          const actualQuantity = item.shipped_quantity || item.quantity || 0
+        shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
+        items: allItems.map((item: any) => {
+          const actualQuantity = item.shipped_quantity || 0
+          const isUnshipped = actualQuantity === 0
+          
           return {
             productName: item.product_name,
             color: item.color || '-',
             size: item.size || '-',
-            quantity: actualQuantity,
-            unitPrice: item.unit_price,
-            totalPrice: actualQuantity * item.unit_price
+            quantity: isUnshipped ? 0 : actualQuantity,
+            unitPrice: isUnshipped ? 0 : item.unit_price,
+            totalPrice: isUnshipped ? 0 : actualQuantity * item.unit_price
           }
         }),
-        totalAmount: shippedItems.reduce((sum: number, item: any) => {
-          const actualQuantity = item.shipped_quantity || item.quantity || 0
+        totalAmount: allItems.reduce((sum: number, item: any) => {
+          const actualQuantity = item.shipped_quantity || 0
           return sum + (actualQuantity * item.unit_price)
         }, 0)
       }
 
       excelBuffer = await generateShippingStatement(statementData)
-      fileName = `출고명세서_${order.order_number}.xlsx`
+      fileName = `출고명세서_${order.order_number}_${getKoreaDate()}.xlsx`
 
     } else if (type === 'return') {
       // 반품명세서 (새로운 유틸리티 사용)
@@ -301,7 +294,7 @@ export async function GET(
       }
 
       excelBuffer = await generateReturnStatement(statementData)
-      fileName = `반품명세서_${returnStatement.statement_number}.xlsx`
+      fileName = `반품명세서_${returnStatement.statement_number}_${getKoreaDate()}.xlsx`
 
     } else if (type === 'deduction') {
       // 차감명세서 (새로운 유틸리티 사용)
@@ -450,7 +443,7 @@ export async function GET(
       }
 
       excelBuffer = await generateDeductionStatement(statementData)
-      fileName = `차감명세서_${deductionStatement.statement_number}.xlsx`
+      fileName = `차감명세서_${deductionStatement.statement_number}_${getKoreaDate()}.xlsx`
 
     } else {
       return NextResponse.json({

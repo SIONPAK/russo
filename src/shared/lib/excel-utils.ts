@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
-import { formatCurrency } from './utils'
+import { formatCurrency, getKoreaDate } from './utils'
 import { CartItem } from '../types'
 
 export interface OrderItem {
@@ -1028,7 +1028,7 @@ export function downloadTrackingNumberTemplate(orders: AdminOrderItem[], filenam
   XLSX.utils.book_append_sheet(wb, ws, '운송장템플릿')
   
   // 파일명 생성
-  const fileName = filename || `운송장템플릿_${new Date().toISOString().split('T')[0]}.xlsx`
+  const fileName = filename || `운송장템플릿_${getKoreaDate()}.xlsx`
   
   // 엑셀 파일 생성 및 다운로드 (saveAs 사용)
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })

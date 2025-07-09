@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaDate } from '@/shared/lib/utils'
 import * as XLSX from 'xlsx'
 
 export async function GET(request: NextRequest) {
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
         success: true,
         data: {
           fileData: base64Data,
-          fileName: `재고이력_${new Date().toISOString().split('T')[0]}.xlsx`,
+          fileName: `재고이력_${getKoreaDate()}.xlsx`,
           totalCount: 0
         },
         message: '조회된 재고 이력이 없습니다.'

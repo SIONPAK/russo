@@ -104,8 +104,8 @@ export function ShippedOrdersPage() {
         bValue = new Date(b.shipped_at).getTime()
         break
       case 'total_amount':
-        aValue = a.total_amount
-        bValue = b.total_amount
+        aValue = a.order_items?.reduce((sum, item) => sum + (item.shipped_quantity * item.unit_price), 0) || 0
+        bValue = b.order_items?.reduce((sum, item) => sum + (item.shipped_quantity * item.unit_price), 0) || 0
         break
       default:
         return 0
@@ -385,7 +385,11 @@ export function ShippedOrdersPage() {
             <div>
               <p className="text-sm text-gray-600">총 출고 금액</p>
               <p className="text-2xl font-bold text-green-600">
-                {formatCurrency(orders.reduce((sum, order) => sum + order.total_amount, 0))}
+                {formatCurrency(orders.reduce((sum, order) => {
+                  const shippedAmount = order.order_items?.reduce((itemSum, item) => 
+                    itemSum + (item.shipped_quantity * item.unit_price), 0) || 0
+                  return sum + shippedAmount
+                }, 0))}
               </p>
             </div>
             <FileText className="w-8 h-8 text-blue-500" />
@@ -555,7 +559,7 @@ export function ShippedOrdersPage() {
                   onClick={() => handleSort('total_amount')}
                 >
                   <div className="flex items-center gap-1">
-                    총 금액
+                    출고 금액
                     {sortBy === 'total_amount' && (
                       <span className="text-blue-600">
                         {sortOrder === 'asc' ? '↑' : '↓'}
@@ -642,7 +646,8 @@ export function ShippedOrdersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {formatCurrency(order.total_amount)}
+                        {formatCurrency(order.order_items?.reduce((sum, item) => 
+                          sum + (item.shipped_quantity * item.unit_price), 0) || 0)}
                       </div>
                     </td>
                   </tr>

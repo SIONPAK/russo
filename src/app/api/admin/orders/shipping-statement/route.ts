@@ -261,7 +261,7 @@ export async function GET(request: NextRequest) {
         
         // PDF 생성 실패 시 Excel로 폴백
         const shippedItems = order.order_items.filter((item: any) => {
-          const actualQuantity = item.shipped_quantity || item.quantity || 0
+          const actualQuantity = item.shipped_quantity || 0
           return actualQuantity > 0
         })
         
@@ -274,9 +274,9 @@ export async function GET(request: NextRequest) {
           address: order.users.address || '',
           postalCode: order.users.postal_code || '',
           customerGrade: order.users.customer_grade || 'general',
-          shippedAt: order.shipped_at || new Date().toISOString(),
+          shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
           items: shippedItems.map((item: any) => {
-            const actualQuantity = item.shipped_quantity || item.quantity || 0
+            const actualQuantity = item.shipped_quantity || 0
             console.log('🔍 출고 명세서 개별 다운로드 - 아이템 수량 확인:', {
               productName: item.products?.name || item.product_name,
               shipped_quantity: item.shipped_quantity,
@@ -293,7 +293,7 @@ export async function GET(request: NextRequest) {
             }
           }),
           totalAmount: shippedItems.reduce((sum: number, item: any) => {
-            const actualQuantity = item.shipped_quantity || item.quantity || 0
+            const actualQuantity = item.shipped_quantity || 0
             return sum + (item.unit_price * actualQuantity)
           }, 0)
         }
@@ -313,7 +313,7 @@ export async function GET(request: NextRequest) {
     } else {
       // 개별 영수증 생성 (단일 엑셀 파일)
       const shippedItems = order.order_items.filter((item: any) => {
-        const actualQuantity = item.shipped_quantity || item.quantity || 0
+        const actualQuantity = item.shipped_quantity || 0
         return actualQuantity > 0
       })
       
@@ -341,7 +341,7 @@ export async function GET(request: NextRequest) {
         address: order.users.address || '',
         postalCode: order.users.postal_code || '',
         customerGrade: order.users.customer_grade || 'general',
-        shippedAt: order.shipped_at || new Date().toISOString(),
+        shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
         items: shippedItems.map((item: any) => ({
           productName: item.products?.name || item.product_name,
           color: item.color || '기본',
@@ -389,7 +389,7 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
     const orderItems = order.order_items
     
     const shippedItems = orderItems.filter((item: any) => {
-      const actualQuantity = item.shipped_quantity || item.quantity || 0
+      const actualQuantity = item.shipped_quantity || 0
       return actualQuantity > 0
     })
     
@@ -407,9 +407,9 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
       address: customer.address || '',
       postalCode: customer.postal_code || '',
       customerGrade: customer.customer_grade || 'general',
-      shippedAt: order.shipped_at || new Date().toISOString(),
+      shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
       items: shippedItems.map((item: any) => {
-        const actualQuantity = item.shipped_quantity || item.quantity || 0
+        const actualQuantity = item.shipped_quantity || 0
         console.log('🔍 출고 명세서 다중 다운로드 - 아이템 수량 확인:', {
           productName: item.products?.name || item.product_name,
           shipped_quantity: item.shipped_quantity,
@@ -427,7 +427,7 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
         }
       }),
       totalAmount: isUnshipped ? 0 : shippedItems.reduce((sum: number, item: any) => {
-        const actualQuantity = item.shipped_quantity || item.quantity || 0
+        const actualQuantity = item.shipped_quantity || 0
         return sum + (item.unit_price * actualQuantity)
       }, 0)
     }

@@ -101,9 +101,9 @@ export async function POST(request: NextRequest) {
           address: order.users.address,
           postalCode: order.users.postal_code || '',
           customerGrade: order.users.customer_grade || 'normal',
-          shippedAt: order.shipped_at || new Date().toISOString(),
+          shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
           items: shippedItems.map((item: any) => {
-            const actualQuantity = item.shipped_quantity || item.quantity || 0
+            const actualQuantity = item.shipped_quantity || 0
             console.log('🔍 출고 명세서 이메일 발송 - 아이템 수량 확인:', {
               productName: item.product_name,
               shipped_quantity: item.shipped_quantity,
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
             }
           }),
           totalAmount: shippedItems.reduce((sum: number, item: any) => {
-            const actualQuantity = item.shipped_quantity || item.quantity || 0
+            const actualQuantity = item.shipped_quantity || 0
             return sum + (actualQuantity * item.unit_price)
           }, 0)
         }

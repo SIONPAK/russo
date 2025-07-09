@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { User, PaginatedResponse } from '@/shared/types'
 import { showSuccess, showError } from '@/shared/lib/toast'
+import { getKoreaDate } from '@/shared/lib/utils'
 
 interface UseUserManagementOptions {
   page?: number
@@ -421,7 +422,7 @@ export function useUserManagement(options: UseUserManagementOptions = {}) {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `users_${new Date().toISOString().split('T')[0]}.xlsx`
+      a.download = `users_${getKoreaDate()}.xlsx`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)

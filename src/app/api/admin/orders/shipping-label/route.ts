@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getKoreaDate } from '@/shared/lib/utils'
 import * as XLSX from 'xlsx'
 
 // CJ대한통운 송장 출력 양식 생성 API
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     const excelBuffer = await generateShippingExcel(orders, shippingCompany)
     
     // 파일 저장 (실제로는 클라우드 스토리지에 저장)
-    const fileName = `shipping-labels-${shippingCompany}-${new Date().toISOString().split('T')[0]}.xlsx`
+    const fileName = `shipping-labels-${shippingCompany}-${getKoreaDate()}.xlsx`
     const fileUrl = `/documents/shipping-labels/${fileName}`
 
     return NextResponse.json({
@@ -89,7 +90,7 @@ async function generateShippingExcel(orders: any[], shippingCompany: string): Pr
   // CJ대한통운 송장 양식 시트 생성
   const wsData = [
     ['배송업체:', shippingCompany],
-    ['생성일:', new Date().toISOString().split('T')[0]],
+    ['생성일:', getKoreaDate()],
     ['총 주문 수:', orders.length],
     [''],
     ['주문번호', '고객사명', '대표자명', '연락처', '주소', '우편번호', '상품명', '수량', '총중량(kg)', '배송비', '특이사항'],

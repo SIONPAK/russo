@@ -116,7 +116,7 @@ export async function sendShippingStatementEmail(
           </tr>
           <tr>
             <td style="padding: 8px 0; font-weight: bold;">출고일:</td>
-            <td style="padding: 8px 0;">${new Date().toLocaleDateString('ko-KR')}</td>
+            <td style="padding: 8px 0;">${new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })}</td>
           </tr>
         </table>
       </div>

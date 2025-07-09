@@ -89,9 +89,11 @@ export async function POST(request: NextRequest) {
           sum + (item.unit_price * item.shipped_quantity), 0
         )
 
+        // 세액 계산 (공급가액의 10%)
+        const taxAmount = Math.floor(shippedAmount * 0.1)
         // 배송비 계산 (20장 미만일 때 3,000원)
         const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
-        const totalAmount = shippedAmount + shippingFee
+        const totalAmount = shippedAmount + taxAmount + shippingFee
 
         // 1. 거래명세서 생성
         const timestamp = Date.now()
@@ -167,14 +169,15 @@ export async function POST(request: NextRequest) {
 
         // 3. 마일리지 차감 처리
         const currentMileage = order.users.mileage_balance || 0
-        const newMileage = Math.max(0, currentMileage - totalAmount)
+        const mileageDeductionAmount = shippedAmount + taxAmount // 공급가액 + 세액만 차감 (배송비 제외)
+        const newMileage = Math.max(0, currentMileage - mileageDeductionAmount)
 
         // 3-1. mileage 테이블에 차감 기록 생성
         const { error: mileageRecordError } = await supabase
           .from('mileage')
           .insert({
             user_id: order.user_id,
-            amount: totalAmount,
+            amount: mileageDeductionAmount,
             type: 'spend',
             source: 'order',
             description: `확정 명세서 생성 - 주문번호: ${order.order_number}`,
@@ -240,7 +243,7 @@ export async function POST(request: NextRequest) {
           const statementData = {
             statement_number: statementNumber,
             order_number: order.order_number,
-            order_date: order.created_at,
+            order_date: new Date(order.created_at).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }),
             company_name: order.users.company_name,
             representative_name: order.users.representative_name,
             items: shippedItems.map((item: any) => ({
@@ -277,9 +280,12 @@ export async function POST(request: NextRequest) {
                   <p><strong>명세서번호:</strong> ${statementNumber}</p>
                   <p><strong>고객명:</strong> ${order.users.company_name}</p>
                   <p><strong>담당자:</strong> ${order.users.representative_name}</p>
-                  <p><strong>총 금액:</strong> ${totalAmount.toLocaleString()}원</p>
-                  <p><strong>마일리지 차감:</strong> ${totalAmount.toLocaleString()}원</p>
-                  <p><strong>잔여 마일리지:</strong> ${newMileage.toLocaleString()}원</p>
+                </div>
+                
+                <div style="background-color: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                  <h3 style="color: #2e7d32; margin-top: 0;">💰 금액 정보</h3>
+                  <p style="font-size: 18px; color: #2e7d32;"><strong>총 금액 (공급가액 + 세액):</strong> ${(shippedAmount + taxAmount).toLocaleString()}원</p>
+                  <p><strong>마일리지 차감:</strong> ${(shippedAmount + taxAmount).toLocaleString()}원</p>
                 </div>
 
                 <div style="background-color: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0;">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import { generateShippingStatement } from '@/shared/lib/shipping-statement-utils'
+import { getKoreaDate } from '@/shared/lib/utils'
 
 // 거래명세서 조회 API
 export async function GET(
@@ -53,18 +54,8 @@ export async function GET(
       }, { status: 404 })
     }
 
-    // 실제 출고된 아이템만 필터링 (shipped_quantity가 있으면 우선 사용, 없으면 quantity 사용)
-    const shippedItems = order.order_items.filter((item: any) => {
-      const actualQuantity = item.shipped_quantity || item.quantity || 0
-      return actualQuantity > 0
-    })
-    
-    if (shippedItems.length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: '아직 출고된 상품이 없습니다.'
-      }, { status: 400 })
-    }
+    // 모든 상품 포함 (미출고 상품도 품명과 규격 표시)
+    const allItems = order.order_items
 
     // 출고 명세서 데이터 구성
     const statementData = {
@@ -76,26 +67,30 @@ export async function GET(
       address: order.users.address,
       postalCode: order.users.postal_code || '',
       customerGrade: order.users.customer_grade || 'normal',
-      shippedAt: order.shipped_at || new Date().toISOString(),
-      items: shippedItems.map((item: any) => {
-        const actualQuantity = item.shipped_quantity || item.quantity || 0
-        console.log('🔍 출고 아이템 수량 확인:', {
+      shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
+      items: allItems.map((item: any) => {
+        const actualQuantity = item.shipped_quantity || 0
+        const isUnshipped = actualQuantity === 0
+        
+        console.log('🔍 아이템 수량 확인:', {
           productName: item.product_name,
           shipped_quantity: item.shipped_quantity,
           quantity: item.quantity,
-          actualQuantity
+          actualQuantity,
+          isUnshipped
         })
+        
         return {
           productName: item.product_name,
           color: item.color || '기본',
           size: item.size || '',
-          quantity: actualQuantity,
-          unitPrice: item.unit_price,
-          totalPrice: actualQuantity * item.unit_price
+          quantity: isUnshipped ? 0 : actualQuantity,
+          unitPrice: isUnshipped ? 0 : item.unit_price,
+          totalPrice: isUnshipped ? 0 : actualQuantity * item.unit_price
         }
       }),
-      totalAmount: shippedItems.reduce((sum: number, item: any) => {
-        const actualQuantity = item.shipped_quantity || item.quantity || 0
+      totalAmount: allItems.reduce((sum: number, item: any) => {
+        const actualQuantity = item.shipped_quantity || 0
         return sum + (actualQuantity * item.unit_price)
       }, 0)
     }
@@ -119,7 +114,8 @@ export async function GET(
     const excelBuffer = await generateShippingStatement(statementData)
 
     // 엑셀 파일을 직접 반환
-    const fileName = `shipping_statement_${order.order_number}_${new Date().toISOString().split('T')[0]}.xlsx`
+            const koreaDate = getKoreaDate()
+    const fileName = `shipping_statement_${order.order_number}_${koreaDate}.xlsx`
     
     return new Response(excelBuffer, {
       status: 200,
