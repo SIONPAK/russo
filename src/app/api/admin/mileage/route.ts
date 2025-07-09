@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
 import { getKoreaTime } from '@/shared/lib/utils'
+import { executeBatchQuery } from '@/shared/lib/batch-utils'
 
 // GET - 마일리지 목록 조회
 export async function GET(request: NextRequest) {
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
           representative_name,
           email
         )
-      `, { count: 'exact' })
+      `)
 
     // 필터 적용
     if (userId) {
@@ -65,7 +66,50 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
-    const { data: mileages, error, count } = await query
+    const { data: mileages, error } = await query
+
+    // 전체 개수 조회를 위한 배치 처리
+    let countQuery = supabase
+      .from('mileage')
+      .select('id')
+
+    // 동일한 필터 적용
+    if (userId) {
+      countQuery = countQuery.eq('user_id', userId)
+    }
+    
+    if (type && type !== 'all') {
+      countQuery = countQuery.eq('type', type)
+    }
+    
+    if (status && status !== 'all') {
+      countQuery = countQuery.eq('status', status)
+    }
+    
+    if (source && source !== 'all') {
+      countQuery = countQuery.eq('source', source)
+    }
+    
+    if (search) {
+      // 검색 조건은 사용자와 조인이 필요하므로 기본 쿼리 사용
+      countQuery = countQuery.or(`description.ilike.%${search}%`)
+    }
+    
+    if (dateFrom) {
+      countQuery = countQuery.gte('created_at', dateFrom)
+    }
+    
+    if (dateTo) {
+      countQuery = countQuery.lte('created_at', dateTo + 'T23:59:59')
+    }
+
+    // 배치 처리로 전체 개수 조회
+    const countResult = await executeBatchQuery(
+      countQuery.order('created_at', { ascending: false }),
+      '마일리지 개수'
+    )
+
+    const count = countResult.error ? 0 : countResult.totalCount
 
     if (error) {
       console.error('Mileage fetch error:', error)

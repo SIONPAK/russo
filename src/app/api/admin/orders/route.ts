@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import { getKoreaTime } from '@/shared/lib/utils'
+import { executeBatchQuery } from '@/shared/lib/batch-utils'
 
 // GET - 관리자 주문 목록 조회
 export async function GET(request: NextRequest) {
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
             )
           )
         )
-      `, { count: 'exact' })
+      `)
 
     // 발주 주문만 조회 (order_number가 PO로 시작하는 것들)
     query = query.like('order_number', 'PO%')
@@ -149,7 +150,7 @@ export async function GET(request: NextRequest) {
     // 페이지네이션
     query = query.range(offset, offset + limit - 1)
 
-    const { data: orders, error, count } = await query
+    const { data: orders, error } = await query
 
     if (error) {
       console.error('주문 조회 오류:', error)
@@ -182,20 +183,102 @@ export async function GET(request: NextRequest) {
       }) || []
     )
 
-    // 통계 계산
-    const stats = {
-      pending: orders?.filter((o: any) => o.status === 'pending').length || 0,
-      confirmed: orders?.filter((o: any) => o.status === 'confirmed').length || 0,
-      shipped: orders?.filter((o: any) => o.status === 'shipped').length || 0,
-      delivered: orders?.filter((o: any) => o.status === 'delivered').length || 0,
-      cancelled: orders?.filter((o: any) => o.status === 'cancelled').length || 0,
-      total: count || 0,
-      allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
-      partial_shipped: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial_shipped').length,
-      insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
+    // 통계 계산을 위한 전체 데이터 조회 (배치 처리)
+    let statsQuery = supabase
+      .from('orders')
+      .select('id, status, created_at')
+      .like('order_number', 'PO%')
+      .neq('order_type', 'return_only')
+
+    // 검색 조건 적용 (통계에도 동일하게)
+    if (search) {
+      const { data: matchingUsers } = await supabase
+        .from('users')
+        .select('id')
+        .or(`company_name.ilike.%${search}%,representative_name.ilike.%${search}%`)
+      
+      const matchingUserIds = matchingUsers?.map(u => u.id) || []
+      
+      if (matchingUserIds.length > 0) {
+        statsQuery = statsQuery.in('user_id', matchingUserIds)
+      } else {
+        statsQuery = statsQuery.or(`order_number.ilike.%${search}%,shipping_name.ilike.%${search}%`)
+      }
     }
 
-    const totalPages = Math.ceil((count || 0) / limit)
+    // 상태 필터 적용 (통계에도 동일하게)
+    if (status !== 'all') {
+      if (status === 'not_shipped') {
+        statsQuery = statsQuery.neq('status', 'shipped')
+      } else {
+        statsQuery = statsQuery.eq('status', status)
+      }
+    }
+
+    // 날짜 필터 적용 (통계에도 동일하게)
+    if (startDate) {
+      if (is3PMBased) {
+        statsQuery = statsQuery.gte('created_at', startDate)
+        if (endDate) {
+          statsQuery = statsQuery.lte('created_at', endDate)
+        }
+      } else {
+        const selectedDate = new Date(startDate)
+        const startTimeUTC = new Date(Date.UTC(
+          selectedDate.getFullYear(), 
+          selectedDate.getMonth(), 
+          selectedDate.getDate() - 1, 
+          15, 0, 0
+        ))
+        const endTimeUTC = new Date(Date.UTC(
+          selectedDate.getFullYear(), 
+          selectedDate.getMonth(), 
+          selectedDate.getDate(), 
+          14, 59, 59
+        ))
+        
+        statsQuery = statsQuery.gte('created_at', startTimeUTC.toISOString())
+        statsQuery = statsQuery.lte('created_at', endTimeUTC.toISOString())
+      }
+    }
+
+    // 배치 처리로 통계 데이터 조회
+    const statsResult = await executeBatchQuery(
+      statsQuery.order('created_at', { ascending: false }),
+      '주문 통계'
+    )
+
+    let stats
+    if (statsResult.error) {
+      console.error('통계 조회 오류:', statsResult.error)
+      // 에러 시 기존 방식으로 폴백
+      stats = {
+        pending: orders?.filter((o: any) => o.status === 'pending').length || 0,
+        confirmed: orders?.filter((o: any) => o.status === 'confirmed').length || 0,
+        shipped: orders?.filter((o: any) => o.status === 'shipped').length || 0,
+        delivered: orders?.filter((o: any) => o.status === 'delivered').length || 0,
+        cancelled: orders?.filter((o: any) => o.status === 'cancelled').length || 0,
+        total: 0, // 배치로 계산된 stats.total에서 설정됨
+        allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
+        partial_shipped: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial_shipped').length,
+        insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
+      }
+    } else {
+      const allOrdersForStats = statsResult.data
+      stats = {
+        pending: allOrdersForStats.filter((o: any) => o.status === 'pending').length,
+        confirmed: allOrdersForStats.filter((o: any) => o.status === 'confirmed').length,
+        shipped: allOrdersForStats.filter((o: any) => o.status === 'shipped').length,
+        delivered: allOrdersForStats.filter((o: any) => o.status === 'delivered').length,
+        cancelled: allOrdersForStats.filter((o: any) => o.status === 'cancelled').length,
+        total: allOrdersForStats.length,
+        allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
+        partial_shipped: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial_shipped').length,
+        insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
+      }
+    }
+
+    const totalPages = Math.ceil((stats.total || 0) / limit)
 
     return NextResponse.json({
       success: true,
@@ -205,7 +288,7 @@ export async function GET(request: NextRequest) {
         pagination: {
           currentPage: page,
           totalPages,
-          totalCount: count || 0,
+          totalCount: stats.total || 0,
           hasNextPage: page < totalPages,
           hasPrevPage: page > 1
         }

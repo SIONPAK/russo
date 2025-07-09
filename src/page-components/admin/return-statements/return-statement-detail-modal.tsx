@@ -156,8 +156,8 @@ export default function ReturnStatementDetailModal({
     <div 
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       onClick={(e) => {
-        // 저장 중에는 배경 클릭으로 모달 닫기 방지
-        if (!isSaving && e.target === e.currentTarget) {
+        // 저장 중이거나 편집 중에는 배경 클릭으로 모달 닫기 방지
+        if (!isSaving && !isEditing && e.target === e.currentTarget) {
           onClose()
         }
       }}
@@ -218,7 +218,7 @@ export default function ReturnStatementDetailModal({
             <Button
               variant="outline"
               onClick={onClose}
-              disabled={isSaving}
+              disabled={isSaving || isEditing}
               className="text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               닫기
@@ -418,7 +418,7 @@ export default function ReturnStatementDetailModal({
                   onClose()
                   onReject(statement.id)
                 }}
-                disabled={isSaving}
+                disabled={isSaving || isEditing}
                 variant="outline"
                 className="text-red-600 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -430,7 +430,7 @@ export default function ReturnStatementDetailModal({
                   onClose()
                   onApprove(statement.id)
                 }}
-                disabled={isSaving}
+                disabled={isSaving || isEditing}
                 className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
@@ -438,14 +438,6 @@ export default function ReturnStatementDetailModal({
               </Button>
             </>
           )}
-          <Button
-            variant="outline"
-            onClick={onClose}
-            disabled={isSaving}
-            className="disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            닫기
-          </Button>
         </div>
       </div>
     </div>

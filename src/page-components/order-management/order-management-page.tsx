@@ -325,27 +325,31 @@ export function OrderManagementPage() {
             // 모든 inventory_options 포함 (재고 여부와 상관없이)
             const allOptions = product.inventory_options || []
             
-            // 모든 옵션들로부터 색상과 사이즈 추출
-            const colors = allOptions.length > 0
-              ? [...new Set(allOptions.map((opt: any) => opt.color).filter(Boolean))]
-              : ['기본']
+            // 색상과 사이즈 추출 (더 안전하게 처리)
+            let colors: string[] = []
+            let sizes: string[] = []
             
-            const sizes = allOptions.length > 0
-              ? [...new Set(allOptions.map((opt: any) => opt.size).filter(Boolean))]
-              : ['기본']
+            if (allOptions.length > 0) {
+              colors = [...new Set(allOptions.map((opt: any) => opt.color).filter(Boolean))] as string[]
+              sizes = [...new Set(allOptions.map((opt: any) => opt.size).filter(Boolean))] as string[]
+            }
+            
+            // 색상이나 사이즈가 없으면 기본값 설정
+            if (colors.length === 0) colors = ['기본']
+            if (sizes.length === 0) sizes = ['기본']
 
             return {
               id: product.id,
               code: product.code,
               name: product.name,
-              colors: colors.length > 0 ? colors : ['기본'],
-              sizes: sizes.length > 0 ? sizes : ['기본'],
+              colors: colors,
+              sizes: sizes,
               price: product.price,
               stock: product.stock_quantity || 0,
               inventory_options: allOptions
             }
           })
-          // 품절 상품 필터링 제거 - 모든 상품 포함
+          // 품절 상품 필터링 제거 - 모든 상품 포함 (inventory_options 없는 상품도 포함)
         setSearchResults(products)
       } else {
         setSearchResults([])
@@ -1311,15 +1315,10 @@ export function OrderManagementPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {product.colors.map((color) =>
                             product.sizes.map((size) => {
-                              // 해당 옵션이 재고가 있는지 확인
+                              // 해당 옵션 정보 확인 (재고 여부와 관계없이)
                               const matchingOption = product.inventory_options?.find(
                                 (opt: any) => opt.color === color && opt.size === size
                               )
-                              
-                              // 재고가 0개인 옵션은 렌더링하지 않음
-                              if (!matchingOption || (matchingOption.stock_quantity || 0) <= 0) {
-                                return null
-                              }
                               
                               const isSelected = isProductSelected(product, color, size)
                               const additionalPrice = matchingOption?.additional_price || 0

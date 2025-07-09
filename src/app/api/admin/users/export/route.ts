@@ -65,15 +65,45 @@ export async function GET(request: NextRequest) {
       query = query.lte('created_at', `${dateTo}T23:59:59`)
     }
 
-    const { data: users, error } = await query
+    // 배치 처리로 전체 데이터 조회
+    console.log('📦 회원 엑셀 배치 조회 시작')
+    const allUsers: any[] = []
+    let offset = 0
+    const batchSize = 1000
+    let hasMore = true
+    let batchCount = 0
 
-    if (error) {
-      console.error('Users fetch error:', error)
-      return NextResponse.json({ 
-        success: false, 
-        error: '사용자 목록을 조회할 수 없습니다.' 
-      }, { status: 500 })
+    while (hasMore && batchCount < 100) { // 최대 100 배치 (10만건 제한)
+      const { data: batchData, error: batchError } = await query
+        .range(offset, offset + batchSize - 1)
+
+      if (batchError) {
+        console.error(`배치 ${batchCount + 1} 조회 오류:`, batchError)
+        return NextResponse.json({ 
+          success: false, 
+          error: '사용자 목록을 조회할 수 없습니다.' 
+        }, { status: 500 })
+      }
+
+      if (!batchData || batchData.length === 0) {
+        hasMore = false
+        break
+      }
+
+      allUsers.push(...batchData)
+      offset += batchSize
+      batchCount++
+
+      console.log(`📦 배치 ${batchCount}: ${batchData.length}건 조회 (누적: ${allUsers.length}건)`)
+
+      // 배치 크기보다 적게 나오면 마지막 배치
+      if (batchData.length < batchSize) {
+        hasMore = false
+      }
     }
+
+    console.log(`✅ 회원 엑셀 배치 조회 완료: 총 ${allUsers.length}건 (${batchCount}개 배치)`)
+    const users = allUsers
 
     // 엑셀 데이터 생성
     const excelData = users.map((user, index) => ({

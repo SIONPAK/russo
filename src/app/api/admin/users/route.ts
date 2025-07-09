@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
 import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
+import { executeBatchQuery } from '@/shared/lib/batch-utils'
 
 // GET - 사용자 목록 조회
 export async function GET(request: NextRequest) {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
     // 기본 쿼리 (일반 사용자 조회)
     let query = supabase
       .from('users')
-      .select('*', { count: 'exact' })
+      .select('*')
 
     // 검색 조건
     if (search) {
@@ -53,7 +54,40 @@ export async function GET(request: NextRequest) {
     // 페이지네이션
     query = query.range(offset, offset + limit - 1)
 
-    const { data: users, error, count } = await query
+    const { data: users, error } = await query
+
+    // 전체 개수 조회를 위한 배치 처리
+    let countQuery = supabase
+      .from('users')
+      .select('id')
+
+    // 동일한 필터 적용
+    if (search) {
+      countQuery = countQuery.or(`company_name.ilike.%${search}%,representative_name.ilike.%${search}%,email.ilike.%${search}%,business_number.ilike.%${search}%,phone.ilike.%${search}%`)
+    }
+
+    if (status) {
+      countQuery = countQuery.eq('approval_status', status)
+    }
+
+    if (grade) {
+      countQuery = countQuery.eq('customer_grade', grade)
+    }
+
+    if (dateFrom) {
+      countQuery = countQuery.gte('created_at', dateFrom)
+    }
+    if (dateTo) {
+      countQuery = countQuery.lte('created_at', dateTo)
+    }
+
+    // 배치 처리로 전체 개수 조회
+    const countResult = await executeBatchQuery(
+      countQuery.order('created_at', { ascending: false }),
+      '회원 개수'
+    )
+
+    const count = countResult.error ? 0 : countResult.totalCount
 
     if (error) {
       console.error('Users fetch error:', error)

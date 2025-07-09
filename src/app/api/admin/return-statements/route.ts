@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import { getKoreaTime, getKoreaDate } from '@/shared/lib/utils'
+import { executeBatchQuery } from '@/shared/lib/batch-utils'
 
 // 반품명세서 조회 API
 export async function GET(request: NextRequest) {
@@ -59,18 +60,24 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
-    const { data, error } = await query
+    // 배치 처리로 반품명세서 조회
+    const batchResult = await executeBatchQuery(
+      query,
+      '반품명세서'
+    )
 
-    if (error) {
-      console.error('Return statements fetch error:', error)
+    if (batchResult.error) {
+      console.error('Return statements fetch error:', batchResult.error)
       return NextResponse.json({
         success: false,
         error: '반품명세서 조회 중 오류가 발생했습니다.'
       }, { status: 500 })
     }
 
+    const data = batchResult.data
+
     // 데이터 변환
-    const statements = data?.map(statement => ({
+    const statements = data?.map((statement: any) => ({
       id: statement.id,
       statement_number: statement.statement_number,
       order_id: statement.order_id,

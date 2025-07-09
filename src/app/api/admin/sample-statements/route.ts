@@ -58,15 +58,45 @@ export async function GET(request: NextRequest) {
       query = query.or(`sample_number.ilike.%${search}%,customer_name.ilike.%${search}%,product_name.ilike.%${search}%`)
     }
 
-    const { data: samples, error } = await query
+    // 배치 처리로 전체 데이터 조회
+    console.log('📦 샘플 명세서 배치 조회 시작')
+    const allSamplesData: any[] = []
+    let batchOffset = 0
+    const batchSize = 1000
+    let hasMore = true
+    let batchCount = 0
 
-    if (error) {
-      console.error('Sample statements query error:', error)
-      return NextResponse.json({
-        success: false,
-        error: '샘플 명세서 조회에 실패했습니다.'
-      }, { status: 500 })
+    while (hasMore && batchCount < 100) { // 최대 100 배치 (10만건 제한)
+      const { data: batchData, error: batchError } = await query
+        .range(batchOffset, batchOffset + batchSize - 1)
+
+      if (batchError) {
+        console.error(`배치 ${batchCount + 1} 조회 오류:`, batchError)
+        return NextResponse.json({
+          success: false,
+          error: '샘플 명세서 조회에 실패했습니다.'
+        }, { status: 500 })
+      }
+
+      if (!batchData || batchData.length === 0) {
+        hasMore = false
+        break
+      }
+
+      allSamplesData.push(...batchData)
+      batchOffset += batchSize
+      batchCount++
+
+      console.log(`📦 배치 ${batchCount}: ${batchData.length}건 조회 (누적: ${allSamplesData.length}건)`)
+
+      // 배치 크기보다 적게 나오면 마지막 배치
+      if (batchData.length < batchSize) {
+        hasMore = false
+      }
     }
+
+    console.log(`✅ 샘플 명세서 배치 조회 완료: 총 ${allSamplesData.length}건 (${batchCount}개 배치)`)
+    const samples = allSamplesData
 
     // 샘플 번호별로 그룹화 (업체별 명세서)
     const groupedSamples = samples.reduce((acc: any, sample: any) => {

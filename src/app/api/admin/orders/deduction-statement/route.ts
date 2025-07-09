@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { executeBatchQuery } from '@/shared/lib/batch-utils'
 
 // GET - 차감명세서 목록 조회
 export async function GET(request: NextRequest) {
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
           unit_price,
           total_amount
         )
-      `, { count: 'exact' })
+      `)
       .in('statement_type', ['deduction', 'return', 'refund']) // 차감 관련 명세서만
 
     // 검색 조건 적용
@@ -78,21 +79,28 @@ export async function GET(request: NextRequest) {
       query = query.lte('created_at', endDate + 'T23:59:59')
     }
 
-    // 페이지네이션 및 정렬
-    const { data: statements, error, count } = await query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
+    // 배치 처리로 전체 데이터 조회
+    const batchResult = await executeBatchQuery(
+      query.order('created_at', { ascending: false }),
+      '차감명세서'
+    )
 
-    if (error) {
-      console.error('Deduction statements fetch error:', error)
+    if (batchResult.error) {
+      console.error('차감명세서 조회 오류:', batchResult.error)
       return NextResponse.json({
         success: false,
         error: '차감명세서 조회에 실패했습니다.'
       }, { status: 500 })
     }
 
+    const allStatements = batchResult.data
+    const count = batchResult.totalCount
+
+    // 페이지네이션 적용
+    const statements = allStatements.slice(offset, offset + limit)
+
     // 차감명세서 데이터 가공
-    const deductionStatements = statements?.map(statement => ({
+    const deductionStatements = statements?.map((statement: any) => ({
       id: statement.id,
       statement_number: statement.statement_number,
       statement_type: statement.statement_type,
