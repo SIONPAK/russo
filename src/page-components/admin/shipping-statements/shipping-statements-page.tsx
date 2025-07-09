@@ -61,22 +61,63 @@ export default function ShippingStatementsPage() {
     try {
       setLoading(true)
       const params = new URLSearchParams({
+        status: 'shipped', // 출고된 주문들만 조회
+        search: filters.companyName,
         startDate: filters.startDate,
         endDate: filters.endDate,
-        companyName: filters.companyName,
-        emailSent: filters.emailSent
+        limit: '100' // 많은 수의 주문을 가져오기 위해 limit 증가
       })
 
-      const response = await fetch(`/api/admin/orders/shipping-statement?${params}`)
+      const response = await fetch(`/api/admin/orders?${params}`)
       const result = await response.json()
 
       if (result.success) {
-        setStatements(result.data)
+        // 주문 데이터를 출고 명세서 형태로 변환
+        const transformedStatements = result.data.orders.map((order: any) => ({
+          id: order.id,
+          order_id: order.id,
+          order_number: order.order_number,
+          company_name: order.users?.company_name || '',
+          customer_grade: order.users?.customer_grade || 'general',
+          created_at: order.created_at,
+          shipped_at: order.shipped_at,
+          status: order.status,
+          email_sent: false, // 임시로 false로 설정
+          email_sent_at: null,
+          total_amount: order.total_amount,
+          items: order.order_items?.filter((item: any) => item.shipped_quantity > 0).map((item: any) => ({
+            product_name: item.product_name,
+            color: item.color,
+            size: item.size,
+            quantity: item.quantity,
+            shipped_quantity: item.shipped_quantity,
+            unit_price: item.unit_price,
+            total_price: item.unit_price * item.shipped_quantity
+          })) || []
+        }))
+
+        // 이메일 발송 여부와 회사명 필터링
+        let filteredStatements = transformedStatements
+        
+        if (filters.emailSent !== 'all') {
+          const emailSentBool = filters.emailSent === 'sent'
+          filteredStatements = filteredStatements.filter((stmt: any) => stmt.email_sent === emailSentBool)
+        }
+
+        if (filters.companyName) {
+          filteredStatements = filteredStatements.filter((stmt: any) => 
+            stmt.company_name.toLowerCase().includes(filters.companyName.toLowerCase())
+          )
+        }
+
+        setStatements(filteredStatements)
       } else {
         console.error('Failed to fetch statements:', result.error)
+        setStatements([])
       }
     } catch (error) {
       console.error('Error fetching statements:', error)
+      setStatements([])
     } finally {
       setLoading(false)
     }
