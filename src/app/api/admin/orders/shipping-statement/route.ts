@@ -464,6 +464,19 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     console.log('🔓 모든 리소스 요청 허용 (폰트 로딩을 위해)')
     // await page.setRequestInterception(false) // 완전히 해제
     
+    // 폰트 파일을 직접 읽어서 base64로 변환
+    console.log('📁 폰트 파일 로딩 중...')
+    let fontBase64 = ''
+    try {
+      const fontPath = path.join(process.cwd(), 'public/fonts/PretendardVariable.woff2')
+      const fontBuffer = fs.readFileSync(fontPath)
+      fontBase64 = fontBuffer.toString('base64')
+      console.log('✅ 폰트 파일 로딩 완료:', fontBuffer.length, 'bytes')
+    } catch (fontError) {
+      console.error('⚠️ 폰트 파일 로딩 실패:', fontError)
+      console.log('📋 fallback 폰트 사용')
+    }
+    
     // 현재 환경에 맞는 폰트 경로 설정
     const baseUrl = process.env.NODE_ENV === 'production' 
       ? 'https://russo-seven.vercel.app'
@@ -476,13 +489,17 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
+          ${fontBase64 ? `
           @font-face {
             font-family: 'Pretendard';
-            src: url('${baseUrl}/fonts/PretendardVariable.woff2') format('woff2');
+            src: url('data:font/woff2;base64,${fontBase64}') format('woff2');
             font-weight: 100 900;
             font-style: normal;
             font-display: block;
           }
+          ` : `
+          /* 폰트 파일 로딩 실패 - fallback만 사용 */
+          `}
           
           @page {
             size: A4;
@@ -491,11 +508,11 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           /* 강제 폰트 적용 */
           * {
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           body {
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-size: 11px;
             line-height: 1.2;
             margin: 0;
@@ -514,7 +531,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 각 셀 스타일 */
@@ -522,7 +539,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             border: 1px solid #9a9a9a;
             padding: 2px;
             vertical-align: bottom;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 제목 셀 */
@@ -534,7 +551,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             font-size: 20px;
             font-weight: bold;
             padding: 5px;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 기본 셀 크기들 */
@@ -557,7 +574,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 폰트 스타일 */
           .font-bold { 
             font-weight: bold; 
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .font-11 { font-size: 11px; }
           .font-20 { font-size: 20px; }
@@ -565,18 +582,18 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           /* 특별 스타일 */
           .company-info {
             font-size: 11px;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .amount-text {
             font-size: 11px;
             font-weight: bold;
             text-align: center;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           .total-row {
             background-color: #f5f5f5;
             font-weight: bold;
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
           }
           
           /* 빈 셀 최소 높이 */
@@ -586,12 +603,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           
           /* 한글 텍스트 강제 적용 */
           .korean-text {
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-weight: 400;
           }
           
           .korean-text-bold {
-            font-family: 'Pretendard', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
+            font-family: ${fontBase64 ? "'Pretendard'," : ""} 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Helvetica', 'Arial', sans-serif !important;
             font-weight: 700;
           }
         </style>
@@ -858,9 +875,14 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     timeout: 30000
   })
   
-  // 폰트 로딩 완료 대기 (더 긴 시간)
-  console.log('⏳ 폰트 로딩 대기 중... (10초)')
-  await new Promise(resolve => setTimeout(resolve, 10000))
+  // 폰트가 CSS에 임베드되어 있으므로 짧은 대기만 필요
+  if (fontBase64) {
+    console.log('⚡ 임베드된 폰트 사용 - 짧은 대기 (2초)')
+    await new Promise(resolve => setTimeout(resolve, 2000))
+  } else {
+    console.log('⏳ fallback 폰트 사용 - 일반 대기 (5초)')
+    await new Promise(resolve => setTimeout(resolve, 5000))
+  }
   
   console.log('📄 PDF 생성 중...')
   const pdfBuffer = await page.pdf({
