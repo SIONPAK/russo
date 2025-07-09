@@ -324,7 +324,7 @@ export function OrderManagementPage() {
 
     setIsSearching(true)
     try {
-      const response = await fetch(`/api/products?search=${encodeURIComponent(keyword)}`)
+      const response = await fetch(`/api/products?search=${encodeURIComponent(keyword)}&limit=100&include_inactive=true`)
       const result = await response.json()
 
       if (result.success && Array.isArray(result.data)) {
@@ -357,7 +357,7 @@ export function OrderManagementPage() {
               inventory_options: allOptions
             }
           })
-          // 품절 상품 필터링 제거 - 모든 상품 포함 (inventory_options 없는 상품도 포함)
+          // 품절 상품도 모두 포함 (재고 0인 상품도 주문 가능)
         setSearchResults(products)
       } else {
         setSearchResults([])
@@ -1344,6 +1344,18 @@ export function OrderManagementPage() {
                             <h4 className="font-medium text-gray-900">{product.name}</h4>
                             <p className="text-sm text-gray-600">코드: {product.code}</p>
                             <p className="text-sm text-gray-600">가격: {formatCurrency(product.price)}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              product.stock === 0 ? 'bg-red-100 text-red-800' :
+                              product.stock < 10 ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-green-100 text-green-800'
+                            }`}>
+                              {product.stock === 0 ? '품절' : `재고 ${product.stock}개`}
+                            </span>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {product.stock === 0 ? '주문 가능' : ''}
+                            </p>
                           </div>
                         </div>
                         

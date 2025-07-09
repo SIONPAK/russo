@@ -472,18 +472,7 @@ export function OrdersPage() {
       return
     }
 
-    const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
-
-    // 이미 확정된 주문이 있는지 확인
-    const confirmedOrders = selectedOrdersData.filter(order => order.status === 'confirmed')
-    
-    if (confirmedOrders.length > 0) {
-      const orderNumbers = confirmedOrders.map(order => order.order_number).join(', ')
-      showError(`이미 명세서가 확정된 주문이 있습니다.\n\n확정 완료 주문 (${confirmedOrders.length}건):\n${orderNumbers}\n\n확정되지 않은 주문만 선택해주세요.`)
-      return
-    }
-
-    if (!confirm(`선택된 ${selectedOrders.length}건의 주문에 대해 확정 명세서를 생성하고 이메일을 발송하시겠습니까?\n\n⚠️ 처리 시 다음 작업이 수행됩니다:\n• 거래명세서 자동 생성\n• 마일리지 차감 처리\n• 고객에게 이메일 발송\n• 주문 상태 '명세서 확정'으로 변경\n\n이 작업은 되돌릴 수 없습니다.`)) {
+    if (!confirm(`선택된 ${selectedOrders.length}건의 주문에 대해 확정 명세서를 생성하고 이메일을 발송하시겠습니까?\n\n⚠️ 처리 시 다음 작업이 수행됩니다:\n• 거래명세서 자동 생성\n• 마일리지 차감 처리\n• 고객에게 이메일 발송\n• 주문 상태 '명세서 확정'으로 변경\n\n이미 확정된 주문도 재처리됩니다.`)) {
       return
     }
 
@@ -886,8 +875,7 @@ export function OrdersPage() {
                 selectedOrders.length === 0 || 
                 updating || 
                 downloadingPDF || 
-                downloadingExcel ||
-                selectedOrdersData.some(order => order.status === 'confirmed')
+                downloadingExcel
               }
               className="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-2 disabled:opacity-50"
             >

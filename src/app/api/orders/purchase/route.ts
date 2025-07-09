@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         
         return NextResponse.json({
           success: false,
-          message: `하루에 발주는 1건만 가능합니다.\n\n기존 발주: ${existingOrder.order_number}\n작성 시간: ${orderKoreaTime.toLocaleString('ko-KR')}\n\n업무일 기준: ${workdayStart.toLocaleDateString('ko-KR')} 15:00 ~ ${workdayEnd.toLocaleDateString('ko-KR')} 14:59\n\n※ 반품은 제한 없이 가능합니다.`
+          message: `하루에 발주는 1건만 가능합니다. 기존 발주서를 '수정'해서 이용해주세요.\n\n업무일 기준: ${workdayStart.toLocaleDateString('ko-KR')} 15:00 ~ ${workdayEnd.toLocaleDateString('ko-KR')} 14:59\n\n`
         }, { status: 400 })
       }
     }

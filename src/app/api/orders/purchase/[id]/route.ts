@@ -347,19 +347,23 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, message: '상품 조회에 실패했습니다.' }, { status: 500 })
     }
 
-    // 4. 관련 상품들의 현재 할당량 계산 및 재고 복원
-    const productMap = new Map(products?.map(p => [p.id, p]) || [])
-    
+    // 4. 관련 상품들의 현재 할당량을 데이터베이스에서 실시간으로 복원
     for (const order of relatedOrders || []) {
       for (const item of order.order_items || []) {
         if (!item.product_id || !item.shipped_quantity || item.shipped_quantity <= 0) continue
         
-        const product = productMap.get(item.product_id)
-        if (!product) continue
+        // 실시간으로 데이터베이스에서 최신 상품 정보 조회
+        const { data: currentProduct, error: currentProductError } = await supabase
+          .from('products')
+          .select('id, name, inventory_options, stock_quantity')
+          .eq('id', item.product_id)
+          .single()
         
-        // 재고 복원
-        if (product.inventory_options && Array.isArray(product.inventory_options)) {
-          const updatedOptions = product.inventory_options.map((option: any) => {
+        if (currentProductError || !currentProduct) continue
+        
+        // 재고 복원 (데이터베이스 직접 업데이트)
+        if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options)) {
+          const updatedOptions = currentProduct.inventory_options.map((option: any) => {
             if (option.color === item.color && option.size === item.size) {
               return {
                 ...option,
@@ -369,10 +373,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             return option
           })
           
-          product.inventory_options = updatedOptions
-          product.stock_quantity = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+          const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+          
+          await supabase
+            .from('products')
+            .update({
+              inventory_options: updatedOptions,
+              stock_quantity: totalStock,
+              updated_at: getKoreaTime()
+            })
+            .eq('id', item.product_id)
         } else {
-          product.stock_quantity = product.stock_quantity + item.shipped_quantity
+          await supabase
+            .from('products')
+            .update({
+              stock_quantity: currentProduct.stock_quantity + item.shipped_quantity,
+              updated_at: getKoreaTime()
+            })
+            .eq('id', item.product_id)
         }
       }
     }
@@ -386,7 +404,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         .in('product_id', modifiedProductIds)
     }
 
-    // 6. 시간순으로 재할당
+    // 6. 시간순으로 재할당 (실시간 데이터베이스 업데이트)
     for (const orderToProcess of relatedOrders || []) {
       let orderFullyAllocated = true
       let orderHasPartialAllocation = false
@@ -394,8 +412,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       for (const item of orderToProcess.order_items || []) {
         if (!item.product_id || item.quantity <= 0) continue
         
-        const product = productMap.get(item.product_id)
-        if (!product) {
+        // 실시간으로 데이터베이스에서 최신 상품 정보 조회
+        const { data: currentProduct, error: currentProductError } = await supabase
+          .from('products')
+          .select('id, name, inventory_options, stock_quantity')
+          .eq('id', item.product_id)
+          .single()
+        
+        if (currentProductError || !currentProduct) {
           orderFullyAllocated = false
           continue
         }
@@ -403,9 +427,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         let allocatedQuantity = 0
         const requestedQuantity = item.quantity
         
-        if (product.inventory_options && Array.isArray(product.inventory_options)) {
+        if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options)) {
           // 옵션별 재고 관리
-          const inventoryOption = product.inventory_options.find(
+          const inventoryOption = currentProduct.inventory_options.find(
             (option: any) => option.color === item.color && option.size === item.size
           )
           
@@ -414,8 +438,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             allocatedQuantity = Math.min(requestedQuantity, availableStock)
             
             if (allocatedQuantity > 0) {
-              // 옵션별 재고 차감
-              const updatedOptions = product.inventory_options.map((option: any) => {
+              // 옵션별 재고 차감 (데이터베이스 직접 업데이트)
+              const updatedOptions = currentProduct.inventory_options.map((option: any) => {
                 if (option.color === item.color && option.size === item.size) {
                   return {
                     ...option,
@@ -425,17 +449,31 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                 return option
               })
               
-              product.inventory_options = updatedOptions
-              product.stock_quantity = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+              const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+              
+              await supabase
+                .from('products')
+                .update({
+                  inventory_options: updatedOptions,
+                  stock_quantity: totalStock,
+                  updated_at: getKoreaTime()
+                })
+                .eq('id', item.product_id)
             }
           }
         } else {
           // 일반 재고 관리
-          const availableStock = product.stock_quantity || 0
+          const availableStock = currentProduct.stock_quantity || 0
           allocatedQuantity = Math.min(requestedQuantity, availableStock)
           
           if (allocatedQuantity > 0) {
-            product.stock_quantity = availableStock - allocatedQuantity
+            await supabase
+              .from('products')
+              .update({
+                stock_quantity: availableStock - allocatedQuantity,
+                updated_at: getKoreaTime()
+              })
+              .eq('id', item.product_id)
           }
         }
         
@@ -471,18 +509,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           updated_at: getKoreaTime()
         })
         .eq('id', orderToProcess.id)
-    }
-
-    // 7. 상품 재고 업데이트 (배치 처리)
-    for (const product of productMap.values()) {
-      await supabase
-        .from('products')
-        .update({
-          inventory_options: product.inventory_options,
-          stock_quantity: product.stock_quantity,
-          updated_at: getKoreaTime()
-        })
-        .eq('id', product.id)
     }
 
     console.log('✅ [수정] 시간순 재고 할당 완료')

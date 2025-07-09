@@ -70,54 +70,207 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: '주문 아이템 수정에 실패했습니다.' }, { status: 500 })
     }
 
-    // 재고 조정 (출고 수량이 줄어들면 재고 복구)
-    if (shippedQuantityDiff < 0) {
-      const stockToRestore = Math.abs(shippedQuantityDiff)
-      const product = currentItem.products as any
-      
-      if (product.inventory_options && Array.isArray(product.inventory_options)) {
-        // 옵션별 재고 복구
-        const updatedOptions = product.inventory_options.map((opt: any) => {
-          if (opt.color === currentItem.color && opt.size === currentItem.size) {
-            return { ...opt, stock_quantity: (opt.stock_quantity || 0) + stockToRestore }
-          }
-          return opt
-        })
-        
-        const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-        
-        await supabase
-          .from('products')
-          .update({
-            inventory_options: updatedOptions,
-            stock_quantity: totalStock
-          })
-          .eq('id', currentItem.product_id)
-      } else {
-        // 전체 재고 복구
-        await supabase
-          .from('products')
-          .update({
-            stock_quantity: (product.stock_quantity || 0) + stockToRestore
-          })
-          .eq('id', currentItem.product_id)
-      }
+    // 시간순 재고 재할당 로직 (발주서 수정과 동일)
+    console.log('🔄 [관리자 수정] 시간순 재고 재할당 시작')
+    
+    // 1. 수정된 상품 ID 수집
+    const modifiedProductIds = [currentItem.product_id]
+    
+    // 2. 관련된 상품이 포함된 미완료 주문들 조회
+    const { data: relatedOrders, error: relatedOrdersError } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        order_number,
+        created_at,
+        status,
+        order_items!inner (
+          id,
+          product_id,
+          quantity,
+          shipped_quantity,
+          color,
+          size,
+          product_name
+        )
+      `)
+      .in('order_type', ['purchase', 'mixed'])
+      .in('status', ['pending', 'processing', 'confirmed'])
+      .in('order_items.product_id', modifiedProductIds)
+      .order('created_at', { ascending: true })
 
-      // 재고 변동 이력 기록
-      await supabase
-        .from('stock_movements')
-        .insert({
-          product_id: currentItem.product_id,
-          movement_type: 'order_quantity_adjustment',
-          quantity: stockToRestore, // 복구는 양수
-          color: currentItem.color,
-          size: currentItem.size,
-          notes: `주문 수량 조정으로 인한 재고 복구 (${oldQuantity} → ${quantity})`,
-          reference_id: orderId,
-          reference_type: 'order',
-          created_at: new Date().toISOString()
-        })
+    if (relatedOrdersError) {
+      console.error('❌ [관리자 수정] 관련 주문 조회 오류:', relatedOrdersError)
+      return NextResponse.json({ error: '주문 조회에 실패했습니다.' }, { status: 500 })
     }
+
+    console.log(`📊 [관리자 수정] 재할당 대상 주문 수: ${relatedOrders?.length || 0}`)
+
+    // 3. 관련 상품들의 현재 할당량을 데이터베이스에서 실시간으로 복원
+    for (const order of relatedOrders || []) {
+      for (const item of order.order_items || []) {
+        if (!item.product_id || !item.shipped_quantity || item.shipped_quantity <= 0) continue
+        
+        // 실시간으로 데이터베이스에서 최신 상품 정보 조회
+        const { data: currentProduct, error: currentProductError } = await supabase
+          .from('products')
+          .select('id, name, inventory_options, stock_quantity')
+          .eq('id', item.product_id)
+          .single()
+        
+        if (currentProductError || !currentProduct) continue
+        
+        // 재고 복원 (데이터베이스 직접 업데이트)
+        if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options)) {
+          const updatedOptions = currentProduct.inventory_options.map((option: any) => {
+            if (option.color === item.color && option.size === item.size) {
+              return {
+                ...option,
+                stock_quantity: option.stock_quantity + item.shipped_quantity
+              }
+            }
+            return option
+          })
+          
+          const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+          
+          await supabase
+            .from('products')
+            .update({
+              inventory_options: updatedOptions,
+              stock_quantity: totalStock,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', item.product_id)
+        } else {
+          await supabase
+            .from('products')
+            .update({
+              stock_quantity: currentProduct.stock_quantity + item.shipped_quantity,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', item.product_id)
+        }
+      }
+    }
+
+    // 4. 관련 주문들의 shipped_quantity 초기화
+    for (const order of relatedOrders || []) {
+      await supabase
+        .from('order_items')
+        .update({ shipped_quantity: 0 })
+        .eq('order_id', order.id)
+        .in('product_id', modifiedProductIds)
+    }
+
+    // 5. 시간순으로 재할당 (실시간 데이터베이스 업데이트)
+    for (const orderToProcess of relatedOrders || []) {
+      let orderFullyAllocated = true
+      let orderHasPartialAllocation = false
+      
+      for (const item of orderToProcess.order_items || []) {
+        if (!item.product_id || item.quantity <= 0) continue
+        
+        // 실시간으로 데이터베이스에서 최신 상품 정보 조회
+        const { data: currentProduct, error: currentProductError } = await supabase
+          .from('products')
+          .select('id, name, inventory_options, stock_quantity')
+          .eq('id', item.product_id)
+          .single()
+        
+        if (currentProductError || !currentProduct) {
+          orderFullyAllocated = false
+          continue
+        }
+        
+        let allocatedQuantity = 0
+        const requestedQuantity = item.quantity
+        
+        if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options)) {
+          // 옵션별 재고 관리
+          const inventoryOption = currentProduct.inventory_options.find(
+            (option: any) => option.color === item.color && option.size === item.size
+          )
+          
+          if (inventoryOption) {
+            const availableStock = inventoryOption.stock_quantity || 0
+            allocatedQuantity = Math.min(requestedQuantity, availableStock)
+            
+            if (allocatedQuantity > 0) {
+              // 옵션별 재고 차감 (데이터베이스 직접 업데이트)
+              const updatedOptions = currentProduct.inventory_options.map((option: any) => {
+                if (option.color === item.color && option.size === item.size) {
+                  return {
+                    ...option,
+                    stock_quantity: option.stock_quantity - allocatedQuantity
+                  }
+                }
+                return option
+              })
+              
+              const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+              
+              await supabase
+                .from('products')
+                .update({
+                  inventory_options: updatedOptions,
+                  stock_quantity: totalStock,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', item.product_id)
+            }
+          }
+        } else {
+          // 일반 재고 관리
+          const availableStock = currentProduct.stock_quantity || 0
+          allocatedQuantity = Math.min(requestedQuantity, availableStock)
+          
+          if (allocatedQuantity > 0) {
+            await supabase
+              .from('products')
+              .update({
+                stock_quantity: availableStock - allocatedQuantity,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', item.product_id)
+          }
+        }
+        
+        // 주문 아이템 업데이트
+        if (allocatedQuantity > 0) {
+          await supabase
+            .from('order_items')
+            .update({ shipped_quantity: allocatedQuantity })
+            .eq('id', item.id)
+        }
+        
+        // 할당 상태 확인
+        if (allocatedQuantity < requestedQuantity) {
+          orderFullyAllocated = false
+          if (allocatedQuantity > 0) {
+            orderHasPartialAllocation = true
+          }
+        }
+      }
+      
+      // 주문 상태 업데이트
+      let orderStatus = 'pending'  // 대기중
+      if (orderFullyAllocated) {
+        orderStatus = 'processing' // 작업중 (전량 할당 완료)
+      } else if (orderHasPartialAllocation) {
+        orderStatus = 'processing' // 작업중 (부분 할당)
+      }
+      
+      await supabase
+        .from('orders')
+        .update({ 
+          status: orderStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderToProcess.id)
+    }
+
+    console.log('✅ [관리자 수정] 시간순 재고 할당 완료')
 
     // 주문 총액 재계산
     const { data: orderItems, error: itemsError } = await supabase

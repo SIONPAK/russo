@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'created_at_desc'
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
+    const includeInactive = searchParams.get('include_inactive') === 'true'
 
     const offset = (page - 1) * limit
 
@@ -46,8 +47,10 @@ export async function GET(request: NextRequest) {
         )
       `, { count: 'exact' })
 
-    // 활성화된 상품만 조회
-    query = query.eq('is_active', true)
+    // 활성화된 상품만 조회 (include_inactive=true인 경우 비활성화된 상품도 포함)
+    if (!includeInactive) {
+      query = query.eq('is_active', true)
+    }
 
     // 검색 조건 적용
     if (search) {
