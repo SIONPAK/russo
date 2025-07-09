@@ -9,9 +9,7 @@ const nextConfig: NextConfig = {
   },
   
   // 서버 측 렌더링 시 시간대 설정
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js']
-  }
+  serverExternalPackages: ['@supabase/supabase-js', '@sparticuz/chromium', 'puppeteer-core']
 };
 
 export default nextConfig;

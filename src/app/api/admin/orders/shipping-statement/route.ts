@@ -3,8 +3,6 @@ import { createClient } from '@/shared/lib/supabase/server'
 import * as XLSX from 'xlsx'
 // 환경에 따라 다른 패키지 import
 const isDev = process.env.NODE_ENV === 'development'
-const puppeteer = isDev ? require('puppeteer') : require('puppeteer-core')
-const chromium = isDev ? null : require('@sparticuz/chromium')
 import path from 'path'
 import fs from 'fs'
 import { getKoreaTime, getKoreaDate, getKoreaDateFormatted } from '@/shared/lib/utils'
@@ -367,15 +365,15 @@ async function getPuppeteerConfig() {
   } else {
     console.log('🏭 프로덕션 환경: @sparticuz/chromium 사용')
     try {
-      const executablePath = await chromium.executablePath()
+      const chromium = await import('@sparticuz/chromium')
+      const executablePath = await chromium.default.executablePath()
       console.log('✅ Chromium 실행 파일 경로:', executablePath)
       
-      // 폰트 설정
-      await chromium.font()
+      // 폰트 설정은 chromium.args에 포함되어 있음
       
       return {
         args: [
-          ...chromium.args,
+          ...chromium.default.args,
           '--disable-dev-shm-usage',
           '--disable-gpu',
           '--single-process',
@@ -446,7 +444,11 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     let retries = 3
     while (retries > 0) {
       try {
-        browser = await puppeteer.launch(puppeteerConfig)
+        const puppeteer = isDev ? 
+      await import('puppeteer') : 
+      await import('puppeteer-core')
+    
+    browser = await puppeteer.default.launch(puppeteerConfig)
         console.log('✅ 브라우저 시작 완료')
         break
       } catch (launchError) {
