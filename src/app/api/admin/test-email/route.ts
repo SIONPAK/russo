@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const testEmailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #333; margin: 0;">루소 (LUSSO)</h1>
+                                                     <h1 style="color: #333; margin: 0;">루소 (LUSSO)</h1>
           <p style="color: #666; margin: 5px 0;">이메일 발송 테스트</p>
         </div>
         
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
         
         <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
           <p style="color: #666; font-size: 14px; margin: 5px 0;">
-            <strong>(주) 루소 (LUSSO)</strong>
+                                                     <strong>(주) 루소 (LUSSO)</strong>
           </p>
           <p style="color: #666; font-size: 14px; margin: 5px 0;">
             고객센터: 010-2131-7540 | 이메일: info@russo.co.kr

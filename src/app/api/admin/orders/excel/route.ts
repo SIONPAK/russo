@@ -178,13 +178,14 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // 운송장 번호 업데이트
+        // 운송장 번호 업데이트 (상태는 변경하지 않음)
+        // "미출고" 처리: 운송장번호가 "미출고"인 경우 특별 처리
+        const isUnshipped = trackingNumber === '미출고'
+        
         const { error: updateError } = await supabase
           .from('orders')
           .update({
-            tracking_number: trackingNumber,
-            status: order.status === 'confirmed' ? 'shipped' : order.status,
-            shipped_at: order.status === 'confirmed' ? getKoreaTime() : null,
+            tracking_number: isUnshipped ? '미출고' : trackingNumber,
             updated_at: getKoreaTime()
           })
           .eq('id', order.id)
@@ -192,6 +193,30 @@ export async function POST(request: NextRequest) {
         if (updateError) {
           errors.push(`업데이트 실패: ${orderNumber} - ${updateError.message}`)
           continue
+        }
+
+        // "미출고" 처리 시 미출고 명세서 자동 생성
+        if (isUnshipped) {
+          try {
+            // 미출고 명세서 생성 API 호출
+            const unshippedResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/orders/bulk-unshipped-process`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                orderIds: [order.id]
+              })
+            })
+
+            if (!unshippedResponse.ok) {
+              console.error(`미출고 명세서 생성 실패: ${orderNumber}`)
+            } else {
+              console.log(`미출고 명세서 생성 완료: ${orderNumber}`)
+            }
+          } catch (unshippedError) {
+            console.error(`미출고 명세서 생성 중 오류: ${orderNumber}`, unshippedError)
+          }
         }
 
         results.push({

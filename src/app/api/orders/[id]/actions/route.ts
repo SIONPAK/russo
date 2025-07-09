@@ -38,7 +38,7 @@ export async function POST(
     switch (action) {
       case 'cancel':
         // 취소 가능 상태 확인 (배송 준비 전)
-        if (!['pending', 'confirmed'].includes(order.status)) {
+        if (!['pending', 'processing'].includes(order.status)) {
           return NextResponse.json({
             success: false,
             error: '취소할 수 없는 주문 상태입니다.'

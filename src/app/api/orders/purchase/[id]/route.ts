@@ -277,10 +277,243 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       console.log(`ℹ️ [수정] 반품 아이템 없음 - 반품명세서 생성 건너뜀`)
     }
 
-    // 주문 타입 업데이트
+    // 시간순 재고 할당 처리 (성능 최적화된 버전)
+    console.log('🔄 [수정] 시간순 재고 할당 시작')
+    
+    // 1. 수정된 주문과 관련된 상품들만 추출 (양수 항목만)
+    const modifiedProductIds = [...new Set(positiveItems.map((item: any) => item.product_id).filter(Boolean))]
+    
+    if (modifiedProductIds.length === 0) {
+      console.log('ℹ️ [수정] 재할당할 상품이 없습니다.')
+      
+      // 주문 타입 업데이트
+      let orderType = 'purchase'
+      if (positiveItems.length === 0 && negativeItems.length > 0) {
+        orderType = 'return_only'
+      } else if (positiveItems.length > 0 && negativeItems.length > 0) {
+        orderType = 'mixed'
+      }
+
+      await supabase
+        .from('orders')
+        .update({
+          order_type: orderType,
+          status: 'processing', // 반품만 있는 경우도 처리중으로
+          updated_at: getKoreaTime()
+        })
+        .eq('id', orderId)
+      
+      return NextResponse.json({ success: true, message: '발주서가 수정되었습니다.' })
+    }
+    
+    // 2. 관련된 상품이 포함된 미완료 주문들만 조회 (성능 최적화)
+    const { data: relatedOrders, error: relatedOrdersError } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        order_number,
+        created_at,
+        status,
+        order_items!inner (
+          id,
+          product_id,
+          quantity,
+          shipped_quantity,
+          color,
+          size,
+          product_name
+        )
+      `)
+      .in('order_type', ['purchase', 'mixed'])
+      .in('status', ['pending', 'processing', 'confirmed'])
+      .in('order_items.product_id', modifiedProductIds)
+      .order('created_at', { ascending: true })
+
+    if (relatedOrdersError) {
+      console.error('❌ [수정] 관련 주문 조회 오류:', relatedOrdersError)
+      return NextResponse.json({ success: false, message: '주문 조회에 실패했습니다.' }, { status: 500 })
+    }
+
+    console.log(`📊 [수정] 재할당 대상 주문 수: ${relatedOrders?.length || 0}`)
+
+    // 3. 관련 상품들의 재고 정보 조회
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('id, name, inventory_options, stock_quantity')
+      .in('id', modifiedProductIds)
+
+    if (productsError) {
+      console.error('❌ [수정] 상품 조회 오류:', productsError)
+      return NextResponse.json({ success: false, message: '상품 조회에 실패했습니다.' }, { status: 500 })
+    }
+
+    // 4. 관련 상품들의 현재 할당량 계산 및 재고 복원
+    const productMap = new Map(products?.map(p => [p.id, p]) || [])
+    
+    for (const order of relatedOrders || []) {
+      for (const item of order.order_items || []) {
+        if (!item.product_id || !item.shipped_quantity || item.shipped_quantity <= 0) continue
+        
+        const product = productMap.get(item.product_id)
+        if (!product) continue
+        
+        // 재고 복원
+        if (product.inventory_options && Array.isArray(product.inventory_options)) {
+          const updatedOptions = product.inventory_options.map((option: any) => {
+            if (option.color === item.color && option.size === item.size) {
+              return {
+                ...option,
+                stock_quantity: option.stock_quantity + item.shipped_quantity
+              }
+            }
+            return option
+          })
+          
+          product.inventory_options = updatedOptions
+          product.stock_quantity = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+        } else {
+          product.stock_quantity = product.stock_quantity + item.shipped_quantity
+        }
+      }
+    }
+
+    // 5. 관련 주문들의 shipped_quantity 초기화
+    for (const order of relatedOrders || []) {
+      await supabase
+        .from('order_items')
+        .update({ shipped_quantity: 0 })
+        .eq('order_id', order.id)
+        .in('product_id', modifiedProductIds)
+    }
+
+    // 6. 시간순으로 재할당
+    for (const orderToProcess of relatedOrders || []) {
+      let orderFullyAllocated = true
+      let orderHasPartialAllocation = false
+      
+      for (const item of orderToProcess.order_items || []) {
+        if (!item.product_id || item.quantity <= 0) continue
+        
+        const product = productMap.get(item.product_id)
+        if (!product) {
+          orderFullyAllocated = false
+          continue
+        }
+        
+        let allocatedQuantity = 0
+        const requestedQuantity = item.quantity
+        
+        if (product.inventory_options && Array.isArray(product.inventory_options)) {
+          // 옵션별 재고 관리
+          const inventoryOption = product.inventory_options.find(
+            (option: any) => option.color === item.color && option.size === item.size
+          )
+          
+          if (inventoryOption) {
+            const availableStock = inventoryOption.stock_quantity || 0
+            allocatedQuantity = Math.min(requestedQuantity, availableStock)
+            
+            if (allocatedQuantity > 0) {
+              // 옵션별 재고 차감
+              const updatedOptions = product.inventory_options.map((option: any) => {
+                if (option.color === item.color && option.size === item.size) {
+                  return {
+                    ...option,
+                    stock_quantity: option.stock_quantity - allocatedQuantity
+                  }
+                }
+                return option
+              })
+              
+              product.inventory_options = updatedOptions
+              product.stock_quantity = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+            }
+          }
+        } else {
+          // 일반 재고 관리
+          const availableStock = product.stock_quantity || 0
+          allocatedQuantity = Math.min(requestedQuantity, availableStock)
+          
+          if (allocatedQuantity > 0) {
+            product.stock_quantity = availableStock - allocatedQuantity
+          }
+        }
+        
+        // 주문 아이템 업데이트
+        if (allocatedQuantity > 0) {
+          await supabase
+            .from('order_items')
+            .update({ shipped_quantity: allocatedQuantity })
+            .eq('id', item.id)
+        }
+        
+        // 할당 상태 확인
+        if (allocatedQuantity < requestedQuantity) {
+          orderFullyAllocated = false
+          if (allocatedQuantity > 0) {
+            orderHasPartialAllocation = true
+          }
+        }
+      }
+      
+      // 주문 상태 업데이트
+      let orderStatus = 'pending'  // 대기중
+      if (orderFullyAllocated) {
+        orderStatus = 'processing' // 작업중 (전량 할당 완료)
+      } else if (orderHasPartialAllocation) {
+        orderStatus = 'processing' // 작업중 (부분 할당)
+      }
+      
+      await supabase
+        .from('orders')
+        .update({ 
+          status: orderStatus,
+          updated_at: getKoreaTime()
+        })
+        .eq('id', orderToProcess.id)
+    }
+
+    // 7. 상품 재고 업데이트 (배치 처리)
+    for (const product of productMap.values()) {
+      await supabase
+        .from('products')
+        .update({
+          inventory_options: product.inventory_options,
+          stock_quantity: product.stock_quantity,
+          updated_at: getKoreaTime()
+        })
+        .eq('id', product.id)
+    }
+
+    console.log('✅ [수정] 시간순 재고 할당 완료')
+
+    // 수정된 주문의 할당 상태 계산
+    const { data: updatedOrderItems, error: updatedOrderError } = await supabase
+      .from('order_items')
+      .select('quantity, shipped_quantity')
+      .eq('order_id', orderId)
+
+    let updatedOrderStatus = 'pending'
+    if (!updatedOrderError && updatedOrderItems) {
+      const allFullyAllocated = updatedOrderItems.every(item => 
+        (item.shipped_quantity || 0) >= item.quantity
+      )
+      const hasPartialAllocation = updatedOrderItems.some(item => 
+        (item.shipped_quantity || 0) > 0 && (item.shipped_quantity || 0) < item.quantity
+      )
+      
+      if (allFullyAllocated) {
+        updatedOrderStatus = 'processing' // 작업중 (전량 할당 완료)
+      } else if (hasPartialAllocation || updatedOrderItems.some(item => (item.shipped_quantity || 0) > 0)) {
+        updatedOrderStatus = 'processing' // 작업중 (부분 할당)
+      }
+    }
+
+    // 주문 타입 및 상태 업데이트
     let orderType = 'purchase'
     if (positiveItems.length === 0 && negativeItems.length > 0) {
       orderType = 'return_only'
+      updatedOrderStatus = 'processing' // 반품만 있는 경우 처리중
     } else if (positiveItems.length > 0 && negativeItems.length > 0) {
       orderType = 'mixed'
     }
@@ -289,9 +522,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .from('orders')
       .update({
         order_type: orderType,
+        status: updatedOrderStatus,
         updated_at: getKoreaTime()
       })
       .eq('id', orderId)
+
+    console.log(`🔄 [수정] 주문 상태 업데이트 완료 - 타입: ${orderType}, 상태: ${updatedOrderStatus}`)
 
     return NextResponse.json({ success: true, message: '발주서가 수정되었습니다.' })
   } catch (error) {

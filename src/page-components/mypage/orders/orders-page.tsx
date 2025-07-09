@@ -127,7 +127,7 @@ const statusMap = {
 
 export function OrdersPage() {
   const { isAuthenticated, user } = useAuthStore()
-  const [activeTab, setActiveTab] = useState<'purchase' | 'sample'>('purchase')
+  const [activeTab, setActiveTab] = useState<'purchase' | 'sample' | 'unshipped'>('purchase')
   
   // 발주 주문 관련 상태 (기존 일반 주문 상태를 발주용으로 변경)
   const [orders, setOrders] = useState<Order[]>([])
@@ -154,6 +154,10 @@ export function OrdersPage() {
   const [sampleDateRange, setSampleDateRange] = useState<'today' | '1month' | '3month' | '6month' | 'all'>('all')
   const [sampleStartDate, setSampleStartDate] = useState('')
   const [sampleEndDate, setSampleEndDate] = useState('')
+
+  // 미발송 내역 관련 상태
+  const [unshippedStatements, setUnshippedStatements] = useState<any[]>([])
+  const [unshippedLoading, setUnshippedLoading] = useState(false)
 
   // 날짜 범위 설정 (일반 주문용)
   const setDateRangeFilter = (range: 'today' | '1month' | '3month' | '6month' | 'all') => {
@@ -258,15 +262,13 @@ export function OrdersPage() {
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '10',
+        includeUnshipped: 'true',
         userId: user.id,
         ...(searchTerm && { search: searchTerm }),
         ...(statusFilter && { status: statusFilter }),
         ...(startDate && { startDate }),
         ...(endDate && { endDate })
       })
-
-      // 발주 주문만 가져오도록 type 필터 추가
-      params.append('type', 'purchase')
 
       const response = await fetch(`/api/orders?${params}`, {
         credentials: 'include'
@@ -278,12 +280,13 @@ export function OrdersPage() {
 
       const result = await response.json()
       
-      if (result.success) {
-        setOrders(result.data || [])
+      if (response.ok) {
+        setOrders(result.orders || [])
+        setUnshippedStatements(result.unshippedStatements || [])
         setTotalPages(result.pagination?.totalPages || 1)
         setTotalCount(result.pagination?.totalCount || 0)
       } else {
-        showError('발주 내역을 불러오는데 실패했습니다.')
+        showError(result.error || '발주 내역을 불러오는데 실패했습니다.')
       }
     } catch (error) {
       console.error('Fetch orders error:', error)
@@ -600,6 +603,21 @@ export function OrdersPage() {
             >
               샘플 주문
             </button>
+            <button
+              onClick={() => setActiveTab('unshipped')}
+              className={`py-3 px-1 border-b-2 font-semibold text-sm ${
+                activeTab === 'unshipped'
+                  ? 'border-black text-black'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              미발송 내역
+              {unshippedStatements.length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 bg-red-600 rounded-full">
+                  {unshippedStatements.length}
+                </span>
+              )}
+            </button>
           </nav>
         </div>
       </div>
@@ -747,7 +765,7 @@ export function OrdersPage() {
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto"></div>
               <p className="mt-4 text-gray-600">주문 목록을 불러오는 중...</p>
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : orders.length === 0 ? (
             <div className="text-center py-16">
               <Package className="h-16 w-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-medium text-gray-900 mb-2">
@@ -765,7 +783,7 @@ export function OrdersPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {filteredOrders.map((order) => {
+              {orders.map((order) => {
                 const statusInfo = statusMap[order.status as keyof typeof statusMap] || statusMap.pending
                 const StatusIcon = statusInfo.icon
                 const isExpanded = expandedOrders.has(order.id)
@@ -1254,6 +1272,135 @@ export function OrdersPage() {
                   </Button>
                 </div>
               )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 미발송 내역 탭 */}
+      {activeTab === 'unshipped' && (
+        <>
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">미발송 내역</h2>
+            <p className="text-gray-600">주문하신 상품 중 미발송된 항목들을 확인하실 수 있습니다.</p>
+          </div>
+
+          {unshippedStatements.length === 0 ? (
+            <div className="text-center py-16">
+              <CheckCircle className="h-16 w-16 text-green-400 mx-auto mb-4" />
+              <h3 className="text-xl font-medium text-gray-900 mb-2">
+                미발송 내역이 없습니다
+              </h3>
+              <p className="text-gray-500">
+                모든 주문이 정상적으로 처리되었습니다.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {unshippedStatements.map((statement) => (
+                <div
+                  key={statement.id}
+                  className="bg-white rounded-2xl border border-red-200 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300"
+                >
+                  {/* 미발송 명세서 헤더 */}
+                  <div className="p-6 bg-gradient-to-r from-red-50 to-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-4">
+                        <div className="p-2 bg-red-100 rounded-lg">
+                          <AlertTriangle className="h-6 w-6 text-red-600" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900">
+                            미발송 명세서 {statement.statement_number}
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            원 주문번호: {statement.orders?.order_number}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            발생일: {formatDate(statement.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                          미발송
+                        </span>
+                        <p className="text-lg font-bold text-red-600 mt-2">
+                          {formatCurrency(statement.total_unshipped_amount)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {statement.reason && (
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                        <div className="flex items-start">
+                          <AlertTriangle className="h-4 w-4 text-orange-600 mr-2 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-orange-800">미발송 사유</p>
+                            <p className="text-sm text-orange-700">{statement.reason}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 미발송 상품 목록 */}
+                  <div className="p-6">
+                    <h4 className="text-md font-semibold text-gray-900 mb-4">미발송 상품 목록</h4>
+                    <div className="space-y-3">
+                      {statement.unshipped_statement_items?.map((item: any, index: number) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex-1">
+                            <h5 className="font-medium text-gray-900">{item.product_name}</h5>
+                            <p className="text-sm text-gray-500">
+                              {item.color} / {item.size}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-gray-600">
+                              주문: {item.ordered_quantity}개 / 
+                              출고: {item.shipped_quantity}개 / 
+                              <span className="text-red-600 font-medium">
+                                미발송: {item.unshipped_quantity}개
+                              </span>
+                            </p>
+                            <p className="text-sm font-medium text-gray-900">
+                              {formatCurrency(item.total_amount)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 미발송 명세서 액션 */}
+                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-gray-600">
+                        상태: {statement.status === 'pending' ? '처리 대기' : 
+                               statement.status === 'processing' ? '처리 중' : 
+                               statement.status === 'completed' ? '처리 완료' : '알 수 없음'}
+                      </div>
+                      <div className="flex space-x-3">
+                        <Button
+                          onClick={() => {
+                            // 미발송 명세서 다운로드 기능 추가 예정
+                            showInfo('미발송 명세서 다운로드 기능은 준비 중입니다.')
+                          }}
+                          variant="outline"
+                          size="sm"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          명세서 다운로드
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </>

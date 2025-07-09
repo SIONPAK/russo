@@ -106,12 +106,11 @@ export async function POST(request: NextRequest) {
           matchedOrder = orders[0]
         }
 
-        // 운송장 번호 업데이트 및 배송중 상태로 변경
+        // 운송장 번호 업데이트 (상태는 변경하지 않음)
         const { error: updateError } = await supabase
           .from('orders')
           .update({
             tracking_number: trackingNumber,
-            status: 'shipped', // 배송중으로 상태 변경
             updated_at: new Date().toISOString()
           })
           .eq('id', matchedOrder.id)

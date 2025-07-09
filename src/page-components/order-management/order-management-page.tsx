@@ -16,7 +16,10 @@ import {
   Trash2,
   Calendar,
   List,
-  X
+  X,
+  Truck,
+  AlertTriangle,
+  CheckCircle
 } from 'lucide-react'
 import { supabase } from '@/shared/lib/supabase'
 
@@ -56,6 +59,7 @@ interface PurchaseOrder {
   shipping_name?: string
   shipping_phone?: string
   shipping_postal_code?: string
+  tracking_number?: string
   order_items: any[]
   return_statement_status?: string // 반품명세서 상태
 }
@@ -63,7 +67,7 @@ interface PurchaseOrder {
 export function OrderManagementPage() {
   const { user, isAuthenticated } = useAuthStore()
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'create' | 'list'>('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'unshipped'>('create')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(false)
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null)
@@ -87,6 +91,10 @@ export function OrderManagementPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  
+  // 미발송 내역 관련 상태
+  const [unshippedStatements, setUnshippedStatements] = useState<any[]>([])
+  const [isLoadingUnshipped, setIsLoadingUnshipped] = useState(false)
   
   // 로컬 스토리지 키
   const STORAGE_KEY = 'order-management-items'
@@ -207,8 +215,8 @@ export function OrderManagementPage() {
       const response = await fetch(`/api/orders?${params}`)
       const result = await response.json()
       
-      if (result.success) {
-        setPurchaseOrders(result.data || [])
+      if (response.ok) {
+        setPurchaseOrders(result.orders || [])
       } else {
         console.error('주문 조회 실패:', result.error)
         setPurchaseOrders([])
@@ -218,6 +226,35 @@ export function OrderManagementPage() {
       setPurchaseOrders([])
     } finally {
       setIsLoadingOrders(false)
+    }
+  }
+
+  // 미발송 내역 조회
+  const fetchUnshippedStatements = async () => {
+    if (!user) return
+    
+    try {
+      setIsLoadingUnshipped(true)
+      
+      const params = new URLSearchParams({
+        userId: user.id,
+        includeUnshipped: 'true'
+      })
+      
+      const response = await fetch(`/api/orders?${params}`)
+      const result = await response.json()
+      
+      if (response.ok) {
+        setUnshippedStatements(result.unshippedStatements || [])
+      } else {
+        console.error('미발송 내역 조회 실패:', result.error)
+        setUnshippedStatements([])
+      }
+    } catch (error) {
+      console.error('미발송 내역 조회 오류:', error)
+      setUnshippedStatements([])
+    } finally {
+      setIsLoadingUnshipped(false)
     }
   }
 
@@ -275,6 +312,8 @@ export function OrderManagementPage() {
   useEffect(() => {
     if (activeTab === 'list') {
       fetchPurchaseOrders(selectedDate)
+    } else if (activeTab === 'unshipped') {
+      fetchUnshippedStatements()
     }
   }, [activeTab, selectedDate, isAuthenticated, user])
 
@@ -849,10 +888,9 @@ export function OrderManagementPage() {
         {/* 안내 문구 */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
           <div className="space-y-2">
-            <p><strong>*주문 마감은 오후 3시입니다.</strong></p>
-            <p>이전까지는 수정 및 삭제가 가능하고, 이후로는 불가능합니다.</p>
-            <p><strong>*'행추가'버튼을 누르고 발주하실 상품을 추가 후, 발주서 저장을 눌러주세요.</strong></p>
-            <p><strong>*반품의 경우, 수량에 (-)음수 값을 입력하여 발주서를 생성해주세요.</strong></p>
+            <p><strong>*발주서 작성은 하루에 1번만 가능합니다.</strong> 추가/수정을 원하시면, 발주내역-수정을 이용해주세요.</p>
+            <p><strong>*반품 신청의 경우는 제한이 없습니다.</strong> 수량에 (-)음수 값을 입력하여 발주서를 생성해주세요.</p>
+            <p><strong>*주문 마감은 오후 3시입니다.</strong> 이전까지는 수정 및 삭제가 가능하고, 이후로는 불가능합니다.</p>
             <p><strong>*협의되지 않은 반품은 불가능하며, 즉시 착불 반송처리 됩니다.</strong></p>
             <p><strong>*3시 이후 주문은 다음날로 조회가 가능합니다.</strong></p>
           </div>
@@ -876,6 +914,19 @@ export function OrderManagementPage() {
         >
           <List className="h-4 w-4" />
           <span>발주 내역</span>
+        </Button>
+        <Button
+          variant={activeTab === 'unshipped' ? 'default' : 'outline'}
+          onClick={() => setActiveTab('unshipped')}
+          className="flex items-center space-x-2"
+        >
+          <AlertTriangle className="h-4 w-4" />
+          <span>미발송 내역</span>
+          {unshippedStatements.length > 0 && (
+            <span className="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 bg-red-600 rounded-full">
+              {unshippedStatements.length}
+            </span>
+          )}
         </Button>
       </div>
 
@@ -1155,6 +1206,7 @@ export function OrderManagementPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">발주일시</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">총 금액</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상태</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">운송장번호</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">배송지</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">액션</th>
                   </tr>
@@ -1169,7 +1221,7 @@ export function OrderManagementPage() {
                     </tr>
                   ) : purchaseOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                         <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                         <p>해당 기간에 발주 내역이 없습니다.</p>
                       </td>
@@ -1178,7 +1230,9 @@ export function OrderManagementPage() {
                     purchaseOrders.map((order) => (
                       <tr key={order.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-blue-600">{order.order_number}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{new Date(order.created_at).toLocaleString('ko-KR')}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          <div>{new Date(order.created_at).toLocaleString('ko-KR')}</div>
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency(order.total_amount)}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -1207,6 +1261,21 @@ export function OrderManagementPage() {
                              order.status === 'completed' ? '완료' :
                              order.status === 'shipped' ? '배송중' : order.status}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {order.tracking_number ? (
+                            <div className="flex items-center">
+                              <Truck className="h-3 w-3 text-blue-600 mr-1" />
+                              <button
+                                onClick={() => window.open(`https://trace.cjlogistics.com/next/tracking.html?wblNo=${order.tracking_number}`, '_blank')}
+                                className="text-blue-600 hover:text-blue-800 underline font-medium"
+                              >
+                                {order.tracking_number}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {order.shipping_name && order.shipping_address 
@@ -1249,6 +1318,114 @@ export function OrderManagementPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* 미발송 내역 탭 */}
+      {activeTab === 'unshipped' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900">미발송 내역</h2>
+            <Button
+              onClick={fetchUnshippedStatements}
+              variant="outline"
+              disabled={isLoadingUnshipped}
+            >
+              {isLoadingUnshipped ? '조회 중...' : '새로고침'}
+            </Button>
+          </div>
+
+          {isLoadingUnshipped ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-gray-500">미발송 내역을 조회하는 중...</p>
+            </div>
+          ) : unshippedStatements.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+              <p className="text-gray-500">미발송 내역이 없습니다.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {unshippedStatements.map((statement) => (
+                <div key={statement.id} className="bg-red-50 border border-red-200 rounded-lg p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-medium text-red-900">
+                        명세서 #{statement.statement_number}
+                      </h3>
+                      <p className="text-sm text-red-700 mt-1">
+                        원 주문번호: {statement.original_order_number}
+                      </p>
+                      <p className="text-sm text-red-700">
+                        미발송 사유: {statement.reason}
+                      </p>
+                      <p className="text-sm text-red-600">
+                        생성일: {new Date(statement.created_at).toLocaleString('ko-KR')}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        미발송
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border border-red-200 rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-red-100">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider">
+                            상품명
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider">
+                            옵션
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-red-700 uppercase tracking-wider">
+                            주문수량
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-red-700 uppercase tracking-wider">
+                            출고수량
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-red-700 uppercase tracking-wider">
+                            미발송수량
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-red-200">
+                        {statement.items?.map((item: any, index: number) => (
+                          <tr key={index} className="hover:bg-red-50">
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {item.product_name}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {item.color && item.size ? `${item.color} / ${item.size}` : '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center text-gray-900">
+                              {item.ordered_quantity}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center text-blue-600">
+                              {item.shipped_quantity}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center text-red-600 font-medium">
+                              {item.unshipped_quantity}
+                            </td>
+                          </tr>
+                        )) || (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                              상품 정보를 불러오는 중...
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* 상품 검색 팝업 */}

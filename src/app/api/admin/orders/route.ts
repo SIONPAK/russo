@@ -254,26 +254,22 @@ export async function GET(request: NextRequest) {
       // 에러 시 기존 방식으로 폴백
       stats = {
         pending: orders?.filter((o: any) => o.status === 'pending').length || 0,
-        confirmed: orders?.filter((o: any) => o.status === 'confirmed').length || 0,
-        shipped: orders?.filter((o: any) => o.status === 'shipped').length || 0,
-        delivered: orders?.filter((o: any) => o.status === 'delivered').length || 0,
-        cancelled: orders?.filter((o: any) => o.status === 'cancelled').length || 0,
+        processing: orders?.filter((o: any) => o.status === 'processing').length || 0,
+        confirmed: orders?.filter((o: any) => o.status === 'confirmed' || o.status === 'shipped').length || 0,
         total: 0, // 배치로 계산된 stats.total에서 설정됨
         allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
-        partial_shipped: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial_shipped').length,
+        partial: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial').length,
         insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
       }
     } else {
       const allOrdersForStats = statsResult.data
       stats = {
         pending: allOrdersForStats.filter((o: any) => o.status === 'pending').length,
-        confirmed: allOrdersForStats.filter((o: any) => o.status === 'confirmed').length,
-        shipped: allOrdersForStats.filter((o: any) => o.status === 'shipped').length,
-        delivered: allOrdersForStats.filter((o: any) => o.status === 'delivered').length,
-        cancelled: allOrdersForStats.filter((o: any) => o.status === 'cancelled').length,
+        processing: allOrdersForStats.filter((o: any) => o.status === 'processing').length,
+        confirmed: allOrdersForStats.filter((o: any) => o.status === 'confirmed' || o.status === 'shipped').length,
         total: allOrdersForStats.length,
         allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
-        partial_shipped: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial_shipped').length,
+        partial: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial').length,
         insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
       }
     }
@@ -307,56 +303,67 @@ export async function GET(request: NextRequest) {
 // 재고 할당 상태 계산 함수
 async function calculateAllocationStatus(supabase: any, orderItems: any[]): Promise<{ status: string; message: string }> {
   if (!orderItems || orderItems.length === 0) {
-    return { status: 'pending', message: '상품 정보 없음' }
+    return { status: 'insufficient', message: '상품 정보 없음' }
   }
 
-  let totalShipped = 0
-  let totalRequired = 0
-  let hasPartialShipment = false
-  let hasInsufficientStock = false
+  let canShipAny = false  // 최소 1장이상 출고 가능한지
+  let canShipAll = true   // 전 옵션 출고 가능한지
+  let hasUnshippedItems = false // 미출고 상품이 있는지
+  let hasAlreadyShipped = false // 이미 출고된 상품이 있는지
 
   for (const item of orderItems) {
     const alreadyShipped = item.shipped_quantity || 0
-    totalShipped += alreadyShipped
-    totalRequired += item.quantity
-
-    // 부분 출고 확인
-    if (alreadyShipped > 0 && alreadyShipped < item.quantity) {
-      hasPartialShipment = true
+    const remainingQuantity = item.quantity - alreadyShipped
+    
+    // 이미 출고된 수량이 있는지 확인
+    if (alreadyShipped > 0) {
+      hasAlreadyShipped = true
+    }
+    
+    // 이미 전량 출고된 상품은 스킵
+    if (remainingQuantity <= 0) {
+      continue
     }
 
-    // 재고 부족 확인 (아직 출고되지 않은 수량에 대해)
-    if (alreadyShipped < item.quantity) {
-      const availableStock = await getAvailableStock(supabase, item.products, item.color, item.size)
-      const remainingQuantity = item.quantity - alreadyShipped
-      
-      if (availableStock < remainingQuantity) {
-        hasInsufficientStock = true
-      }
+    hasUnshippedItems = true
+
+    // 현재 재고 확인
+    const availableStock = await getAvailableStock(supabase, item.products, item.color, item.size)
+    
+    // 최소 1장이라도 출고 가능한지 확인
+    if (availableStock > 0) {
+      canShipAny = true
+    }
+    
+    // 남은 수량을 모두 출고할 수 있는지 확인
+    if (availableStock < remainingQuantity) {
+      canShipAll = false
     }
   }
 
-  // 부분 출고가 있는 경우
-  if (hasPartialShipment) {
-    return { status: 'partial_shipped', message: '부분출고' }
+  // 모든 상품이 이미 출고된 경우
+  if (!hasUnshippedItems) {
+    return { status: 'allocated', message: '완전출고' }
   }
 
-  // 전량 출고된 경우
-  if (totalShipped === totalRequired) {
-    return { status: 'shipped', message: '출고완료' }
-  }
-
-  // 아직 출고되지 않은 경우
-  if (totalShipped === 0) {
-    if (hasInsufficientStock) {
-      return { status: 'insufficient', message: '재고 부족' }
+  // 할당 상태 결정 (3가지만)
+  // 이미 출고된 상품이 있으면 최소한 부분출고 상태
+  if (hasAlreadyShipped) {
+    if (canShipAll) {
+      return { status: 'allocated', message: '완전출고' }
     } else {
-      return { status: 'allocated', message: '할당 완료' }
+      return { status: 'partial', message: '부분출고' }
+    }
+  } else {
+    // 아직 출고된 상품이 없는 경우
+    if (!canShipAny) {
+      return { status: 'insufficient', message: '출고불가' }
+    } else if (canShipAll) {
+      return { status: 'allocated', message: '완전출고' }
+    } else {
+      return { status: 'partial', message: '부분출고' }
     }
   }
-
-  // 기타 경우
-  return { status: 'pending', message: '대기중' }
 }
 
 // 사용 가능한 재고 계산 (특정 색상/사이즈) - 예약된 재고 고려

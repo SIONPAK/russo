@@ -71,6 +71,50 @@ export interface DeductionStatementData {
   totalAmount: number
 }
 
+// 미출고 명세서 데이터 인터페이스
+export interface UnshippedStatementData {
+  statementNumber: string
+  companyName: string
+  businessLicenseNumber?: string
+  email: string
+  phone: string
+  address: string
+  postalCode: string
+  customerGrade: string
+  unshippedDate: string
+  unshippedReason: string
+  items: Array<{
+    productName: string
+    color: string
+    size: string
+    quantity: number
+    unitPrice: number
+    totalPrice: number
+  }>
+  totalAmount: number
+}
+
+// 확정 명세서 데이터 인터페이스
+export interface ConfirmedStatementData {
+  statement_number: string
+  order_number: string
+  order_date: string
+  company_name: string
+  representative_name: string
+  items: Array<{
+    product_name: string
+    color: string
+    size: string
+    ordered_quantity: number
+    shipped_quantity: number
+    unit_price: number
+    total_price: number
+  }>
+  total_amount: number
+  shipping_fee: number
+  notes?: string
+}
+
 // 숫자를 한글로 변환하는 함수
 const numberToKorean = (num: number): string => {
   const units = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구']
@@ -161,8 +205,8 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
         const supplyAmount = totalPrice
         // 배송비는 부가세 없음
         const taxAmount = item.productName === '배송비' ? 0 : Math.floor(supplyAmount * 0.1)
-        // 수량 = 공급가액 / 단가
-        const calculatedQuantity = totalPrice / item.unitPrice
+        // 수량 = 공급가액 / 단가 (0으로 나누기 방지)
+        const calculatedQuantity = item.unitPrice === 0 ? 0 : totalPrice / item.unitPrice
         
         grouped[key] = {
           productName: item.productName,
@@ -186,8 +230,8 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
       } else {
         item.taxAmount = Math.floor(item.supplyAmount * 0.1)
       }
-      // 수량 재계산 (공급가액 / 단가)
-      item.totalQuantity = item.supplyAmount / item.unitPrice
+      // 수량 재계산 (공급가액 / 단가, 0으로 나누기 방지)
+      item.totalQuantity = item.unitPrice === 0 ? 0 : item.supplyAmount / item.unitPrice
     })
     
     return Object.values(grouped)
@@ -605,6 +649,64 @@ export async function generateDeductionStatement(data: DeductionStatementData): 
     )
   } catch (error) {
     console.error('차감 명세서 생성 중 오류 발생:', error)
+    throw error
+  }
+}
+
+// 미출고 명세서 생성 함수
+export async function generateUnshippedStatement(data: UnshippedStatementData): Promise<Buffer> {
+  try {
+    // 미출고 명세서는 모든 수량과 금액을 0으로 강제 설정
+    const zeroItems = data.items.map(item => ({
+      ...item,
+      quantity: 0,
+      unitPrice: 0,
+      totalPrice: 0
+    }))
+    
+    return processTemplate(
+      {
+        companyName: data.companyName,
+        customerGrade: data.customerGrade,
+        date: data.unshippedDate
+      },
+      '미출고명세서(공급받는자)',
+      zeroItems,
+      `미출고사유: ${data.unshippedReason}`,
+      false // 미출고 명세서
+    )
+  } catch (error) {
+    console.error('미출고 명세서 생성 중 오류 발생:', error)
+    throw error
+  }
+} 
+
+// 확정 명세서 생성 함수
+export async function generateConfirmedStatement(data: ConfirmedStatementData): Promise<Buffer> {
+  try {
+    // 확정 명세서 데이터를 처리
+    const processedItems = data.items.map(item => ({
+      productName: item.product_name,
+      color: item.color,
+      size: item.size,
+      quantity: item.shipped_quantity, // 출고 수량 사용
+      unitPrice: item.unit_price,
+      totalPrice: item.total_price
+    }))
+    
+    return processTemplate(
+      {
+        companyName: data.company_name,
+        customerGrade: '일반',
+        date: data.order_date
+      },
+      '확정명세서(공급받는자)',
+      processedItems,
+      `확정 명세서 - 주문번호: ${data.order_number}`,
+      false // 확정 명세서
+    )
+  } catch (error) {
+    console.error('확정 명세서 생성 중 오류 발생:', error)
     throw error
   }
 } 

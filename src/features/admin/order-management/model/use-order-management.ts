@@ -53,12 +53,11 @@ export interface Order {
 
 export interface OrderStats {
   pending: number
+  processing: number
   confirmed: number
-  shipped: number
-  delivered: number
-  cancelled: number
   total: number
   allocated: number
+  partial: number
   insufficient_stock: number
 }
 
@@ -107,12 +106,11 @@ export function useOrderManagement() {
   const [orders, setOrders] = useState<Order[]>([])
   const [stats, setStats] = useState<OrderStats>({
     pending: 0,
+    processing: 0,
     confirmed: 0,
-    shipped: 0,
-    delivered: 0,
-    cancelled: 0,
     total: 0,
     allocated: 0,
+    partial: 0,
     insufficient_stock: 0
   })
   const [loading, setLoading] = useState(true)
@@ -232,7 +230,7 @@ export function useOrderManagement() {
     updateFilters({ 
       startDate: today,
       is_3pm_based: true,
-      status: 'not_shipped'  // 출고완료된 주문 제외
+      status: 'all'  // 모든 상태 조회 후 클라이언트에서 필터링
     })
   }
 

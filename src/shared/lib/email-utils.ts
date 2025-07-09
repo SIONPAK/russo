@@ -162,7 +162,7 @@ export async function sendShippingStatementEmail(
           고객센터: 010-2131-7540 | 이메일: bsion5185@gmail.com
         </p>
         <p style="color: #999; font-size: 12px; margin: 15px 0 0 0;">
-          본 메일은 발신전용입니다. 문의사항은 고객센터로 연락주세요.
+          문의사항이 있으시면 고객센터로 연락주세요. 루소 Lusso
         </p>
       </div>
     </div>

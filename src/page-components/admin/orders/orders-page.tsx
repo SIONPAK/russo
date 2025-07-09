@@ -15,7 +15,6 @@ import { showSuccess, showError, showInfo } from '@/shared/lib/toast'
 import { 
   Download,
   FileText,
-  Package,
   Calendar,
   Users,
   TrendingUp,
@@ -96,6 +95,8 @@ export function OrdersPage() {
 
   // 선택된 주문들의 상세 데이터
   const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
+
+
 
   // 실제 출고 수량 확인
   const getShippingStatus = (order: any) => {
@@ -305,6 +306,9 @@ export function OrdersPage() {
       }
       
       showSuccess(`${selectedOrders.length}건의 거래명세서가 다운로드되었습니다.`)
+      
+      // 다운로드 후 데이터 새로고침
+      await fetchOrders()
     } catch (error) {
       console.error('Shipping statement error:', error)
       showError('명세서 생성에 실패했습니다.')
@@ -370,6 +374,9 @@ export function OrdersPage() {
           
           showSuccess(`${selectedOrders.length}건의 거래명세서 PDF가 다운로드되었습니다.`)
         }
+        
+        // 다운로드 후 데이터 새로고침
+        await fetchOrders()
       } else {
         const errorData = await response.json()
         console.error('PDF 생성 실패:', errorData)
@@ -426,6 +433,9 @@ export function OrdersPage() {
         document.body.removeChild(a)
         
         showSuccess(`${selectedOrders.length}건의 영수증 ZIP 파일이 다운로드되었습니다.`)
+        
+        // 다운로드 후 데이터 새로고침
+        await fetchOrders()
       } else {
         const errorData = await response.json()
         showError(errorData.error || 'ZIP 파일 생성에 실패했습니다.')
@@ -453,83 +463,32 @@ export function OrdersPage() {
     await allocateInventory(selectedOrders)
   }
 
-  // 일괄 출고 처리 (출고내역조회로 이동)
-  const handleBulkShipping = async () => {
+
+
+  // 4. 확정 명세서 생성 및 이메일 발송
+  const handleConfirmStatement = async () => {
     if (selectedOrders.length === 0) {
-      showInfo('출고 처리할 주문을 선택해주세요.')
+      showInfo('확정 명세서를 생성할 주문을 선택해주세요.')
       return
     }
 
     const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
 
-    // 🎯 운송장 번호 유효성 검사
-    const ordersWithoutTracking = selectedOrdersData.filter(order => 
-      !order.tracking_number || order.tracking_number.trim() === ''
-    )
-
-    if (ordersWithoutTracking.length > 0) {
-      const orderNumbers = ordersWithoutTracking.map(order => order.order_number).join(', ')
-      showError(`일괄 출고를 위해서는 모든 주문에 운송장 번호가 필요합니다.\n\n운송장 미입력 주문 (${ordersWithoutTracking.length}건):\n${orderNumbers}\n\n먼저 운송장 번호를 입력해주세요.`)
+    // 이미 확정된 주문이 있는지 확인
+    const confirmedOrders = selectedOrdersData.filter(order => order.status === 'confirmed')
+    
+    if (confirmedOrders.length > 0) {
+      const orderNumbers = confirmedOrders.map(order => order.order_number).join(', ')
+      showError(`이미 명세서가 확정된 주문이 있습니다.\n\n확정 완료 주문 (${confirmedOrders.length}건):\n${orderNumbers}\n\n확정되지 않은 주문만 선택해주세요.`)
       return
     }
 
-    if (!confirm(`선택된 ${selectedOrders.length}건의 주문을 출고 처리하시겠습니까?\n\n⚠️ 출고 처리 시:\n• 주문이 출고내역조회로 이동됩니다\n• 주문 상태가 '출고완료'로 변경됩니다\n\n이 작업은 되돌릴 수 없습니다.`)) {
-      return
-    }
-
-    try {
-      const response = await fetch('/api/admin/orders/move-to-shipped', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          orderIds: selectedOrders
-        }),
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        showSuccess(`${selectedOrders.length}건의 주문이 출고 처리되어 출고내역조회로 이동되었습니다.`)
-        
-        // 주문 목록 새로고침
-        fetchTodayOrders()
-      } else {
-        showError(data.error || '일괄 출고 처리에 실패했습니다.')
-      }
-    } catch (error) {
-      console.error('일괄 출고 처리 오류:', error)
-      showError('일괄 출고 처리 중 오류가 발생했습니다.')
-    }
-  }
-
-  // 최종 명세서 확정 처리
-  const handleFinalizeStatements = async () => {
-    if (selectedOrders.length === 0) {
-      showInfo('최종 명세서를 확정할 주문을 선택해주세요.')
-      return
-    }
-
-    const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
-
-    // 🎯 운송장 번호 유효성 검사
-    const ordersWithoutTracking = selectedOrdersData.filter(order => 
-      !order.tracking_number || order.tracking_number.trim() === ''
-    )
-
-    if (ordersWithoutTracking.length > 0) {
-      const orderNumbers = ordersWithoutTracking.map(order => order.order_number).join(', ')
-      showError(`최종 명세서 확정을 위해서는 모든 주문에 운송장 번호가 필요합니다.\n\n운송장 미입력 주문 (${ordersWithoutTracking.length}건):\n${orderNumbers}\n\n먼저 운송장 번호를 입력해주세요.`)
-      return
-    }
-
-    if (!confirm(`선택된 ${selectedOrders.length}건의 주문에 대해 최종 명세서를 확정하시겠습니까?\n\n⚠️ 확정 시 다음 작업이 수행됩니다:\n• 거래명세서 자동 생성\n• 마일리지 차감 처리\n• 주문 상태 변경\n\n이 작업은 되돌릴 수 없습니다.`)) {
+    if (!confirm(`선택된 ${selectedOrders.length}건의 주문에 대해 확정 명세서를 생성하고 이메일을 발송하시겠습니까?\n\n⚠️ 처리 시 다음 작업이 수행됩니다:\n• 거래명세서 자동 생성\n• 마일리지 차감 처리\n• 고객에게 이메일 발송\n• 주문 상태 '명세서 확정'으로 변경\n\n이 작업은 되돌릴 수 없습니다.`)) {
       return
     }
 
     try {
-      const response = await fetch('/api/admin/orders/finalize-statements', {
+      const response = await fetch('/api/admin/orders/confirm-statement', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -545,7 +504,7 @@ export function OrdersPage() {
         showSuccess(data.message)
         
         // 결과 상세 정보 표시
-        if (data.data.failed > 0) {
+        if (data.data && data.data.failed > 0) {
           const failedOrders = data.data.results.filter((r: any) => !r.success)
           const failedInfo = failedOrders.map((r: any) => `${r.orderNumber}: ${r.error}`).join('\n')
           showError(`일부 주문 처리 실패:\n${failedInfo}`)
@@ -554,11 +513,78 @@ export function OrdersPage() {
         // 주문 목록 새로고침
         fetchTodayOrders()
       } else {
-        showError(data.error || '최종 명세서 확정에 실패했습니다.')
+        showError(data.error || '확정 명세서 생성에 실패했습니다.')
       }
     } catch (error) {
-      console.error('최종 명세서 확정 오류:', error)
-      showError('최종 명세서 확정 중 오류가 발생했습니다.')
+      console.error('확정 명세서 생성 오류:', error)
+      showError('확정 명세서 생성 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 5. 운송장 번호 등록 및 출고처리
+  const handleShipOrders = async () => {
+    if (selectedOrders.length === 0) {
+      showInfo('출고처리할 주문을 선택해주세요.')
+      return
+    }
+
+    const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
+
+    // 운송장 번호 유효성 검사
+    const ordersWithoutTracking = selectedOrdersData.filter(order => 
+      !order.tracking_number || order.tracking_number.trim() === ''
+    )
+
+    if (ordersWithoutTracking.length > 0) {
+      const orderNumbers = ordersWithoutTracking.map(order => order.order_number).join(', ')
+      showError(`출고처리를 위해서는 모든 주문에 운송장 번호가 필요합니다.\n\n운송장 미입력 주문 (${ordersWithoutTracking.length}건):\n${orderNumbers}\n\n먼저 운송장 번호를 입력해주세요.`)
+      return
+    }
+
+    // 명세서 확정 상태 확인
+    const unconfirmedOrders = selectedOrdersData.filter(order => order.status !== 'confirmed')
+    
+    if (unconfirmedOrders.length > 0) {
+      const orderNumbers = unconfirmedOrders.map(order => order.order_number).join(', ')
+      showError(`출고처리를 위해서는 모든 주문의 명세서가 확정되어야 합니다.\n\n명세서 미확정 주문 (${unconfirmedOrders.length}건):\n${orderNumbers}\n\n먼저 확정 명세서를 생성해주세요.`)
+      return
+    }
+
+    if (!confirm(`선택된 ${selectedOrders.length}건의 주문을 출고처리하시겠습니까?\n\n⚠️ 처리 시 다음 작업이 수행됩니다:\n• 주문 상태 '출고완료'로 변경\n• 출고내역으로 이동\n\n이 작업은 되돌릴 수 없습니다.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/orders/ship-orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderIds: selectedOrders
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        showSuccess(data.message)
+        
+        // 결과 상세 정보 표시
+        if (data.data && data.data.failed > 0) {
+          const failedOrders = data.data.results.filter((r: any) => !r.success)
+          const failedInfo = failedOrders.map((r: any) => `${r.orderNumber}: ${r.error}`).join('\n')
+          showError(`일부 주문 처리 실패:\n${failedInfo}`)
+        }
+        
+        // 주문 목록 새로고침
+        fetchTodayOrders()
+      } else {
+        showError(data.error || '출고처리에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('출고처리 오류:', error)
+      showError('출고처리 중 오류가 발생했습니다.')
     }
   }
 
@@ -568,9 +594,11 @@ export function OrdersPage() {
     updateFilters({ 
       startDate: date,
       is_3pm_based: true,
-      page: 1
+      status: 'all'  // 모든 상태 조회 (일반 모드에서는 모든 주문 표시)
     })
   }
+
+
 
   // 주문 아이템 수정 함수 (수량만 변경 가능)
   const handleUpdateOrderItem = async (orderId: string, itemId: string, value: number) => {
@@ -655,32 +683,26 @@ export function OrdersPage() {
     switch (status) {
       case 'allocated': return 'text-green-600 bg-green-100'
       case 'partial': return 'text-orange-600 bg-orange-100'
-      case 'partial_shipped': return 'text-blue-600 bg-blue-100'
-      case 'shipped': return 'text-green-800 bg-green-200'
       case 'insufficient': return 'text-red-600 bg-red-100'
-      default: return 'text-gray-600 bg-gray-100'
+      default: return 'text-red-600 bg-red-100'
     }
   }
 
   const getAllocationStatusText = (status: string) => {
     switch (status) {
-      case 'allocated': return '할당완료'
-      case 'partial': return '부분할당'
-      case 'partial_shipped': return '부분출고'
-      case 'shipped': return '출고완료'
-      case 'insufficient': return '재고부족'
-      default: return '대기중'
+      case 'allocated': return '완전출고'
+      case 'partial': return '부분출고'
+      case 'insufficient': return '출고불가'
+      default: return '출고불가'
     }
   }
 
   const getOrderStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'text-yellow-600 bg-yellow-100'
-      case 'confirmed': return 'text-blue-600 bg-blue-100'
-      case 'processing': return 'text-orange-600 bg-orange-100'
+      case 'processing': return 'text-blue-600 bg-blue-100'
+      case 'confirmed': return 'text-green-600 bg-green-100'
       case 'shipped': return 'text-green-600 bg-green-100'
-      case 'delivered': return 'text-green-800 bg-green-200'
-      case 'cancelled': return 'text-red-600 bg-red-100'
       default: return 'text-gray-600 bg-gray-100'
     }
   }
@@ -688,14 +710,17 @@ export function OrdersPage() {
   const getOrderStatusText = (status: string) => {
     switch (status) {
       case 'pending': return '대기중'
-      case 'confirmed': return '주문확인'
-      case 'processing': return '처리중'
-      case 'shipped': return '배송중'
-      case 'delivered': return '배송완료'
-      case 'cancelled': return '취소'
-      default: return '알 수 없음'
+      case 'processing': return '작업중'
+      case 'confirmed': return '작업중'
+      case 'shipped': return '출고완료'
+      default: return '대기중'
     }
   }
+
+  // 페이지 초기화 시 오늘 주문 자동 조회
+  useEffect(() => {
+    fetchTodayOrders()
+  }, [])
 
   return (
     <div className="p-6 max-w-full">
@@ -718,6 +743,17 @@ export function OrdersPage() {
         <p className="text-sm text-gray-600 font-bold">
           3시 이후 주문은 다음날로 조회가 가능합니다.
         </p>
+        
+        <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <h2 className="text-lg font-semibold text-blue-900 mb-2">📋 새로운 주문 관리 플로우</h2>
+          <div className="text-sm text-blue-800 space-y-1">
+            <p><strong>1. 확정전 명세서 다운로드</strong> - 엑셀 템플릿 파일 다운로드</p>
+            <p><strong>2. 포장 및 재고 체크</strong> - 엑셀 자료 반영 (수동 과정)</p>
+            <p><strong>3. 수량 수정</strong> - 필요 시 주문 수량 수정</p>
+            <p><strong>4. 확정 명세서 생성 및 이메일 발송</strong> - 마일리지 차감 및 고객 통보</p>
+            <p><strong>5. 운송장 번호 등록 및 출고처리</strong> - 엑셀 자료 업로드 후 최종 출고</p>
+          </div>
+        </div>
       </div>
 
       {/* 통계 카드 */}
@@ -725,28 +761,28 @@ export function OrdersPage() {
         <div className="bg-white p-4 rounded-lg shadow border">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">전체 주문</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+              <p className="text-sm text-gray-600">대기중</p>
+              <p className="text-2xl font-bold text-yellow-600">{stats.pending || 0}</p>
             </div>
-            <Users className="w-8 h-8 text-blue-500" />
+            <Users className="w-8 h-8 text-yellow-500" />
           </div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">재고 할당 완료</p>
-              <p className="text-2xl font-bold text-green-600">{stats.allocated}</p>
+              <p className="text-sm text-gray-600">작업중</p>
+              <p className="text-2xl font-bold text-blue-600">{stats.processing || 0}</p>
             </div>
-            <Package className="w-8 h-8 text-green-500" />
+            <FileText className="w-8 h-8 text-blue-500" />
           </div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">재고 부족</p>
-              <p className="text-2xl font-bold text-red-600">{stats.insufficient_stock}</p>
+              <p className="text-sm text-gray-600">출고완료</p>
+              <p className="text-2xl font-bold text-green-600">{stats.confirmed || 0}</p>
             </div>
-            <TrendingUp className="w-8 h-8 text-red-500" />
+            <TrendingUp className="w-8 h-8 text-green-500" />
           </div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border">
@@ -762,7 +798,7 @@ export function OrdersPage() {
 
       {/* 조회 날짜 및 액션 버튼 */}
       <div className="bg-white p-4 rounded-lg shadow border mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-gray-500" />
@@ -774,88 +810,32 @@ export function OrdersPage() {
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            
             <div className="text-xs text-gray-500">
-              * 오후 3시 기준 조회 (전날 15:00 ~ 당일 14:59)
+              '* 오후 3시 기준 조회 (전날 15:00 ~ 당일 14:59)'
             </div>
           </div>
           
-          <div className="flex gap-2">
-            <Button
-              onClick={handleFinalizeStatements}
-              disabled={selectedOrders.length === 0 || updating || downloadingPDF || downloadingExcel}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              최종 명세서 확정 ({selectedOrders.length})
-            </Button>
-            <Button
-              onClick={handleBulkShipping}
-              disabled={selectedOrders.length === 0 || updating || downloadingPDF || downloadingExcel}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              <Package className="w-4 h-4 mr-2" />
-              일괄 출고 처리 ({selectedOrders.length})
-            </Button>
-            
-            {/* 구분선 */}
-            <div className="w-px bg-gray-300 mx-2"></div>
-            
-            <Button
-              onClick={handleDownloadExcel}
-              disabled={orders.length === 0 || downloadingPDF || downloadingExcel}
-              variant="outline"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              배송정보 엑셀
-            </Button>
-            <Button
-              onClick={handleDownloadTrackingTemplate}
-              disabled={orders.length === 0 || downloadingPDF || downloadingExcel}
-              variant="outline"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              운송장 템플릿
-            </Button>
-            <div className="relative">
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleUploadExcel}
-                disabled={downloadingPDF || downloadingExcel}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <Button
-                variant="outline"
-                disabled={downloadingPDF || downloadingExcel}
-                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300 disabled:opacity-50"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                운송장번호 업로드
-              </Button>
-            </div>
-            
-            {/* 구분선 */}
-            <div className="w-px bg-gray-300 mx-2"></div>
-            
-            {/* 명세서 다운로드 드롭다운 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 1. 확정전 명세서 다운로드 드롭다운 */}
             <div className="relative" id="statement-dropdown">
               <Button
                 onClick={() => setIsStatementDropdownOpen(!isStatementDropdownOpen)}
                 disabled={selectedOrders.length === 0 || downloadingPDF || downloadingExcel}
                 variant="outline"
-                className={`${
+                className={`text-xs px-3 py-2 ${
                   downloadingPDF || downloadingExcel
                     ? 'bg-yellow-50 text-yellow-700 border-yellow-300'
                     : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300'
                 }`}
               >
                 {downloadingPDF || downloadingExcel ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mr-2"></div>
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600 mr-1"></div>
                 ) : (
-                  <FileText className="w-4 h-4 mr-2" />
+                  <FileText className="w-3 h-3 mr-1" />
                 )}
-                {downloadingPDF || downloadingExcel ? '다운로드 중...' : `명세서 다운로드 (${selectedOrders.length})`}
-                <ChevronDown className="w-4 h-4 ml-2" />
+                {downloadingPDF || downloadingExcel ? '다운로드 중...' : `1. 확정전 명세서 다운로드 (${selectedOrders.length})`}
+                <ChevronDown className="w-3 h-3 ml-1" />
               </Button>
               
               {isStatementDropdownOpen && !downloadingPDF && !downloadingExcel && (
@@ -869,22 +849,20 @@ export function OrdersPage() {
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                     >
                       <FileText className="w-4 h-4 mr-2 text-orange-600" />
-                      확정 전 명세서 출력 (개별)
+                      1. 확정전 명세서 다운로드 (개별)
                     </button>
-                    {/* PDF 다운로드 임시 숨김 */}
-                    {false && (
-                      <button
-                        onClick={() => {
-                          handleDownloadShippingStatementPDF()
-                          setIsStatementDropdownOpen(false)
-                        }}
-                        disabled={downloadingPDF}
-                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
-                      >
-                        <FileText className="w-4 h-4 mr-2 text-red-600" />
-                        📄 PDF 일괄 다운로드
-                      </button>
-                    )}
+                    {/* PDF 다운로드 */}
+                    <button
+                      onClick={() => {
+                        handleDownloadShippingStatementPDF()
+                        setIsStatementDropdownOpen(false)
+                      }}
+                      disabled={downloadingPDF}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center disabled:opacity-50"
+                    >
+                      <FileText className="w-4 h-4 mr-2 text-red-600" />
+                      📄 PDF 일괄 다운로드
+                    </button>
                     <button
                       onClick={() => {
                         handleDownloadShippingStatementExcel()
@@ -900,6 +878,72 @@ export function OrdersPage() {
                 </div>
               )}
             </div>
+            
+            {/* 4. 확정 명세서 생성 */}
+            <Button
+              onClick={handleConfirmStatement}
+              disabled={
+                selectedOrders.length === 0 || 
+                updating || 
+                downloadingPDF || 
+                downloadingExcel ||
+                selectedOrdersData.some(order => order.status === 'confirmed')
+              }
+              className="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-2 disabled:opacity-50"
+            >
+              <FileText className="w-3 h-3 mr-1" />
+              4. 확정 명세서 생성 ({selectedOrders.length})
+            </Button>
+            
+            {/* 5. 운송장 등록 및 출고처리 */}
+            <Button
+              onClick={handleShipOrders}
+              disabled={selectedOrders.length === 0 || updating || downloadingPDF || downloadingExcel}
+              className="bg-green-600 hover:bg-green-700 text-xs px-3 py-2"
+            >
+              <FileText className="w-3 h-3 mr-1" />
+              5. 운송장 등록 및 출고처리 ({selectedOrders.length})
+            </Button>
+            
+            {/* 구분선 */}
+            <div className="w-px bg-gray-300 h-6"></div>
+            
+            {/* 엑셀 관련 버튼들 */}
+            <Button
+              onClick={handleDownloadExcel}
+              disabled={orders.length === 0 || downloadingPDF || downloadingExcel}
+              variant="outline"
+              className="text-xs px-3 py-2"
+            >
+              <Download className="w-3 h-3 mr-1" />
+              배송정보 엑셀
+            </Button>
+            <Button
+              onClick={handleDownloadTrackingTemplate}
+              disabled={orders.length === 0 || downloadingPDF || downloadingExcel}
+              variant="outline"
+              className="text-xs px-3 py-2"
+            >
+              <FileText className="w-3 h-3 mr-1" />
+              운송장 템플릿
+            </Button>
+            <div className="relative">
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleUploadExcel}
+                disabled={downloadingPDF || downloadingExcel}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <Button
+                variant="outline"
+                disabled={downloadingPDF || downloadingExcel}
+                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300 disabled:opacity-50 text-xs px-3 py-2"
+              >
+                <Upload className="w-3 h-3 mr-1" />
+                운송장번호 업로드
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -914,7 +958,7 @@ export function OrdersPage() {
                   <input
                     type="checkbox"
                     checked={orders.length > 0 && selectedOrders.length === orders.length}
-                    onChange={toggleAllSelection}
+                    onChange={() => toggleAllSelection()}
                     disabled={downloadingPDF || downloadingExcel}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                   />
@@ -1107,9 +1151,15 @@ export function OrdersPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getAllocationStatusColor(order.allocation_status || 'pending')}`}>
-                          {getAllocationStatusText(order.allocation_status || 'pending')}
-                        </span>
+                        {order.status === 'confirmed' || order.status === 'shipped' ? (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full text-green-600 bg-green-100">
+                            할당완료
+                          </span>
+                        ) : (
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getAllocationStatusColor(order.allocation_status || 'pending')}`}>
+                            {getAllocationStatusText(order.allocation_status || 'pending')}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className={`text-sm font-medium ${shippingStatus.color}`}>

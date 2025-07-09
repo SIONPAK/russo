@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerClient } from '@/shared/lib/supabase/server'
 import { getKoreaTime } from '@/shared/lib/utils'
 
 // RLS를 무시하는 클라이언트 생성
@@ -60,120 +61,26 @@ const getDateRangeFromCutoff = (startDate?: string | null, endDate?: string | nu
 // GET - 주문 목록 조회
 export async function GET(request: NextRequest) {
   try {
+    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-    const orderNumber = searchParams.get('orderNumber')
+    
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
-    const status = searchParams.get('status') || ''
-    const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
-    const type = searchParams.get('type') // 'purchase' | 'sample' | 'normal'
-    
-    // 특정 주문 조회 (orderNumber가 있는 경우)
-    if (orderNumber) {
-      let query = supabase
-        .from('orders')
-        .select(`
-          *,
-          order_items (
-            *,
-            products (
-              name,
-              price,
-              images:product_images!product_images_product_id_fkey (
-                image_url,
-                is_main
-              )
-            )
-          )
-        `)
-        .eq('order_number', orderNumber)
+    const search = searchParams.get('search') || ''
+    const status = searchParams.get('status') || 'all'
+    const startDate = searchParams.get('startDate') || ''
+    const endDate = searchParams.get('endDate') || ''
+    const includeUnshipped = searchParams.get('includeUnshipped') === 'true'
+    const userId = searchParams.get('userId')
 
-      // userId가 제공된 경우에만 필터 적용 (보안을 위해)
-      if (userId) {
-        query = query.eq('user_id', userId)
-      }
-
-      const { data: order, error } = await query.single()
-
-      if (error) {
-        console.error('Order fetch error:', error)
-        return NextResponse.json(
-          { success: false, error: '주문을 찾을 수 없습니다.' },
-          { status: 404 }
-        )
-      }
-
-      // 반품 접수의 경우 return_statements에서 데이터 가져오기
-      if (order.order_type === 'return_only' && (!order.order_items || order.order_items.length === 0)) {
-        const { data: returnStatements, error: returnError } = await supabase
-          .from('return_statements')
-          .select('*')
-          .eq('order_id', order.id)
-          .single()
-
-        if (!returnError && returnStatements && returnStatements.items) {
-          // return_statements의 items를 order_items 형태로 변환
-          const convertedItems = returnStatements.items.map((item: any, index: number) => ({
-            id: `return-${index}`,
-            order_id: order.id,
-            product_id: item.product_id || null,
-            product_name: item.product_name,
-            color: item.color || '',
-            size: item.size || '',
-            quantity: -item.quantity, // 반품이므로 음수로 변환
-            unit_price: item.unit_price,
-            total_price: -item.total_price, // 반품이므로 음수로 변환
-            shipped_quantity: 0,
-            products: null
-          }))
-
-          order.order_items = convertedItems
-          
-          // 반품명세서의 최신 총액을 주문 총액에 반영 (음수로)
-          order.total_amount = -returnStatements.total_amount
-        }
-      } else if (order.order_type === 'mixed') {
-        // 혼합 주문의 경우 반품명세서 정보도 함께 가져오기
-        const { data: returnStatements, error: returnError } = await supabase
-          .from('return_statements')
-          .select('*')
-          .eq('order_id', order.id)
-
-        if (!returnError && returnStatements && returnStatements.length > 0) {
-          // 반품명세서가 있는 경우 추가 정보 포함
-          const returnStatement = returnStatements[0]
-          
-          // 반품명세서 items를 order_items에 추가
-          const returnItems = returnStatement.items?.map((item: any, index: number) => ({
-            id: `return-${index}`,
-            order_id: order.id,
-            product_id: item.product_id || null,
-            product_name: item.product_name,
-            color: item.color || '',
-            size: item.size || '',
-            quantity: -item.quantity, // 반품이므로 음수로 변환
-            unit_price: item.unit_price,
-            total_price: -item.total_price, // 반품이므로 음수로 변환
-            shipped_quantity: 0,
-            products: null
-          })) || []
-
-          // 기존 order_items에 반품 items 추가
-          order.order_items = [...(order.order_items || []), ...returnItems]
-        }
-      }
-
-      return NextResponse.json({
-        success: true,
-        data: order
-      })
+    // userId가 없으면 오류 반환
+    if (!userId) {
+      return NextResponse.json({ error: 'userId가 필요합니다.' }, { status: 400 })
     }
-    
-    // 주문 목록 조회
+
     const offset = (page - 1) * limit
 
+    // 기본 주문 조회
     let query = supabase
       .from('orders')
       .select(`
@@ -189,127 +96,94 @@ export async function GET(request: NextRequest) {
             )
           )
         )
-      `, { count: 'exact' })
+      `)
+      .eq('user_id', userId)
 
-    // 사용자 필터
-    if (userId) {
-      query = query.eq('user_id', userId)
+    // 검색 조건 적용
+    if (search) {
+      query = query.or(`order_number.ilike.%${search}%,shipping_name.ilike.%${search}%`)
     }
 
     // 상태 필터
-    if (status) {
+    if (status !== 'all') {
       query = query.eq('status', status)
     }
 
-    // 주문 타입 필터 (발주 주문의 경우 order_number가 PO로 시작)
-    if (type === 'purchase') {
-      query = query.like('order_number', 'PO%')
-    } else if (type === 'sample') {
-      query = query.like('order_number', 'SP%')
-    } else if (type === 'normal') {
-      query = query.not('order_number', 'like', 'PO%')
-      query = query.not('order_number', 'like', 'SP%')
-    }
-
-    // 날짜 필터
+    // 날짜 범위 필터
     if (startDate) {
-      // 발주 관리에서 전달된 ISO 문자열을 그대로 사용
       query = query.gte('created_at', startDate)
-      if (endDate) {
-        query = query.lt('created_at', endDate)
-      } else {
-        // endDate가 없으면 startDate 기준으로 하루 범위 설정
-        const start = new Date(startDate)
-        const end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
-        query = query.lt('created_at', end.toISOString())
-      }
+    }
+    if (endDate) {
+      query = query.lte('created_at', endDate)
     }
 
-    // 정렬 및 페이지네이션
-    query = query
+    // 페이지네이션 적용
+    const { data: orders, error: ordersError, count } = await query
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
-    const { data: orders, error, count } = await query
-
-    if (error) {
-      console.error('Orders fetch error:', error)
-      return NextResponse.json(
-        { success: false, error: '주문 목록을 불러오는데 실패했습니다.' },
-        { status: 500 }
-      )
+    if (ordersError) {
+      console.error('주문 조회 오류:', ordersError)
+      return NextResponse.json({ error: '주문 조회 중 오류가 발생했습니다.' }, { status: 500 })
     }
 
-    // 반품 접수 주문들의 반품명세서 상태 조회
-    let ordersWithReturnStatus = orders || []
-    
-    if (orders && orders.length > 0) {
-      // 반품 접수 주문들 필터링 (order_type이 return_only이거나 total_amount가 음수)
-      const returnOrderIds = orders
-        .filter(order => order.order_type === 'return_only' || order.total_amount < 0)
-        .map(order => order.id)
+    // 미발송 내역 조회 (요청 시에만)
+    let unshippedStatements: any[] = []
+    if (includeUnshipped) {
+      const { data: unshippedData, error: unshippedError } = await supabase
+        .from('unshipped_statements')
+        .select(`
+          id,
+          statement_number,
+          order_id,
+          total_unshipped_amount,
+          status,
+          reason,
+          created_at,
+          updated_at,
+          orders (
+            order_number,
+            created_at
+          ),
+          unshipped_statement_items (
+            id,
+            product_name,
+            color,
+            size,
+            ordered_quantity,
+            shipped_quantity,
+            unshipped_quantity,
+            unit_price,
+            total_amount
+          )
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
 
-      if (returnOrderIds.length > 0) {
-        // 반품명세서 상태 및 총액 조회
-        const { data: returnStatements, error: returnError } = await supabase
-          .from('return_statements')
-          .select('order_id, status, total_amount')
-          .in('order_id', returnOrderIds)
-
-        if (!returnError && returnStatements) {
-          // 반품명세서 상태를 주문에 추가하고 총액 업데이트
-          ordersWithReturnStatus = orders.map(order => {
-            const returnStatement = returnStatements.find(rs => rs.order_id === order.id)
-            
-            // 반품명세서가 있는 경우 총액 업데이트
-            let updatedTotalAmount = order.total_amount
-            if (returnStatement) {
-              if (order.order_type === 'return_only') {
-                // 반품 전용 주문: 반품명세서 총액을 음수로 적용
-                updatedTotalAmount = -returnStatement.total_amount
-              } else if (order.order_type === 'mixed') {
-                // 혼합 주문: 기존 양수 주문 총액에서 반품 총액 차감
-                // 이 경우 이미 반품명세서 수정 시 orders 테이블의 total_amount가 업데이트됨
-                // 따라서 DB에서 가져온 값 사용
-                updatedTotalAmount = order.total_amount
-              }
-            }
-            
-            return {
-              ...order,
-              total_amount: updatedTotalAmount,
-              return_statement_status: returnStatement?.status || null
-            }
-          })
-        }
+      if (!unshippedError) {
+        unshippedStatements = unshippedData || []
       }
     }
 
+    // 페이지네이션 정보 계산
     const totalPages = Math.ceil((count || 0) / limit)
+    const pagination = {
+      currentPage: page,
+      totalPages,
+      totalCount: count || 0,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1
+    }
 
     return NextResponse.json({
-      success: true,
-      data: ordersWithReturnStatus,
-      pagination: {
-        currentPage: page,
-        totalPages,
-        totalCount: count || 0,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1
-      },
-      dateRange: {
-        start: startDate,
-        end: endDate,
-        cutoffInfo: `오후 3시 기준 조회 (${startDate ? new Date(startDate).toLocaleString('ko-KR') : '시작 날짜 없음'} ~ ${endDate ? new Date(endDate).toLocaleString('ko-KR') : '종료 날짜 없음'})`
-      }
+      orders: orders || [],
+      unshippedStatements,
+      pagination
     })
 
   } catch (error) {
-    console.error('Orders API error:', error)
-    return NextResponse.json(
-      { success: false, error: '서버 오류가 발생했습니다.' },
-      { status: 500 }
-    )
+    console.error('주문 조회 API 오류:', error)
+    return NextResponse.json({ error: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 }
 
@@ -638,11 +512,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 주문 상태 업데이트 (재고 할당 결과에 따라)
-    let orderStatus = 'pending'
+    let orderStatus = 'pending'  // 대기중
     if (allItemsFullyAllocated) {
-      orderStatus = 'confirmed' // 전량 할당 완료
+      orderStatus = 'processing' // 작업중 (전량 할당 완료)
     } else if (hasPartialAllocation) {
-      orderStatus = 'partial' // 부분 할당
+      orderStatus = 'processing' // 작업중 (부분 할당)
     }
 
     await supabase

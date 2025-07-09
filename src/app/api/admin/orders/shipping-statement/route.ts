@@ -101,6 +101,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '주문을 찾을 수 없습니다.' }, { status: 404 })
     }
     
+    // PDF 다운로드 시 주문 상태를 "작업중"으로 변경
+    console.log('🔄 주문 상태 업데이트 시작:', { orderIds, status: 'confirmed' })
+    const { data: updateData, error: updateError } = await supabase
+      .from('orders')
+      .update({ 
+        status: 'confirmed',
+        updated_at: new Date().toISOString()
+      })
+      .in('id', orderIds)
+      .select()
+    
+    if (updateError) {
+      console.error('❌ 주문 상태 업데이트 오류:', updateError)
+      // 상태 업데이트 실패해도 다운로드는 계속 진행
+    } else {
+      console.log('✅ 주문 상태 업데이트 성공:', updateData)
+    }
+    
     // 포맷에 따라 다른 파일 생성
     if (format === 'pdf') {
       try {
@@ -208,6 +226,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '주문을 찾을 수 없습니다.' }, { status: 404 })
     }
     
+    // 개별 다운로드 시에도 주문 상태를 "작업중"으로 변경
+    console.log('🔄 개별 다운로드 - 주문 상태 업데이트 시작:', { orderId, status: 'confirmed' })
+    const { data: updateData, error: updateError } = await supabase
+      .from('orders')
+      .update({ 
+        status: 'confirmed',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+    
+    if (updateError) {
+      console.error('❌ 개별 다운로드 - 주문 상태 업데이트 오류:', updateError)
+      // 상태 업데이트 실패해도 다운로드는 계속 진행
+    } else {
+      console.log('✅ 개별 다운로드 - 주문 상태 업데이트 성공:', updateData)
+    }
+    
     // 포맷에 따라 다른 파일 생성
     if (format === 'pdf') {
       try {
@@ -293,6 +329,9 @@ export async function GET(request: NextRequest) {
         } : null
       })
       
+      // "미출고" 건은 금액 0원 처리
+      const isUnshipped = order.tracking_number === '미출고'
+      
       const shippingStatementData = {
         orderNumber: order.order_number,
         companyName: order.users.company_name,
@@ -307,11 +346,11 @@ export async function GET(request: NextRequest) {
           productName: item.products?.name || item.product_name,
           color: item.color || '기본',
           size: item.size || '',
-          quantity: item.shipped_quantity,
-          unitPrice: item.unit_price,
-          totalPrice: item.unit_price * item.shipped_quantity
+          quantity: isUnshipped ? 0 : item.shipped_quantity,
+          unitPrice: isUnshipped ? 0 : item.unit_price,
+          totalPrice: isUnshipped ? 0 : item.unit_price * item.shipped_quantity
         })),
-        totalAmount: shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
+        totalAmount: isUnshipped ? 0 : shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
       }
       
       console.log('🔍 Excel 전달 데이터:', {
@@ -356,6 +395,9 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
     
     // 영수증 생성 (개별 다운로드와 완전히 동일한 방식)
     
+    // "미출고" 건은 금액 0원 처리
+    const isUnshipped = order.tracking_number === '미출고'
+    
     const shippingStatementData = {
       orderNumber: order.order_number,
       companyName: customer.company_name,
@@ -372,18 +414,19 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
           productName: item.products?.name || item.product_name,
           shipped_quantity: item.shipped_quantity,
           quantity: item.quantity,
-          actualQuantity
+          actualQuantity,
+          isUnshipped
         })
         return {
           productName: item.products?.name || item.product_name,
           color: item.color || '기본',
           size: item.size || '',
-          quantity: actualQuantity,
-          unitPrice: item.unit_price,
-          totalPrice: item.unit_price * actualQuantity
+          quantity: isUnshipped ? 0 : actualQuantity,
+          unitPrice: isUnshipped ? 0 : item.unit_price,
+          totalPrice: isUnshipped ? 0 : item.unit_price * actualQuantity
         }
       }),
-      totalAmount: shippedItems.reduce((sum: number, item: any) => {
+      totalAmount: isUnshipped ? 0 : shippedItems.reduce((sum: number, item: any) => {
         const actualQuantity = item.shipped_quantity || item.quantity || 0
         return sum + (item.unit_price * actualQuantity)
       }, 0)
@@ -774,10 +817,10 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             <td class="col1 row-11 empty-cell"></td>
             <td colspan="2" class="row-11 korean-text">합계금액</td>
             <td colspan="4" rowspan="2" class="row-24 amount-text korean-text-bold">
-              ${convertToKoreanNumber(statementData.amounts.finalTotal)} 정
+              ${order.tracking_number === '미출고' ? '영원 정' : convertToKoreanNumber(statementData.amounts.finalTotal) + ' 정'}
             </td>
             <td colspan="2" rowspan="2" class="row-24 text-center">
-              ${statementData.amounts.finalTotal.toLocaleString()}
+              ${order.tracking_number === '미출고' ? '0' : statementData.amounts.finalTotal.toLocaleString()}
             </td>
           </tr>
           
@@ -803,8 +846,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     for (let idx = 0; idx < 10; idx++) {
       const item = shippedItems[idx]
       if (item) {
-        const supplyAmount = Math.floor(item.unit_price * item.shipped_quantity / 1.1)
-        const taxAmount = (item.unit_price * item.shipped_quantity) - supplyAmount
+        // "미출고" 건은 금액 0원 처리
+        const isUnshipped = order.tracking_number === '미출고'
+        const unitPrice = isUnshipped ? 0 : item.unit_price
+        const quantity = isUnshipped ? 0 : item.shipped_quantity
+        const supplyAmount = isUnshipped ? 0 : Math.floor(item.unit_price * item.shipped_quantity / 1.1)
+        const taxAmount = isUnshipped ? 0 : (item.unit_price * item.shipped_quantity) - supplyAmount
         
         htmlContent += `
           <tr>
@@ -812,8 +859,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             <td class="col2 row-10 text-center">${idx + 1}</td>
             <td class="col3 row-10 korean-text">${item.products?.name || item.product_name}</td>
             <td class="col4 row-10 text-center korean-text">${item.color || ''}</td>
-            <td class="col5 row-10 text-center">${item.shipped_quantity}</td>
-            <td class="col6 row-10 text-center">${item.unit_price.toLocaleString()}</td>
+            <td class="col5 row-10 text-center">${quantity}</td>
+            <td class="col6 row-10 text-center">${unitPrice.toLocaleString()}</td>
             <td class="col6 row-10 text-center">${supplyAmount.toLocaleString()}</td>
             <td class="col6 row-10 text-center">${taxAmount.toLocaleString()}</td>
             <td class="col4 row-10 empty-cell"></td>
@@ -836,8 +883,10 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
       }
     }
     
-    const totalSupplyAmount = Math.floor(statementData.amounts.shippedTotal / 1.1)
-    const totalTaxAmount = statementData.amounts.shippedTotal - totalSupplyAmount
+    // "미출고" 건은 합계 금액도 0원 처리
+    const isUnshipped = order.tracking_number === '미출고'
+    const totalSupplyAmount = isUnshipped ? 0 : Math.floor(statementData.amounts.shippedTotal / 1.1)
+    const totalTaxAmount = isUnshipped ? 0 : statementData.amounts.shippedTotal - totalSupplyAmount
     
     htmlContent += `
           <tr class="total-row">

@@ -425,11 +425,11 @@ export async function DELETE(
             }
             
             // 주문 상태 업데이트
-            let orderStatus = 'pending'
+            let orderStatus = 'pending'  // 대기중
             if (orderFullyAllocated) {
-              orderStatus = 'confirmed'
+              orderStatus = 'processing' // 작업중 (전량 할당 완료)
             } else if (orderHasPartialAllocation) {
-              orderStatus = 'partial'
+              orderStatus = 'processing' // 작업중 (부분 할당)
             }
             
             await supabase
