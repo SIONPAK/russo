@@ -462,11 +462,13 @@ export default function ReturnStatementsPage() {
     const newItems = [...newStatement.items]
     newItems[index] = { ...newItems[index], [field]: value }
     
-    // 수량과 단가가 변경되면 총 가격 자동 계산
+    // 수량과 단가가 변경되면 총 가격 자동 계산 (부가세 포함)
     if (field === 'return_quantity' || field === 'unit_price') {
       const quantity = field === 'return_quantity' ? value : newItems[index].return_quantity
       const unitPrice = field === 'unit_price' ? value : newItems[index].unit_price
-      newItems[index].total_price = quantity * unitPrice
+      const supplyAmount = quantity * unitPrice
+      const vat = Math.floor(supplyAmount * 0.1)
+      newItems[index].total_price = supplyAmount + vat
     }
     
     setNewStatement({ ...newStatement, items: newItems })
@@ -567,11 +569,13 @@ export default function ReturnStatementsPage() {
       if (result.success) {
         showSuccess('반품 상품 정보가 업데이트되었습니다.')
         await fetchStatements()
-        // 선택된 명세서 정보도 업데이트
-        if (selectedStatement) {
+        // 선택된 명세서 정보도 업데이트 (백엔드에서 받은 전체 데이터 사용)
+        if (selectedStatement && result.data) {
           setSelectedStatement({
             ...selectedStatement,
-            items: items
+            items: result.data.items,
+            total_amount: result.data.total_amount,
+            refund_amount: result.data.refund_amount
           })
         }
       } else {
@@ -809,7 +813,8 @@ export default function ReturnStatementsPage() {
                   반품 사유
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  환불 금액
+                  환불 금액<br/>
+                  <span className="text-xs text-blue-600 normal-case">(세금포함)</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   상태
@@ -867,7 +872,11 @@ export default function ReturnStatementsPage() {
                       {statement.return_reason}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {statement.refund_amount.toLocaleString()}원
+                      {(() => {
+                        // 기존 금액에 부가세 10% 추가
+                        const vatAmount = Math.floor(statement.refund_amount * 0.1)
+                        return (statement.refund_amount + vatAmount).toLocaleString()
+                      })()}원
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(statement.status)}`}>
@@ -1177,19 +1186,45 @@ export default function ReturnStatementsPage() {
                           </div>
                         </div>
                         
-                        <div className="mt-3 text-right">
-                          <span className="text-sm text-gray-600">
-                            총 가격: <span className="font-medium">{item.total_price?.toLocaleString()}원</span>
-                          </span>
+                        <div className="mt-3 grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <span className="text-xs text-gray-600">단가(세금제외)</span>
+                            <div className="font-medium">{(item.return_quantity * item.unit_price).toLocaleString()}원</div>
+                          </div>
+                          <div>
+                            <span className="text-xs text-gray-600">부가세(10%)</span>
+                            <div className="font-medium">{Math.floor(item.return_quantity * item.unit_price * 0.1).toLocaleString()}원</div>
+                          </div>
+                          <div>
+                            <span className="text-xs text-blue-600">합계</span>
+                            <div className="font-medium text-blue-600">{item.total_price?.toLocaleString()}원</div>
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
                   
-                  <div className="mt-4 text-right">
-                    <span className="text-lg font-medium text-gray-900">
-                      총 환불 금액: {newStatement.items.reduce((sum, item) => sum + (item.total_price || 0), 0).toLocaleString()}원
-                    </span>
+                  <div className="mt-6 bg-blue-50 p-4 rounded-lg">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <span className="text-sm text-gray-600">단가 합계</span>
+                        <div className="text-lg font-medium text-gray-900">
+                          {newStatement.items.reduce((sum, item) => sum + (item.return_quantity * item.unit_price), 0).toLocaleString()}원
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-sm text-gray-600">부가세 합계</span>
+                        <div className="text-lg font-medium text-gray-900">
+                          {newStatement.items.reduce((sum, item) => sum + Math.floor(item.return_quantity * item.unit_price * 0.1), 0).toLocaleString()}원
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-sm text-blue-600">총 환불 금액</span>
+                        <div className="text-xl font-bold text-blue-600">
+                          {newStatement.items.reduce((sum, item) => sum + (item.total_price || 0), 0).toLocaleString()}원
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

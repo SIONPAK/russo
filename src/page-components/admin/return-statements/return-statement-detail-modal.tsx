@@ -87,7 +87,13 @@ export default function ReturnStatementDetailModal({
   const getTotalPrice = (item: any) => {
     const quantity = getQuantity(item)
     const unitPrice = getUnitPrice(item)
-    return item.total_price || (quantity * unitPrice) || 0
+    if (item.total_price) {
+      return item.total_price
+    }
+    // 부가세 포함 계산
+    const supplyAmount = quantity * unitPrice
+    const vat = Math.floor(supplyAmount * 0.1)
+    return supplyAmount + vat
   }
 
   const handleEditItem = (index: number, field: string, value: string | number) => {
@@ -108,11 +114,13 @@ export default function ReturnStatementDetailModal({
       } as any
     }
     
-    // 수량이나 단가가 변경되면 총액 재계산
+    // 수량이나 단가가 변경되면 총액 재계산 (부가세 포함)
     if (field === 'return_quantity' || field === 'unit_price') {
       const quantity = field === 'return_quantity' ? Number(value) || 0 : getQuantity(newItems[index])
       const unitPrice = field === 'unit_price' ? Number(value) || 0 : getUnitPrice(newItems[index])
-      const totalPrice = quantity * unitPrice
+      const supplyAmount = quantity * unitPrice
+      const vat = Math.floor(supplyAmount * 0.1)
+      const totalPrice = supplyAmount + vat
       newItems[index] = {
         ...newItems[index],
         total_price: totalPrice,
@@ -249,7 +257,13 @@ export default function ReturnStatementDetailModal({
                 <div className="space-y-2 text-sm">
                   <div><span className="font-medium">회사명:</span> {statement.company_name}</div>
                   <div><span className="font-medium">환불 방법:</span> {statement.refund_method === 'mileage' ? '마일리지' : statement.refund_method === 'card' ? '카드' : '계좌이체'}</div>
-                  <div><span className="font-medium">환불 금액:</span> {statement.refund_amount.toLocaleString()}원</div>
+                  <div><span className="font-medium">환불 금액:</span> {currentItems.reduce((sum, item) => {
+                    const quantity = getQuantity(item)
+                    const unitPrice = getUnitPrice(item)
+                    const supplyAmount = quantity * unitPrice
+                    const vat = Math.floor(supplyAmount * 0.1)
+                    return sum + supplyAmount + vat
+                  }, 0).toLocaleString()}원 (세금포함)</div>
                   <div><span className="font-medium">이메일 발송:</span> {statement.email_sent ? '발송완료' : '미발송'}</div>
                   {statement.email_sent_at && (
                     <div><span className="font-medium">발송일시:</span> {format(new Date(statement.email_sent_at), 'yyyy-MM-dd HH:mm', { locale: ko })}</div>
@@ -269,8 +283,18 @@ export default function ReturnStatementDetailModal({
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">색상</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">사이즈</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">수량</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">단가</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">총액</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">
+                        단가<br/>
+                        <span className="text-xs text-gray-600">(세금제외)</span>
+                      </th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 border-r">
+                        부가세<br/>
+                        <span className="text-xs text-gray-600">(10%)</span>
+                      </th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">
+                        합계<br/>
+                        <span className="text-xs text-blue-600">(단가+부가세)</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -329,19 +353,54 @@ export default function ReturnStatementDetailModal({
                             `${getUnitPrice(item).toLocaleString()}원`
                           )}
                         </td>
+                        <td className="px-4 py-2 text-sm text-gray-600 border-r">
+                          {(() => {
+                            const quantity = getQuantity(item)
+                            const unitPrice = getUnitPrice(item)
+                            const vat = Math.floor(quantity * unitPrice * 0.1)
+                            return `${vat.toLocaleString()}원`
+                          })()}
+                        </td>
                         <td className="px-4 py-2 text-sm text-gray-900 font-medium">
-                          {getTotalPrice(item).toLocaleString()}원
+                          {(() => {
+                            const quantity = getQuantity(item)
+                            const unitPrice = getUnitPrice(item)
+                            const supplyAmount = quantity * unitPrice
+                            const vat = Math.floor(supplyAmount * 0.1)
+                            return `${(supplyAmount + vat).toLocaleString()}원`
+                          })()}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-gray-50">
                     <tr>
-                      <td colSpan={5} className="px-4 py-2 text-right text-sm font-medium text-gray-900 border-r">
-                        총 환불 금액:
+                      <td colSpan={4} className="px-4 py-2 text-right text-sm font-medium text-gray-900 border-r">
+                        합계:
+                      </td>
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 border-r">
+                        {currentItems.reduce((sum, item) => {
+                          const quantity = getQuantity(item)
+                          const unitPrice = getUnitPrice(item)
+                          return sum + (quantity * unitPrice)
+                        }, 0).toLocaleString()}원
+                      </td>
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 border-r">
+                        {currentItems.reduce((sum, item) => {
+                          const quantity = getQuantity(item)
+                          const unitPrice = getUnitPrice(item)
+                          const vat = Math.floor(quantity * unitPrice * 0.1)
+                          return sum + vat
+                        }, 0).toLocaleString()}원
                       </td>
                       <td className="px-4 py-2 text-sm font-bold text-blue-600">
-                        {statement.refund_amount.toLocaleString()}원
+                        {currentItems.reduce((sum, item) => {
+                          const quantity = getQuantity(item)
+                          const unitPrice = getUnitPrice(item)
+                          const supplyAmount = quantity * unitPrice
+                          const vat = Math.floor(supplyAmount * 0.1)
+                          return sum + supplyAmount + vat
+                        }, 0).toLocaleString()}원
                       </td>
                     </tr>
                   </tfoot>

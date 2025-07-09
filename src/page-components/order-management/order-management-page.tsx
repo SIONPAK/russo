@@ -57,6 +57,7 @@ interface PurchaseOrder {
   shipping_phone?: string
   shipping_postal_code?: string
   order_items: any[]
+  return_statement_status?: string // 반품명세서 상태
 }
 
 export function OrderManagementPage() {
@@ -194,10 +195,6 @@ export function OrderManagementPage() {
         6, 0, 0
       ))
       
-      console.log(`발주 내역 조회 - 선택 날짜: ${selectedDate}`)
-      console.log(`UTC 시간 범위: ${startTimeUTC.toISOString()} ~ ${endTimeUTC.toISOString()}`)
-      console.log(`한국 시간 범위: ${new Date(startTimeUTC.getTime() + 9*60*60*1000).toISOString()} ~ ${new Date(endTimeUTC.getTime() + 9*60*60*1000).toISOString()}`)
-      
       // API 엔드포인트를 사용하여 발주 내역 조회 (사용자 ID 포함)
       const params = new URLSearchParams({
         type: 'purchase',
@@ -211,7 +208,6 @@ export function OrderManagementPage() {
       const result = await response.json()
       
       if (result.success) {
-        console.log(`조회된 주문 수: ${result.data?.length || 0}`)
         setPurchaseOrders(result.data || [])
       } else {
         console.error('주문 조회 실패:', result.error)
@@ -677,25 +673,41 @@ export function OrderManagementPage() {
     }
   }
 
-  // 오후 3시 기준 수정 가능 시간 확인 함수
+  // 업무일 기준 수정 가능 시간 확인 함수
   const isEditableTime = (orderDate: string) => {
-    // 현재 UTC 시간
     const now = new Date()
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     
-    // 한국 시간으로 변환 (UTC + 9시간)
-    const koreaOffset = 9 * 60 * 60 * 1000 // 9시간을 밀리초로
-    const koreaTime = new Date(now.getTime() + koreaOffset)
+    // 현재 업무일 범위 계산
+    let businessDayStart: Date
+    let businessDayEnd: Date
     
-    // 한국 시간 기준 시간 확인
-    const koreaHour = koreaTime.getUTCHours() // UTC 메서드를 사용해야 한국 시간이 정확히 나옴
-    const koreaMinute = koreaTime.getUTCMinutes()
+    if (koreaTime.getHours() >= 15) {
+      // 현재 시각이 15시 이후면 새로운 업무일 (당일 15:00 ~ 익일 14:59)
+      businessDayStart = new Date(koreaTime)
+      businessDayStart.setHours(15, 0, 0, 0)
+      
+      businessDayEnd = new Date(koreaTime)
+      businessDayEnd.setDate(businessDayEnd.getDate() + 1)
+      businessDayEnd.setHours(14, 59, 59, 999)
+    } else {
+      // 현재 시각이 15시 이전이면 현재 업무일 (전일 15:00 ~ 당일 14:59)
+      businessDayStart = new Date(koreaTime)
+      businessDayStart.setDate(businessDayStart.getDate() - 1)
+      businessDayStart.setHours(15, 0, 0, 0)
+      
+      businessDayEnd = new Date(koreaTime)
+      businessDayEnd.setHours(14, 59, 59, 999)
+    }
     
-    // 15시 이전이면 수정/삭제 가능
-    const isBeforeCutoff = koreaHour < 15
+    // 주문 생성 시간을 한국 시간으로 변환
+    const orderTime = new Date(orderDate)
+    const orderKoreaTime = new Date(orderTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     
-
+    // 주문이 현재 업무일 범위에 있는지 확인
+    const isWithinBusinessDay = orderKoreaTime >= businessDayStart && orderKoreaTime <= businessDayEnd
     
-    return isBeforeCutoff
+    return isWithinBusinessDay
   }
 
   // 발주서 삭제
@@ -1174,18 +1186,30 @@ export function OrderManagementPage() {
                         <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency(order.total_amount)}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            order.total_amount < 0 && order.status === 'confirmed' ? 'bg-red-100 text-red-800' :
+                            order.total_amount < 0 && order.status === 'confirmed' ? 
+                              (order.return_statement_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                               order.return_statement_status === 'approved' ? 'bg-blue-100 text-blue-800' :
+                               order.return_statement_status === 'rejected' ? 'bg-red-100 text-red-800' :
+                               order.return_statement_status === 'refunded' ? 'bg-green-100 text-green-800' :
+                               'bg-red-100 text-red-800') :
                             order.status === 'confirmed' ? 'bg-green-100 text-green-800' :
                             order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                             order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                             order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            order.status === 'shipped' ? 'bg-purple-100 text-purple-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>
-                            {order.total_amount < 0 && order.status === 'confirmed' ? '반품 접수' :
+                            {order.total_amount < 0 && order.status === 'confirmed' ? 
+                              (order.return_statement_status === 'pending' ? '반품 대기중' :
+                               order.return_statement_status === 'approved' ? '반품 승인됨' :
+                               order.return_statement_status === 'rejected' ? '반품 거절됨' :
+                               order.return_statement_status === 'refunded' ? '반품 환불완료' :
+                               '반품 접수') :
                              order.status === 'confirmed' ? '주문 접수' :
                              order.status === 'pending' ? '대기' : 
                              order.status === 'processing' ? '처리중' :
-                             order.status === 'completed' ? '완료' : order.status}
+                             order.status === 'completed' ? '완료' :
+                             order.status === 'shipped' ? '배송중' : order.status}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
@@ -1408,18 +1432,20 @@ export function OrderManagementPage() {
                     <div>
                       <span className="font-medium">상태:</span>
                       <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        selectedOrder.total_amount < 0 && selectedOrder.status === 'confirmed' ? 'bg-red-100 text-red-800' :
+                                                selectedOrder.total_amount < 0 && selectedOrder.status === 'confirmed' ? 'bg-red-100 text-red-800' :
                         selectedOrder.status === 'confirmed' ? 'bg-green-100 text-green-800' :
                         selectedOrder.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                         selectedOrder.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                         selectedOrder.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        selectedOrder.status === 'shipped' ? 'bg-purple-100 text-purple-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
                         {selectedOrder.total_amount < 0 && selectedOrder.status === 'confirmed' ? '반품 접수' :
-                         selectedOrder.status === 'confirmed' ? '주문 접수' :
-                         selectedOrder.status === 'pending' ? '대기' : 
-                         selectedOrder.status === 'processing' ? '처리중' :
-                         selectedOrder.status === 'completed' ? '완료' : selectedOrder.status}
+                        selectedOrder.status === 'confirmed' ? '주문 접수' :
+                        selectedOrder.status === 'pending' ? '대기' :
+                        selectedOrder.status === 'processing' ? '처리중' :
+                        selectedOrder.status === 'completed' ? '완료' :
+                        selectedOrder.status === 'shipped' ? '배송중' : selectedOrder.status}
                       </span>
                     </div>
                   </div>

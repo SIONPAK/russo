@@ -105,6 +105,34 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      // 반품 접수의 경우 return_statements에서 데이터 가져오기
+      if (order.order_type === 'return_only' && (!order.order_items || order.order_items.length === 0)) {
+        const { data: returnStatements, error: returnError } = await supabase
+          .from('return_statements')
+          .select('*')
+          .eq('order_id', order.id)
+          .single()
+
+        if (!returnError && returnStatements && returnStatements.items) {
+          // return_statements의 items를 order_items 형태로 변환
+          const convertedItems = returnStatements.items.map((item: any, index: number) => ({
+            id: `return-${index}`,
+            order_id: order.id,
+            product_id: item.product_id || null,
+            product_name: item.product_name,
+            color: item.color || '',
+            size: item.size || '',
+            quantity: -item.quantity, // 반품이므로 음수로 변환
+            unit_price: item.unit_price,
+            total_price: -item.total_price, // 반품이므로 음수로 변환
+            shipped_quantity: 0,
+            products: null
+          }))
+
+          order.order_items = convertedItems
+        }
+      }
+
       return NextResponse.json({
         success: true,
         data: order
@@ -180,11 +208,40 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // 반품 접수 주문들의 반품명세서 상태 조회
+    let ordersWithReturnStatus = orders || []
+    
+    if (orders && orders.length > 0) {
+      // 반품 접수 주문들 필터링 (order_type이 return_only이거나 total_amount가 음수)
+      const returnOrderIds = orders
+        .filter(order => order.order_type === 'return_only' || order.total_amount < 0)
+        .map(order => order.id)
+
+      if (returnOrderIds.length > 0) {
+        // 반품명세서 상태 조회
+        const { data: returnStatements, error: returnError } = await supabase
+          .from('return_statements')
+          .select('order_id, status')
+          .in('order_id', returnOrderIds)
+
+        if (!returnError && returnStatements) {
+          // 반품명세서 상태를 주문에 추가
+          ordersWithReturnStatus = orders.map(order => {
+            const returnStatement = returnStatements.find(rs => rs.order_id === order.id)
+            return {
+              ...order,
+              return_statement_status: returnStatement?.status || null
+            }
+          })
+        }
+      }
+    }
+
     const totalPages = Math.ceil((count || 0) / limit)
 
     return NextResponse.json({
       success: true,
-      data: orders || [],
+      data: ordersWithReturnStatus,
       pagination: {
         currentPage: page,
         totalPages,

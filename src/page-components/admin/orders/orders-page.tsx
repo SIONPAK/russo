@@ -18,7 +18,8 @@ import {
   Calendar,
   Users,
   TrendingUp,
-  Upload
+  Upload,
+  ChevronDown
 } from 'lucide-react'
 
 export function OrdersPage() {
@@ -46,6 +47,8 @@ export function OrdersPage() {
 
   const [sortBy, setSortBy] = useState<'company_name' | 'created_at' | 'total_amount'>('company_name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [isStatementDropdownOpen, setIsStatementDropdownOpen] = useState(false) // 명세서 드롭다운 상태
+  const [editingItem, setEditingItem] = useState<{orderId: string, itemId: string, field: 'quantity' | 'shipped_quantity'} | null>(null)
 
   // 정렬된 주문 목록
   const sortedOrders = [...orders].sort((a, b) => {
@@ -237,6 +240,88 @@ export function OrdersPage() {
     }
   }
 
+  // 🎯 최종 명세서 PDF 일괄 다운로드
+  const handleDownloadShippingStatementPDF = async () => {
+    if (selectedOrders.length === 0) {
+      showInfo('PDF 명세서를 출력할 주문을 선택해주세요.')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/orders/shipping-statement', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderIds: selectedOrders,
+          format: 'pdf'
+        }),
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `최종명세서_${selectedDate}_${selectedOrders.length}건.pdf`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        
+        showSuccess(`${selectedOrders.length}건의 거래명세서 PDF가 다운로드되었습니다.`)
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'PDF 생성에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('PDF download error:', error)
+      showError('PDF 다운로드에 실패했습니다.')
+    }
+  }
+
+  // 🎯 최종 명세서 엑셀 일괄 다운로드 (ZIP 파일)
+  const handleDownloadShippingStatementExcel = async () => {
+    if (selectedOrders.length === 0) {
+      showInfo('엑셀 명세서를 출력할 주문을 선택해주세요.')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/orders/shipping-statement', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderIds: selectedOrders,
+          format: 'excel'
+        }),
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `receipts_bulk_download_${selectedDate}_${selectedOrders.length}건.zip`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        
+        showSuccess(`${selectedOrders.length}건의 영수증 ZIP 파일이 다운로드되었습니다.`)
+      } else {
+        const errorData = await response.json()
+        showError(errorData.error || 'ZIP 파일 생성에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('ZIP download error:', error)
+      showError('ZIP 파일 다운로드에 실패했습니다.')
+    }
+  }
+
   // 재고 할당 처리
   const handleAllocateInventory = async () => {
     if (selectedOrders.length === 0) {
@@ -251,7 +336,7 @@ export function OrdersPage() {
     await allocateInventory(selectedOrders)
   }
 
-  // 일괄 출고 처리
+  // 일괄 출고 처리 (출고내역조회로 이동)
   const handleBulkShipping = async () => {
     if (selectedOrders.length === 0) {
       showInfo('출고 처리할 주문을 선택해주세요.')
@@ -259,22 +344,13 @@ export function OrdersPage() {
     }
 
     const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.id))
-    const hasUnallocatedOrders = selectedOrdersData.some(order => 
-      order.allocation_status !== 'allocated'
-    )
 
-    if (hasUnallocatedOrders) {
-      if (!confirm('재고가 할당되지 않은 주문이 포함되어 있습니다.\n할당된 수량만 출고 처리하시겠습니까?')) {
-        return
-      }
-    }
-
-    if (!confirm(`선택된 ${selectedOrders.length}건의 주문을 출고 처리하시겠습니까?\n\n⚠️ 출고 처리 시 다음 작업이 수행됩니다:\n• 재고 차감 처리\n• 주문 상태를 '배송중'으로 변경\n• 거래명세서 생성 가능\n\n이 작업은 신중히 검토 후 진행해주세요.`)) {
+    if (!confirm(`선택된 ${selectedOrders.length}건의 주문을 출고 처리하시겠습니까?\n\n⚠️ 출고 처리 시:\n• 주문이 출고내역조회로 이동됩니다\n• 주문 상태가 '출고완료'로 변경됩니다\n\n이 작업은 되돌릴 수 없습니다.`)) {
       return
     }
 
     try {
-      const response = await fetch('/api/admin/orders/bulk-shipping', {
+      const response = await fetch('/api/admin/orders/move-to-shipped', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -287,14 +363,7 @@ export function OrdersPage() {
       const data = await response.json()
 
       if (data.success) {
-        showSuccess(data.message)
-        
-        // 결과 상세 정보 표시
-        if (data.data.failed > 0) {
-          const failedOrders = data.data.results.filter((r: any) => !r.success)
-          const failedInfo = failedOrders.map((r: any) => `${r.orderNumber}: ${r.error}`).join('\n')
-          showError(`일부 주문 처리 실패:\n${failedInfo}`)
-        }
+        showSuccess(`${selectedOrders.length}건의 주문이 출고 처리되어 출고내역조회로 이동되었습니다.`)
         
         // 주문 목록 새로고침
         fetchTodayOrders()
@@ -362,10 +431,58 @@ export function OrdersPage() {
     })
   }
 
+  // 주문 아이템 수정 함수
+  const handleUpdateOrderItem = async (orderId: string, itemId: string, field: 'quantity' | 'shipped_quantity', value: number) => {
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}/items`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderItemId: itemId,
+          [field]: value
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('주문 아이템이 수정되었습니다.')
+        // 주문 목록 새로고침
+        await fetchOrders()
+      } else {
+        showError(result.error || '주문 아이템 수정에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('주문 아이템 수정 오류:', error)
+      showError('주문 아이템 수정 중 오류가 발생했습니다.')
+    } finally {
+      setEditingItem(null)
+    }
+  }
+
   // 초기 로딩 시 오늘 날짜로 조회
   useEffect(() => {
     fetchTodayOrders()
   }, [])
+
+  // 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isStatementDropdownOpen) {
+        const dropdown = document.getElementById('statement-dropdown')
+        if (dropdown && !dropdown.contains(event.target as Node)) {
+          setIsStatementDropdownOpen(false)
+        }
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isStatementDropdownOpen])
 
   const getStockStatusColor = (item: any) => {
     const available = item.available_stock || 0
@@ -509,14 +626,6 @@ export function OrdersPage() {
           
           <div className="flex gap-2">
             <Button
-              onClick={handleBulkShipping}
-              disabled={selectedOrders.length === 0 || updating}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              <Package className="w-4 h-4 mr-2" />
-              일괄 출고 ({selectedOrders.length})
-            </Button>
-            <Button
               onClick={handleFinalizeStatements}
               disabled={selectedOrders.length === 0 || updating}
               className="bg-purple-600 hover:bg-purple-700"
@@ -525,12 +634,24 @@ export function OrdersPage() {
               최종 명세서 확정 ({selectedOrders.length})
             </Button>
             <Button
+              onClick={handleBulkShipping}
+              disabled={selectedOrders.length === 0 || updating}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Package className="w-4 h-4 mr-2" />
+              일괄 출고 처리 ({selectedOrders.length})
+            </Button>
+            
+            {/* 구분선 */}
+            <div className="w-px bg-gray-300 mx-2"></div>
+            
+            <Button
               onClick={handleDownloadExcel}
               disabled={orders.length === 0}
               variant="outline"
             >
               <Download className="w-4 h-4 mr-2" />
-              배송정보 엑셀 다운로드
+              배송정보 엑셀
             </Button>
             <div className="relative">
               <input
@@ -544,17 +665,63 @@ export function OrdersPage() {
                 className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
               >
                 <Upload className="w-4 h-4 mr-2" />
-                운송장번호 엑셀 업로드
+                운송장번호 업로드
               </Button>
             </div>
-            <Button
-              onClick={handleDownloadShippingStatement}
-              disabled={selectedOrders.length === 0}
-              variant="outline"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              최종 명세서 출력
-            </Button>
+            
+            {/* 구분선 */}
+            <div className="w-px bg-gray-300 mx-2"></div>
+            
+            {/* 명세서 다운로드 드롭다운 */}
+            <div className="relative" id="statement-dropdown">
+              <Button
+                onClick={() => setIsStatementDropdownOpen(!isStatementDropdownOpen)}
+                disabled={selectedOrders.length === 0}
+                variant="outline"
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                명세서 다운로드 ({selectedOrders.length})
+                <ChevronDown className="w-4 h-4 ml-2" />
+              </Button>
+              
+              {isStatementDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        handleDownloadShippingStatement()
+                        setIsStatementDropdownOpen(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    >
+                      <FileText className="w-4 h-4 mr-2 text-orange-600" />
+                      확정 전 명세서 출력 (개별)
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleDownloadShippingStatementPDF()
+                        setIsStatementDropdownOpen(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    >
+                      <FileText className="w-4 h-4 mr-2 text-red-600" />
+                      📄 PDF 일괄 다운로드
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleDownloadShippingStatementExcel()
+                        setIsStatementDropdownOpen(false)
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    >
+                      <FileText className="w-4 h-4 mr-2 text-blue-600" />
+                      📦 ZIP 파일 (여러 영수증)
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -687,13 +854,78 @@ export function OrdersPage() {
                                     {item.color} / {item.size}
                                   </div>
                                   <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-gray-700">
-                                      수량: {item.quantity}개
-                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-gray-700">수량:</span>
+                                      {editingItem?.orderId === order.id && editingItem?.itemId === item.id && editingItem?.field === 'quantity' ? (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          defaultValue={item.quantity}
+                                          className="w-16 px-1 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                          autoFocus
+                                          onBlur={(e) => {
+                                            const value = parseInt(e.target.value) || 0
+                                            if (value !== item.quantity) {
+                                              handleUpdateOrderItem(order.id, item.id, 'quantity', value)
+                                            } else {
+                                              setEditingItem(null)
+                                            }
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.currentTarget.blur()
+                                            } else if (e.key === 'Escape') {
+                                              setEditingItem(null)
+                                            }
+                                          }}
+                                        />
+                                      ) : (
+                                        <span 
+                                          className="text-gray-700 cursor-pointer hover:text-blue-600 hover:underline"
+                                          onClick={() => setEditingItem({orderId: order.id, itemId: item.id, field: 'quantity'})}
+                                        >
+                                          {item.quantity}개
+                                        </span>
+                                      )}
+                                    </div>
                                     {(item.shipped_quantity || 0) > 0 && (
-                                      <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
-                                        출고: {item.shipped_quantity}개
-                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                                          출고: 
+                                          {editingItem?.orderId === order.id && editingItem?.itemId === item.id && editingItem?.field === 'shipped_quantity' ? (
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max={item.quantity}
+                                              defaultValue={item.shipped_quantity}
+                                              className="w-12 ml-1 px-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                              autoFocus
+                                              onBlur={(e) => {
+                                                const value = parseInt(e.target.value) || 0
+                                                if (value !== item.shipped_quantity) {
+                                                  handleUpdateOrderItem(order.id, item.id, 'shipped_quantity', value)
+                                                } else {
+                                                  setEditingItem(null)
+                                                }
+                                              }}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                  e.currentTarget.blur()
+                                                } else if (e.key === 'Escape') {
+                                                  setEditingItem(null)
+                                                }
+                                              }}
+                                            />
+                                          ) : (
+                                            <span 
+                                              className="cursor-pointer hover:underline ml-1"
+                                              onClick={() => setEditingItem({orderId: order.id, itemId: item.id, field: 'shipped_quantity'})}
+                                            >
+                                              {item.shipped_quantity}개
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
                                     )}
                                     {(item.shipped_quantity || 0) < item.quantity && (
                                       <span className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700">

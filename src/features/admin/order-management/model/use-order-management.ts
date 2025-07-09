@@ -231,7 +231,8 @@ export function useOrderManagement() {
     
     updateFilters({ 
       startDate: today,
-      is_3pm_based: true
+      is_3pm_based: true,
+      status: 'not_shipped'  // 출고완료된 주문 제외
     })
   }
 

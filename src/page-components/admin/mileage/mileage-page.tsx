@@ -38,6 +38,7 @@ export function MileagePage() {
   const [failureLogs, setFailureLogs] = useState([])
   const [showLogs, setShowLogs] = useState(false)
   const [logsLoading, setLogsLoading] = useState(false)
+  const [logStatus, setLogStatus] = useState('pending') // 'pending', 'resolved', 'all'
 
   // 뱅크다 설정 조회
   const fetchBankdaSettings = async () => {
@@ -56,7 +57,7 @@ export function MileagePage() {
   const fetchFailureLogs = async () => {
     setLogsLoading(true)
     try {
-      const response = await fetch('/api/admin/mileage/logs?type=failure')
+      const response = await fetch(`/api/admin/mileage/logs?type=failure&status=${logStatus}`)
       const result = await response.json()
       if (result.success) {
         setFailureLogs(result.data)
@@ -65,6 +66,56 @@ export function MileagePage() {
       console.error('실패 로그 조회 오류:', error)
     } finally {
       setLogsLoading(false)
+    }
+  }
+
+  // 로그 상태 업데이트
+  const updateLogStatus = async (logId: string, status: string) => {
+    try {
+      const response = await fetch('/api/admin/mileage/logs', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ logId, status })
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        alert(result.message)
+        fetchFailureLogs() // 목록 새로고침
+      } else {
+        alert('상태 업데이트에 실패했습니다: ' + result.error)
+      }
+    } catch (error) {
+      console.error('상태 업데이트 오류:', error)
+      alert('상태 업데이트 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 로그 삭제
+  const deleteLog = async (logId: string) => {
+    if (!confirm('이 로그를 삭제하시겠습니까?')) return
+
+    try {
+      const response = await fetch('/api/admin/mileage/logs', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ logId })
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        alert(result.message)
+        fetchFailureLogs() // 목록 새로고침
+      } else {
+        alert('삭제에 실패했습니다: ' + result.error)
+      }
+    } catch (error) {
+      console.error('삭제 오류:', error)
+      alert('삭제 중 오류가 발생했습니다.')
     }
   }
 
@@ -123,6 +174,8 @@ export function MileagePage() {
     }
   }
 
+
+
   useEffect(() => {
     fetchBankdaSettings()
   }, [])
@@ -131,7 +184,7 @@ export function MileagePage() {
     if (showLogs) {
       fetchFailureLogs()
     }
-  }, [showLogs])
+  }, [showLogs, logStatus])
 
   if (loading) {
     return (
@@ -232,6 +285,43 @@ export function MileagePage() {
 
         {showLogs && (
           <div className="space-y-4">
+            {/* 상태 필터 */}
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium text-gray-700">상태:</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setLogStatus('pending')}
+                  className={`px-3 py-1 text-xs rounded-full ${
+                    logStatus === 'pending' 
+                      ? 'bg-orange-100 text-orange-800 border border-orange-300' 
+                      : 'bg-gray-100 text-gray-600 border border-gray-300'
+                  }`}
+                >
+                  대기중
+                </button>
+                <button
+                  onClick={() => setLogStatus('resolved')}
+                  className={`px-3 py-1 text-xs rounded-full ${
+                    logStatus === 'resolved' 
+                      ? 'bg-green-100 text-green-800 border border-green-300' 
+                      : 'bg-gray-100 text-gray-600 border border-gray-300'
+                  }`}
+                >
+                  해결완료
+                </button>
+                <button
+                  onClick={() => setLogStatus('all')}
+                  className={`px-3 py-1 text-xs rounded-full ${
+                    logStatus === 'all' 
+                      ? 'bg-blue-100 text-blue-800 border border-blue-300' 
+                      : 'bg-gray-100 text-gray-600 border border-gray-300'
+                  }`}
+                >
+                  전체
+                </button>
+              </div>
+            </div>
+
             {logsLoading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -241,25 +331,53 @@ export function MileagePage() {
               <div className="max-h-96 overflow-y-auto">
                 <div className="space-y-2">
                   {failureLogs.map((log: any, index) => (
-                    <div key={index} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div key={index} className="p-3 bg-white border border-gray-200 rounded-lg">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-red-800">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              log.status === 'resolved' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              {log.status === 'resolved' ? '해결완료' : '대기중'}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {new Date(log.created_at).toLocaleString('ko-KR')}
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium text-gray-800">
+                            {log.business_name} | {log.amount?.toLocaleString()}원
+                          </p>
+                          <p className="text-xs text-gray-600 mt-1">
                             {log.error_message || '알 수 없는 오류'}
                           </p>
-                          <p className="text-xs text-red-600 mt-1">
-                            사용자: {log.user_name || '미확인'} | 금액: {log.amount?.toLocaleString()}원
-                          </p>
                         </div>
-                        <span className="text-xs text-red-500">
-                          {new Date(log.created_at).toLocaleString('ko-KR')}
-                        </span>
+                        <div className="flex items-center gap-1 ml-4">
+                          {log.status !== 'resolved' && (
+                            <button
+                              onClick={() => updateLogStatus(log.id, 'resolved')}
+                              className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
+                            >
+                              해결완료
+                            </button>
+                          )}
+                          {log.status === 'resolved' && (
+                            <button
+                              onClick={() => updateLogStatus(log.id, 'pending')}
+                              className="px-2 py-1 text-xs bg-orange-100 text-orange-700 rounded hover:bg-orange-200"
+                            >
+                              대기중으로
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deleteLog(log.id)}
+                            className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                          >
+                            삭제
+                          </button>
+                        </div>
                       </div>
-                      {log.details && (
-                        <div className="mt-2 p-2 bg-red-100 rounded text-xs text-red-700">
-                          {log.details}
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -267,7 +385,10 @@ export function MileagePage() {
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p>실패 로그가 없습니다.</p>
+                <p>
+                  {logStatus === 'pending' ? '대기중인' : logStatus === 'resolved' ? '해결완료된' : ''} 
+                  실패 로그가 없습니다.
+                </p>
               </div>
             )}
           </div>

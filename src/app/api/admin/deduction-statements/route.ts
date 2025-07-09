@@ -146,10 +146,12 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // 차감 총액 계산
-    const total_amount = items.reduce((sum: number, item: any) => 
-      sum + (item.unit_price * item.deduction_quantity), 0
-    )
+    // 차감 총액 계산 (부가세 포함)
+    const total_amount = items.reduce((sum: number, item: any) => {
+      const supplyAmount = item.unit_price * item.deduction_quantity
+      const vat = Math.floor(supplyAmount * 0.1)
+      return sum + supplyAmount + vat
+    }, 0)
 
     // 마일리지 차감 금액 계산 (차감 금액과 동일)
     const mileage_amount = total_amount

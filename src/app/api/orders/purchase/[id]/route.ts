@@ -27,6 +27,54 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, message: '발주서를 찾을 수 없습니다.' }, { status: 404 })
     }
 
+    // 업무일 기준 당일 생성된 발주서만 수정 가능 (전일 15:00 ~ 당일 14:59)
+    const now = new Date()
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const orderTime = new Date(existingOrder.created_at)
+    const orderKoreaTime = new Date(orderTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    
+    // 현재 업무일 범위 계산
+    let workdayStart: Date
+    let workdayEnd: Date
+    
+    if (koreaTime.getHours() >= 15) {
+      // 현재 시각이 15시 이후면 새로운 업무일 (당일 15:00 ~ 익일 14:59)
+      workdayStart = new Date(koreaTime)
+      workdayStart.setHours(15, 0, 0, 0)
+      
+      workdayEnd = new Date(koreaTime)
+      workdayEnd.setDate(workdayEnd.getDate() + 1)
+      workdayEnd.setHours(14, 59, 59, 999)
+    } else {
+      // 현재 시각이 15시 이전이면 현재 업무일 (전일 15:00 ~ 당일 14:59)
+      workdayStart = new Date(koreaTime)
+      workdayStart.setDate(workdayStart.getDate() - 1)
+      workdayStart.setHours(15, 0, 0, 0)
+      
+      workdayEnd = new Date(koreaTime)
+      workdayEnd.setHours(14, 59, 59, 999)
+    }
+    
+    // 주문이 현재 업무일 범위에 있는지 확인
+    const isCurrentWorkday = orderKoreaTime >= workdayStart && orderKoreaTime <= workdayEnd
+    
+    if (!isCurrentWorkday) {
+      return NextResponse.json({
+        success: false,
+        message: `당일 생성된 발주서만 수정할 수 있습니다. (업무일 기준: ${workdayStart.toLocaleDateString('ko-KR')} 15:00 ~ ${workdayEnd.toLocaleDateString('ko-KR')} 14:59)`
+      }, { status: 400 })
+    }
+    
+    // 현재 업무일의 수정 마감시간 (당일 14:59)
+    const editCutoffTime = new Date(workdayEnd)
+    
+    if (koreaTime > editCutoffTime) {
+      return NextResponse.json({
+        success: false,
+        message: `업무일 기준 오후 3시 이후에는 발주서를 수정할 수 없습니다. (현재 시각: ${koreaTime.toLocaleString('ko-KR')})`
+      }, { status: 400 })
+    }
+
     // 기존 주문 상품 조회 (재고 이력 복원용)
     const { data: existingItems, error: existingItemsError } = await supabase
       .from('order_items')
@@ -94,6 +142,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (deleteItemsError) {
       console.error('기존 주문 상품 삭제 오류:', deleteItemsError)
       return NextResponse.json({ success: false, message: '기존 주문 상품 삭제에 실패했습니다.' }, { status: 500 })
+    }
+
+    // 기존 반품명세서 삭제 (반품 접수 수정 시)
+    const { error: deleteReturnError } = await supabase
+      .from('return_statements')
+      .delete()
+      .eq('order_id', orderId)
+
+    if (deleteReturnError) {
+      console.error('기존 반품명세서 삭제 오류:', deleteReturnError)
+      // 반품명세서 삭제 실패해도 수정은 진행
     }
 
     // 새로운 주문 상품 생성 (양수 수량만)
@@ -216,6 +275,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     } else {
       console.log(`ℹ️ [수정] 반품 아이템 없음 - 반품명세서 생성 건너뜀`)
     }
+
+    // 주문 타입 업데이트
+    let orderType = 'purchase'
+    if (positiveItems.length === 0 && negativeItems.length > 0) {
+      orderType = 'return_only'
+    } else if (positiveItems.length > 0 && negativeItems.length > 0) {
+      orderType = 'mixed'
+    }
+
+    await supabase
+      .from('orders')
+      .update({
+        order_type: orderType,
+        updated_at: getKoreaTime()
+      })
+      .eq('id', orderId)
 
     return NextResponse.json({ success: true, message: '발주서가 수정되었습니다.' })
   } catch (error) {

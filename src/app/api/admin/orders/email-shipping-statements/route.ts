@@ -75,10 +75,11 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 실제 출고된 상품만 필터링
-        const shippedItems = order.order_items.filter((item: any) => 
-          item.shipped_quantity && item.shipped_quantity > 0
-        )
+        // 실제 출고된 상품만 필터링 (shipped_quantity가 없으면 전체 수량으로 간주)
+        const shippedItems = order.order_items.filter((item: any) => {
+          const shippedQty = item.shipped_quantity || item.quantity || 0
+          return shippedQty > 0
+        })
 
         if (shippedItems.length === 0) {
           return {
@@ -101,17 +102,21 @@ export async function POST(request: NextRequest) {
           postalCode: order.users.postal_code || '',
           customerGrade: order.users.customer_grade || 'normal',
           shippedAt: order.shipped_at || new Date().toISOString(),
-          items: shippedItems.map((item: any) => ({
-            productName: item.product_name,
-            color: item.color,
-            size: item.size,
-            quantity: item.shipped_quantity,
-            unitPrice: item.unit_price,
-            totalPrice: item.shipped_quantity * item.unit_price
-          })),
-          totalAmount: shippedItems.reduce((sum: number, item: any) => 
-            sum + (item.shipped_quantity * item.unit_price), 0
-          )
+          items: shippedItems.map((item: any) => {
+            const actualQuantity = item.shipped_quantity || item.quantity || 0
+            return {
+              productName: item.product_name,
+              color: item.color,
+              size: item.size,
+              quantity: actualQuantity,
+              unitPrice: item.unit_price,
+              totalPrice: actualQuantity * item.unit_price
+            }
+          }),
+          totalAmount: shippedItems.reduce((sum: number, item: any) => {
+            const actualQuantity = item.shipped_quantity || item.quantity || 0
+            return sum + (actualQuantity * item.unit_price)
+          }, 0)
         }
 
         // 거래명세서 엑셀 생성 (템플릿 사용)
@@ -137,6 +142,8 @@ export async function POST(request: NextRequest) {
               message_id: emailResult.messageId,
               sent_at: new Date().toISOString()
             })
+
+
 
           return {
             success: true,

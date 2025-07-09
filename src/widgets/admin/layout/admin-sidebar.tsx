@@ -71,6 +71,13 @@ const menuItems = [
     children: []
   },
   {
+    title: '출고내역조회',
+    shortTitle: '출고내역',
+    icon: Archive,
+    href: '/admin/shipped-orders',
+    children: []
+  },
+  {
     title: '📋 출고 명세서 관리',
     shortTitle: '출고',
     icon: Archive,

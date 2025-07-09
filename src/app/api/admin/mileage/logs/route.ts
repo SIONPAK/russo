@@ -1,94 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/shared/lib/supabase';
+import { createClient } from '@/shared/lib/supabase/server';
 
-// GET - 마일리지 로그 조회
+// GET - 마일리지 실패 로그 조회
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const userId = searchParams.get('userId') || '';
-    const type = searchParams.get('type') || ''; // 'bankda_sync_success', 'bankda_sync_failed', 'manual_process' 등
-    const startDate = searchParams.get('startDate') || '';
-    const endDate = searchParams.get('endDate') || '';
+    const type = searchParams.get('type') || 'failure';
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const offset = parseInt(searchParams.get('offset') || '0');
     
-    const offset = (page - 1) * limit;
-    const supabase = createClient();
+    const supabase = await createClient();
     
     let query = supabase
-      .from('mileage_logs')
-      .select(`
-        *,
-        users!mileage_logs_user_id_fkey (
-          id,
-          company_name,
-          representative_name,
-          email
-        )
-      `, { count: 'exact' });
-    
-    // 필터 적용
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
-    
-    if (type && type !== 'all') {
-      query = query.eq('type', type);
-    }
-    
-    // 날짜 필터
-    if (startDate) {
-      query = query.gte('created_at', startDate);
-    }
-    
-    if (endDate) {
-      // 종료일은 해당 날짜 23:59:59까지 포함
-      const endDateTime = new Date(endDate);
-      endDateTime.setHours(23, 59, 59, 999);
-      query = query.lte('created_at', endDateTime.toISOString());
-    }
-    
-    // 정렬 및 페이지네이션
-    query = query
+      .from('lusso_mileage_failure_logs')
+      .select('*')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     
-    const { data: logs, error, count } = await query;
+    // 상태 필터링 (기본값: 대기중만)
+    const status = searchParams.get('status') || 'pending';
+    if (status !== 'all') {
+      query = query.eq('status', status);
+    }
+    
+    // 오늘 날짜 필터링 (옵션)
+    const today = searchParams.get('today');
+    if (today === 'true') {
+      const koreanDate = new Date().toISOString().split('T')[0];
+      query = query.gte('created_at', koreanDate);
+    }
+    
+    const { data: logs, error } = await query;
     
     if (error) {
-      console.error('Mileage logs fetch error:', error);
-      return NextResponse.json({
+      console.error('마일리지 실패 로그 조회 오류:', error);
+      return NextResponse.json({ 
         success: false,
-        error: '마일리지 로그를 불러오는데 실패했습니다.'
+        error: '마일리지 실패 로그 조회 중 오류가 발생했습니다.' 
       }, { status: 500 });
     }
     
-    const totalPages = Math.ceil((count || 0) / limit);
+    // 로그 데이터 변환
+    const transformedLogs = logs?.map((log: any) => ({
+      id: log.id,
+      business_name: log.business_name,
+      attempted_amount: log.attempted_amount,
+      reason: log.reason,
+      error_details: log.error_details,
+      settlement_type: log.settlement_type,
+      settlement_date: log.settlement_date,
+      status: log.status || 'pending',
+      created_at: log.created_at,
+      error_message: log.error_details, // 기존 프론트엔드 호환성을 위해
+      amount: log.attempted_amount,
+      user_name: log.business_name
+    })) || [];
     
-    return NextResponse.json({
+    return NextResponse.json({ 
       success: true,
-      data: logs || [],
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages
-      }
+      data: transformedLogs,
+      total: transformedLogs.length,
+      message: `${transformedLogs.length}건의 실패 로그를 조회했습니다.`
     });
     
   } catch (error) {
-    console.error('Mileage logs API error:', error);
-    return NextResponse.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, { status: 500 });
+    console.error('마일리지 실패 로그 조회 중 오류:', error);
+    return NextResponse.json(
+      { 
+        success: false,
+        error: '마일리지 실패 로그 조회 중 오류가 발생했습니다.' 
+      },
+      { status: 500 }
+    );
   }
 }
 
 // POST - 마일리지 로그 생성 (수동 로그 추가)
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const body = await request.json();
     
     const { 
@@ -155,25 +145,75 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - 로그 삭제 (관리자용)
-export async function DELETE(request: NextRequest) {
+// PUT - 로그 상태 업데이트
+export async function PUT(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const logId = searchParams.get('id');
-    const logType = searchParams.get('type'); // 'failure' or 'exclusion'
+    const body = await request.json();
+    const { logId, status } = body;
     
-    if (!logId || !logType) {
+    if (!logId || !status) {
       return NextResponse.json(
-        { success: false, error: '로그 ID와 타입이 필요합니다.' },
+        { success: false, error: '로그 ID와 상태가 필요합니다.' },
         { status: 400 }
       );
     }
     
-    const supabase = createClient();
-    const tableName = logType === 'failure' ? 'lusso_mileage_failure_logs' : 'lusso_mileage_exclusion_logs';
+    if (!['pending', 'resolved'].includes(status)) {
+      return NextResponse.json(
+        { success: false, error: '유효하지 않은 상태입니다. (pending, resolved)' },
+        { status: 400 }
+      );
+    }
+    
+    const supabase = await createClient();
     
     const { error } = await supabase
-      .from(tableName)
+      .from('lusso_mileage_failure_logs')
+      .update({ 
+        status: status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', logId);
+    
+    if (error) {
+      console.error('로그 상태 업데이트 오류:', error);
+      return NextResponse.json(
+        { success: false, error: '로그 상태 업데이트에 실패했습니다.' },
+        { status: 500 }
+      );
+    }
+    
+    return NextResponse.json({
+      success: true,
+      message: `로그 상태가 ${status === 'resolved' ? '해결완료' : '대기중'}로 변경되었습니다.`
+    });
+    
+  } catch (error) {
+    console.error('로그 상태 업데이트 중 오류:', error);
+    return NextResponse.json(
+      { success: false, error: '로그 상태 업데이트 중 오류가 발생했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - 로그 삭제 (관리자용)
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { logId } = body;
+    
+    if (!logId) {
+      return NextResponse.json(
+        { success: false, error: '로그 ID가 필요합니다.' },
+        { status: 400 }
+      );
+    }
+    
+    const supabase = await createClient();
+    
+    const { error } = await supabase
+      .from('lusso_mileage_failure_logs')
       .delete()
       .eq('id', logId);
     

@@ -28,6 +28,24 @@ export async function logMileageFailure(failureData: MileageFailureLog): Promise
     
     const supabase = await createClient()
     
+    // 중복 체크: 동일한 업체명, 금액, 날짜, 오류 사유의 로그가 최근 1시간 내에 있는지 확인
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    
+    const { data: existingLog } = await supabase
+      .from('lusso_mileage_failure_logs')
+      .select('id')
+      .eq('business_name', failureData.business_name)
+      .eq('attempted_amount', failureData.attempted_amount)
+      .eq('reason', failureData.reason)
+      .eq('settlement_date', failureData.settlement_date)
+      .gte('created_at', oneHourAgo)
+      .single()
+    
+    if (existingLog) {
+      console.log('🚫 중복 실패 로그 건너뛰기:', failureData.business_name)
+      return
+    }
+    
     const { error } = await supabase
       .from('lusso_mileage_failure_logs')
       .insert({
@@ -38,6 +56,7 @@ export async function logMileageFailure(failureData: MileageFailureLog): Promise
         settlement_type: failureData.settlement_type,
         settlement_date: failureData.settlement_date,
         original_data: failureData.original_data,
+        status: 'pending'
       })
     
     if (error) {
@@ -54,7 +73,7 @@ export async function logMileageFailure(failureData: MileageFailureLog): Promise
 // 마일리지 제외 로그 기록 함수 (중복 거래 등)
 export async function logMileageExclusion(exclusionData: MileageFailureLog): Promise<void> {
   try {
-    console.log('마일리지 제외 로그 저장:', exclusionData)
+    
     
     const supabase = await createClient()
     

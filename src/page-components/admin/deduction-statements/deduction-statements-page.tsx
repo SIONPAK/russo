@@ -475,9 +475,13 @@ export default function DeductionStatementsPage() {
           <div className="flex items-center">
             <XCircle className="h-8 w-8 text-red-600" />
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">총 차감 금액</p>
+              <p className="text-sm font-medium text-gray-500">총 차감 금액 (세금포함)</p>
               <p className="text-2xl font-bold text-gray-900">
-                {statements.reduce((sum, s) => sum + s.total_amount, 0).toLocaleString()}원
+                {(() => {
+                  const totalSupply = statements.reduce((sum, s) => sum + s.total_amount, 0)
+                  const totalVat = Math.floor(totalSupply * 0.1)
+                  return (totalSupply + totalVat).toLocaleString()
+                })()}원
               </p>
             </div>
           </div>
@@ -514,7 +518,8 @@ export default function DeductionStatementsPage() {
                   차감 사유
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  차감 금액
+                  차감 금액<br/>
+                  <span className="text-xs text-blue-600 normal-case">(세금포함)</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   마일리지
@@ -575,7 +580,11 @@ export default function DeductionStatementsPage() {
                       {statement.deduction_reason}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {statement.total_amount.toLocaleString()}원
+                      {(() => {
+                        // 기존 금액에 부가세 10% 추가
+                        const vatAmount = Math.floor(statement.total_amount * 0.1)
+                        return (statement.total_amount + vatAmount).toLocaleString()
+                      })()}원
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center gap-2">
@@ -864,9 +873,11 @@ function DeductionStatementCreateModal({
     }
   }
 
-  const totalAmount = formData.items.reduce((sum, item) => 
-    sum + (item.deduction_quantity * item.unit_price), 0
-  )
+  const totalAmount = formData.items.reduce((sum, item) => {
+    const supplyAmount = item.deduction_quantity * item.unit_price
+    const vat = Math.floor(supplyAmount * 0.1)
+    return sum + supplyAmount + vat
+  }, 0)
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -993,82 +1004,115 @@ function DeductionStatementCreateModal({
                       </Button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          상품명 *
-                        </label>
-                        <Input
-                          type="text"
-                          value={item.product_name}
-                          onChange={(e) => updateItem(index, 'product_name', e.target.value)}
-                          required
-                          className="bg-white"
-                        />
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            상품명 *
+                          </label>
+                          <Input
+                            type="text"
+                            value={item.product_name}
+                            onChange={(e) => updateItem(index, 'product_name', e.target.value)}
+                            required
+                            className="bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            색상
+                          </label>
+                          <Input
+                            type="text"
+                            value={item.color}
+                            onChange={(e) => updateItem(index, 'color', e.target.value)}
+                            className="bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            사이즈
+                          </label>
+                          <Input
+                            type="text"
+                            value={item.size}
+                            onChange={(e) => updateItem(index, 'size', e.target.value)}
+                            className="bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            차감 수량 *
+                          </label>
+                          <Input
+                            type="number"
+                            value={item.deduction_quantity}
+                            onChange={(e) => updateItem(index, 'deduction_quantity', parseInt(e.target.value) || 0)}
+                            min="1"
+                            required
+                            className="bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            단가 *
+                          </label>
+                          <Input
+                            type="number"
+                            value={item.unit_price}
+                            onChange={(e) => updateItem(index, 'unit_price', parseInt(e.target.value) || 0)}
+                            min="0"
+                            required
+                            className="bg-white"
+                          />
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          색상
-                        </label>
-                        <Input
-                          type="text"
-                          value={item.color}
-                          onChange={(e) => updateItem(index, 'color', e.target.value)}
-                          className="bg-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          사이즈
-                        </label>
-                        <Input
-                          type="text"
-                          value={item.size}
-                          onChange={(e) => updateItem(index, 'size', e.target.value)}
-                          className="bg-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          차감 수량 *
-                        </label>
-                        <Input
-                          type="number"
-                          value={item.deduction_quantity}
-                          onChange={(e) => updateItem(index, 'deduction_quantity', parseInt(e.target.value) || 0)}
-                          min="1"
-                          required
-                          className="bg-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          단가 *
-                        </label>
-                        <Input
-                          type="number"
-                          value={item.unit_price}
-                          onChange={(e) => updateItem(index, 'unit_price', parseInt(e.target.value) || 0)}
-                          min="0"
-                          required
-                          className="bg-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          금액
-                        </label>
-                        <Input
-                          type="text"
-                          value={`${(item.deduction_quantity * item.unit_price).toLocaleString()}원`}
-                          readOnly
-                          className="bg-gray-100"
-                        />
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            단가<br/>
+                            <span className="text-xs text-gray-600">(세금제외)</span>
+                          </label>
+                          <Input
+                            type="text"
+                            value={`${(item.deduction_quantity * item.unit_price).toLocaleString()}원`}
+                            readOnly
+                            className="bg-gray-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            부가세<br/>
+                            <span className="text-xs text-gray-600">(10%)</span>
+                          </label>
+                          <Input
+                            type="text"
+                            value={`${Math.floor(item.deduction_quantity * item.unit_price * 0.1).toLocaleString()}원`}
+                            readOnly
+                            className="bg-gray-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            합계<br/>
+                            <span className="text-xs text-blue-600">(단가+부가세)</span>
+                          </label>
+                          <Input
+                            type="text"
+                            value={`${(() => {
+                              const supplyAmount = item.deduction_quantity * item.unit_price
+                              const vat = Math.floor(supplyAmount * 0.1)
+                              return (supplyAmount + vat).toLocaleString()
+                            })()}원`}
+                            readOnly
+                            className="bg-gray-100"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1085,11 +1129,25 @@ function DeductionStatementCreateModal({
             {/* 총 차감 금액 */}
             {formData.items.length > 0 && (
               <div className="bg-red-50 p-4 rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-red-800">총 차감 금액</span>
-                  <span className="text-lg font-bold text-red-600">
-                    -{totalAmount.toLocaleString()}원
-                  </span>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <span className="text-sm text-red-800">단가 합계</span>
+                    <div className="text-lg font-medium text-red-900">
+                      -{formData.items.reduce((sum, item) => sum + (item.deduction_quantity * item.unit_price), 0).toLocaleString()}원
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-sm text-red-800">부가세 합계</span>
+                    <div className="text-lg font-medium text-red-900">
+                      -{formData.items.reduce((sum, item) => sum + Math.floor(item.deduction_quantity * item.unit_price * 0.1), 0).toLocaleString()}원
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-sm text-red-800">총 차감 금액</span>
+                    <div className="text-xl font-bold text-red-600">
+                      -{totalAmount.toLocaleString()}원
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

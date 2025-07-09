@@ -377,14 +377,22 @@ export async function POST(request: NextRequest) {
       const returnStatementData = {
         statement_number: returnStatementNumber,
         order_id: order.id,
-        user_id: user_id,
         company_name: userData?.company_name || '미확인',
+        return_reason: '발주서 반품 요청',
+        return_type: 'customer_change',
         total_amount: Math.abs(negativeItems.reduce((sum: number, item: any) => {
           const supplyAmount = Math.abs(item.unit_price * item.quantity)
           const vat = Math.floor(supplyAmount * 0.1)
           return sum + supplyAmount + vat
         }, 0)),
+        refund_amount: Math.abs(negativeItems.reduce((sum: number, item: any) => {
+          const supplyAmount = Math.abs(item.unit_price * item.quantity)
+          const vat = Math.floor(supplyAmount * 0.1)
+          return sum + supplyAmount + vat
+        }, 0)),
         status: 'pending',
+        refunded: false,
+        email_sent: false,
         created_at: getKoreaTime(),
         items: negativeItems.map((item: any) => ({
           product_id: item.product_id,

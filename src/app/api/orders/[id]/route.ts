@@ -24,20 +24,54 @@ export async function DELETE(
       }, { status: 404 })
     }
 
-    // 오후 3시 이전인지 확인 (한국 시간)
+    // 업무일 기준 당일 생성된 발주서만 수정/삭제 가능 (전일 15:00 ~ 당일 14:59)
     const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     const orderTime = new Date(order.created_at)
-    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
+    const orderKoreaTime = new Date(orderTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     
-    // 주문일의 오후 3시 (한국 시간)
-    const cutoffTime = new Date(orderKoreaTime)
-    cutoffTime.setHours(15, 0, 0, 0)
+    // 현재 업무일의 시작 시간 계산 (전일 15:00)
+    let workdayStart = new Date(koreaTime)
+    if (koreaTime.getHours() < 15) {
+      // 현재 시각이 15시 이전이면 전전일 15:00부터 시작
+      workdayStart.setDate(workdayStart.getDate() - 2)
+    } else {
+      // 현재 시각이 15시 이후면 전일 15:00부터 시작
+      workdayStart.setDate(workdayStart.getDate() - 1)
+    }
+    workdayStart.setHours(15, 0, 0, 0)
     
-    if (koreaTime >= cutoffTime) {
+    // 현재 업무일의 종료 시간 계산 (당일 14:59)
+    const workdayEnd = new Date(workdayStart)
+    workdayEnd.setDate(workdayEnd.getDate() + 1)
+    workdayEnd.setHours(14, 59, 59, 999)
+    
+    // 주문이 현재 업무일 범위에 있는지 확인
+    const isCurrentWorkday = orderKoreaTime >= workdayStart && orderKoreaTime <= workdayEnd
+    
+    if (!isCurrentWorkday) {
       return NextResponse.json({
         success: false,
-        error: '오후 3시 이후에는 발주서를 삭제할 수 없습니다.'
+        error: `당일 생성된 발주서만 삭제할 수 있습니다. (업무일 기준: ${workdayStart.toLocaleDateString('ko-KR')} 15:00 ~ ${workdayEnd.toLocaleDateString('ko-KR')} 14:59)`
+      }, { status: 400 })
+    }
+    
+    // 현재 업무일의 삭제 마감시간 (당일 14:59)
+    const deleteCutoffTime = new Date(workdayEnd)
+    
+    console.log('🕐 업무일 기준 시간 확인:', {
+      currentTime: koreaTime.toLocaleString('ko-KR'),
+      orderTime: orderKoreaTime.toLocaleString('ko-KR'),
+      workdayStart: workdayStart.toLocaleString('ko-KR'),
+      workdayEnd: workdayEnd.toLocaleString('ko-KR'),
+      isCurrentWorkday,
+      canDelete: koreaTime <= deleteCutoffTime
+    })
+    
+    if (koreaTime > deleteCutoffTime) {
+      return NextResponse.json({
+        success: false,
+        error: `업무일 기준 오후 3시 이후에는 발주서를 삭제할 수 없습니다. (현재 시각: ${koreaTime.toLocaleString('ko-KR')})`
       }, { status: 400 })
     }
 

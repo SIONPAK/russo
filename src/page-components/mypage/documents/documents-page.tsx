@@ -144,20 +144,47 @@ export function DocumentsPage() {
 
   // 명세서 다운로드
   const handleDownload = async (statement: Statement) => {
+    if (!user || !('company_name' in user) || !(user as any).company_name) {
+      alert('회사 정보를 찾을 수 없습니다.')
+      return
+    }
+
     try {
-      const response = await fetch(`/api/documents/${statement.id}/download`, {
+      const params = new URLSearchParams({
+        company_name: (user as any).company_name
+      })
+      
+      const response = await fetch(`/api/documents/${statement.id}/download?${params}`, {
         method: 'GET'
       })
 
       if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          // 성공 메시지 표시
-          alert('명세서가 다운로드되었습니다.')
-        } else {
-          alert('다운로드에 실패했습니다: ' + data.error)
+        // 성공 시 바이너리 데이터로 파일 다운로드
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        
+        // Content-Disposition 헤더에서 파일명 추출
+        const contentDisposition = response.headers.get('Content-Disposition')
+        let filename = `명세서_${statement.statement_number}.xlsx`
+        
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/)
+          if (filenameMatch) {
+            filename = decodeURIComponent(filenameMatch[1])
+          }
         }
+        
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        
+        alert('명세서가 다운로드되었습니다.')
       } else {
+        // 실패 시 JSON으로 에러 메시지 처리
         const errorData = await response.json()
         alert('다운로드에 실패했습니다: ' + errorData.error)
       }

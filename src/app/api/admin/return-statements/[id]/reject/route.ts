@@ -23,7 +23,7 @@ export async function PATCH(
     // 반품명세서 존재 확인
     const { data: statement, error: checkError } = await supabase
       .from('return_statements')
-      .select('id, status, company_name')
+      .select('id, status, company_name, order_id')
       .eq('id', id)
       .single()
 
@@ -60,6 +60,14 @@ export async function PATCH(
         error: '반품 거절 처리에 실패했습니다.'
       }, { status: 500 })
     }
+
+    // 관련 주문 상태 업데이트 (선택사항)
+    await supabase
+      .from('orders')
+      .update({
+        updated_at: getKoreaTime()
+      })
+      .eq('id', statement.order_id)
 
     return NextResponse.json({
       success: true,

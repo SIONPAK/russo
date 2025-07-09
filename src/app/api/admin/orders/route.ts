@@ -90,7 +90,12 @@ export async function GET(request: NextRequest) {
 
     // 상태 필터
     if (status !== 'all') {
-      query = query.eq('status', status)
+      if (status === 'not_shipped') {
+        // 출고완료가 아닌 주문들만 조회
+        query = query.neq('status', 'shipped')
+      } else {
+        query = query.eq('status', status)
+      }
     }
 
     // 날짜 필터 (UTC 저장된 시간을 한국 시간 기준으로 필터링)

@@ -213,16 +213,32 @@ async function performBankdaSync() {
           continue;
         }
         
-        // 중복 체크 (뱅크다 거래코드는 고유값이므로 이것만으로 충분)
+        // 강화된 중복 체크 (뱅크다 거래코드, 날짜, 시간, 금액 모두 확인)
         const { data: existingRecord } = await supabase
           .from('mileage')
           .select('id')
           .ilike('description', `%[${transaction.bkcode}]%`)
-          .eq('source', 'bankda_auto')
+          .in('source', ['bankda_auto', 'bankda_manual'])
           .single();
         
         if (existingRecord) {
           console.log(`🚫 중복 거래 건너뛰기: [${transaction.bkcode}] ${matchedCompany}, ${parseInt(transaction.bkinput)}원`);
+          continue;
+        }
+
+        // 추가 중복 체크: 동일한 날짜, 시간, 금액, 업체명으로 이미 처리된 건이 있는지 확인
+        const { data: duplicateCheck } = await supabase
+          .from('mileage')
+          .select('id')
+          .eq('amount', parseInt(transaction.bkinput))
+          .ilike('description', `%${transaction.bkjukyo}%`)
+          .ilike('description', `%${transaction.bkdate}%`)
+          .ilike('description', `%${transaction.bktime}%`)
+          .in('source', ['bankda_auto', 'bankda_manual'])
+          .single();
+        
+        if (duplicateCheck) {
+          console.log(`🚫 중복 거래 건너뛰기 (날짜/시간/금액 일치): ${transaction.bkdate} ${transaction.bktime} - ${matchedCompany}, ${parseInt(transaction.bkinput)}원`);
           continue;
         }
         
@@ -811,18 +827,37 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
           continue;
         }
         
-        // 중복 체크
+        // 강화된 중복 체크
         const { data: existingRecord } = await supabase
           .from('mileage')
           .select('id')
           .ilike('description', `%[${transaction.bkcode}]%`)
-          .eq('source', 'bankda_manual')
+          .in('source', ['bankda_auto', 'bankda_manual'])
           .single();
         
         if (existingRecord) {
           console.log(`중복 거래 건너뛰기: [${transaction.bkcode}] ${matchedCompany}`);
           transactionDetail.status = 'duplicate';
-          transactionDetail.error = '이미 처리된 거래';
+          transactionDetail.error = '이미 처리된 거래 (거래코드 중복)';
+          details.push(transactionDetail);
+          continue;
+        }
+
+        // 추가 중복 체크: 동일한 날짜, 시간, 금액, 업체명으로 이미 처리된 건이 있는지 확인
+        const { data: duplicateCheck } = await supabase
+          .from('mileage')
+          .select('id')
+          .eq('amount', parseInt(transaction.bkinput))
+          .ilike('description', `%${transaction.bkjukyo}%`)
+          .ilike('description', `%${transaction.bkdate}%`)
+          .ilike('description', `%${transaction.bktime}%`)
+          .in('source', ['bankda_auto', 'bankda_manual'])
+          .single();
+        
+        if (duplicateCheck) {
+          console.log(`중복 거래 건너뛰기 (날짜/시간/금액 일치): ${transaction.bkdate} ${transaction.bktime} - ${matchedCompany}, ${parseInt(transaction.bkinput)}원`);
+          transactionDetail.status = 'duplicate';
+          transactionDetail.error = '이미 처리된 거래 (날짜/시간/금액 일치)';
           details.push(transactionDetail);
           continue;
         }
@@ -909,6 +944,137 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
     
   } catch (error) {
     console.error('뱅크다 동기화 오류:', error);
+    throw error;
+  }
+} 
+
+// 실제 뱅크다 API 상태 확인 (PUT 요청 추가)
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { action } = body;
+    
+    if (action === 'check_today_deposits') {
+      console.log(`[${getKoreaTime()}] 오늘 입금건 조회 시작`);
+      
+      // 오늘 날짜로 뱅크다 API 호출
+      const now = new Date();
+      const koreanTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+      const today = koreanTime.toISOString().split('T')[0].replace(/-/g, '');
+      
+      const result = await queryBankdaDeposits(today, today);
+      
+      return NextResponse.json({
+        success: true,
+        message: '오늘 입금건 조회 완료',
+        checkTime: getKoreaTime(),
+        data: result
+      });
+    }
+    
+    if (action === 'check_sync_status') {
+      console.log(`[${getKoreaTime()}] 뱅크다 동기화 상태 확인`);
+      
+      const isEnabled = await checkBankdaAutoSyncStatus();
+      
+      // 최근 동기화 로그 확인
+      const supabase = await createClient();
+      const { data: recentLogs } = await supabase
+        .from('lusso_mileage_failure_logs')
+        .select('*')
+        .gte('created_at', getKoreaDate())
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      return NextResponse.json({
+        success: true,
+        message: '뱅크다 상태 확인 완료',
+        checkTime: getKoreaTime(),
+        data: {
+          auto_sync_enabled: isEnabled,
+          recent_failure_logs: recentLogs || [],
+          failure_count_today: recentLogs?.length || 0
+        }
+      });
+    }
+    
+    return NextResponse.json({
+      success: false,
+      error: '알 수 없는 액션입니다.'
+    }, { status: 400 });
+    
+  } catch (error) {
+    console.error('뱅크다 상태 확인 중 오류:', error);
+    return NextResponse.json({
+      success: false,
+      error: '뱅크다 상태 확인 중 오류가 발생했습니다.',
+      details: error instanceof Error ? error.message : '알 수 없는 오류'
+    }, { status: 500 });
+  }
+}
+
+// 뱅크다 입금 데이터 조회 함수 (단순 조회용)
+async function queryBankdaDeposits(datefrom: string, dateto: string) {
+  const axios = require('axios');
+  const FormData = require('form-data');
+  
+  const BANKDA_API_URL = 'https://a.bankda.com/dtsvc/bank_tr.php';
+  const BANKDA_ACCESS_TOKEN = '9d92ac153d211e16fa5baf1d3711b772';
+  
+  try {
+    console.log(`뱅크다 입금건 조회: ${datefrom} ~ ${dateto}`);
+    
+    let data = new FormData();
+    data.append('datefrom', datefrom);
+    data.append('dateto', dateto);
+    data.append('accountnum', '57370104214209');
+    data.append('datatype', 'json');
+    data.append('charset', 'utf8');
+    data.append('istest', 'n');
+
+    let config = {
+      method: 'post',
+      maxBodyLength: Infinity,
+      url: BANKDA_API_URL,
+      headers: { 
+        'Authorization': `Bearer ${BANKDA_ACCESS_TOKEN}`, 
+        ...data.getHeaders()
+      },
+      data : data
+    };
+
+    const bankdaResponse = await axios.request(config);
+    
+    console.log('뱅크다 API 응답 상태:', bankdaResponse.status);
+    console.log('뱅크다 API 응답:', JSON.stringify(bankdaResponse.data, null, 2));
+    
+    if (!bankdaResponse.data || !bankdaResponse.data.response) {
+      throw new Error('뱅크다 API 응답이 올바르지 않습니다.');
+    }
+    
+    const response = bankdaResponse.data.response;
+    const bankData = response.bank || [];
+    
+    // 입금 거래만 필터링
+    const deposits = bankData.filter((transaction: any) => 
+      parseInt(transaction.bkinput) > 0 && parseInt(transaction.bkoutput) === 0
+    );
+    
+         return {
+       total_transactions: bankData.length,
+       deposits: deposits.length,
+       deposit_data: deposits.map((dep: any) => ({
+         date: dep.bkdate,
+         time: dep.bktime,
+         amount: parseInt(dep.bkinput),
+         depositor: dep.bkjukyo,
+         code: dep.bkcode
+       })),
+       raw_response: response
+     };
+    
+  } catch (error) {
+    console.error('뱅크다 입금건 조회 오류:', error);
     throw error;
   }
 } 

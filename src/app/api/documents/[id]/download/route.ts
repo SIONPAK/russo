@@ -18,17 +18,30 @@ export async function GET(
     const { id } = await params
     const supabase = await createClient()
 
-    // 사용자 인증 확인
+    // 사용자 인증 확인 (선택사항)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({
-        success: false,
-        error: '인증이 필요합니다.'
-      }, { status: 401 })
+    
+    // query parameter에서 company_name 확인 (인증이 없을 경우)
+    const { searchParams } = new URL(request.url)
+    let companyName = searchParams.get('company_name')
+    
+    // 인증된 사용자가 있으면 자동으로 회사명을 가져옴
+    if (user && !companyName) {
+      const { data: userInfo } = await supabase
+        .from('users')
+        .select('company_name')
+        .eq('id', user.id)
+        .single()
+      
+      if (userInfo) {
+        companyName = userInfo.company_name
+      }
     }
 
     // ID에서 타입과 실제 ID 분리
     const [type, actualId] = id.includes('_') ? id.split('_') : ['shipping', id]
+    
+    console.log('Auth status:', { hasUser: !!user, companyName, type, actualId })
     
     let fileName = ''
     let excelBuffer: Buffer | null = null
@@ -70,17 +83,40 @@ export async function GET(
 
       // 사용자 권한 확인
       const orderUser = Array.isArray(order.users) ? order.users[0] : order.users
-      if (!orderUser || orderUser.id !== user.id) {
+      if (!orderUser) {
         return NextResponse.json({
           success: false,
-          error: '접근 권한이 없습니다.'
-        }, { status: 403 })
+          error: '주문 사용자 정보를 찾을 수 없습니다.'
+        }, { status: 404 })
       }
 
-      // 실제 출고된 상품만 필터링
-      const shippedItems = order.order_items.filter((item: any) => 
-        item.shipped_quantity && item.shipped_quantity > 0
-      )
+      // 인증된 사용자가 있으면 user.id로 체크, 없으면 company_name으로 체크
+      if (user) {
+        if (orderUser.id !== user.id) {
+          return NextResponse.json({
+            success: false,
+            error: '접근 권한이 없습니다.'
+          }, { status: 403 })
+        }
+      } else if (companyName) {
+        if (orderUser.company_name !== companyName) {
+          return NextResponse.json({
+            success: false,
+            error: '접근 권한이 없습니다.'
+          }, { status: 403 })
+        }
+      } else {
+        return NextResponse.json({
+          success: false,
+          error: '인증 또는 회사명이 필요합니다.'
+        }, { status: 401 })
+      }
+
+      // 실제 출고된 상품만 필터링 (shipped_quantity가 없으면 전체 수량으로 간주)
+      const shippedItems = order.order_items.filter((item: any) => {
+        const shippedQty = item.shipped_quantity || item.quantity || 0
+        return shippedQty > 0
+      })
 
       if (shippedItems.length === 0) {
         return NextResponse.json({
@@ -99,17 +135,21 @@ export async function GET(
         postalCode: '',
         customerGrade: orderUser.customer_grade || 'BRONZE',
         shippedAt: order.shipped_at || order.created_at,
-        items: shippedItems.map((item: any) => ({
-          productName: item.product_name,
-          color: item.color || '-',
-          size: item.size || '-',
-          quantity: item.shipped_quantity,
-          unitPrice: item.unit_price,
-          totalPrice: item.shipped_quantity * item.unit_price
-        })),
-        totalAmount: shippedItems.reduce((sum: number, item: any) => 
-          sum + (item.shipped_quantity * item.unit_price), 0
-        )
+        items: shippedItems.map((item: any) => {
+          const actualQuantity = item.shipped_quantity || item.quantity || 0
+          return {
+            productName: item.product_name,
+            color: item.color || '-',
+            size: item.size || '-',
+            quantity: actualQuantity,
+            unitPrice: item.unit_price,
+            totalPrice: actualQuantity * item.unit_price
+          }
+        }),
+        totalAmount: shippedItems.reduce((sum: number, item: any) => {
+          const actualQuantity = item.shipped_quantity || item.quantity || 0
+          return sum + (actualQuantity * item.unit_price)
+        }, 0)
       }
 
       excelBuffer = await generateShippingStatement(statementData)
@@ -119,13 +159,7 @@ export async function GET(
       // 반품명세서 (새로운 유틸리티 사용)
       const { data: returnStatement, error: returnError } = await supabase
         .from('return_statements')
-        .select(`
-          *,
-          orders!return_statements_order_id_fkey (
-            order_number,
-            user_id
-          )
-        `)
+        .select('*')
         .eq('id', actualId)
         .single()
 
@@ -136,35 +170,112 @@ export async function GET(
         }, { status: 404 })
       }
 
-      // 사용자 권한 확인
-      const order = Array.isArray(returnStatement.orders) ? returnStatement.orders[0] : returnStatement.orders
-      if (!order || order.user_id !== user.id) {
-        return NextResponse.json({
-          success: false,
-          error: '접근 권한이 없습니다.'
-        }, { status: 403 })
-      }
+      let userData: any = null
 
-      // company_name으로 사용자 정보 조회
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select(`
-          company_name,
-          representative_name,
-          email,
-          phone,
-          address,
-          business_number,
-          customer_grade
-        `)
-        .eq('company_name', returnStatement.company_name)
-        .single()
+      // 인증된 사용자가 있으면 사용자 정보 조회
+      if (user) {
+        const { data: userInfo, error: userError } = await supabase
+          .from('users')
+          .select(`
+            company_name,
+            representative_name,
+            email,
+            phone,
+            address,
+            business_number,
+            customer_grade
+          `)
+          .eq('id', user.id)
+          .single()
 
-      if (userError || !userData) {
-        return NextResponse.json({
-          success: false,
-          error: '회사 정보를 찾을 수 없습니다.'
-        }, { status: 404 })
+        if (userError || !userInfo) {
+          return NextResponse.json({
+            success: false,
+            error: '사용자 정보를 찾을 수 없습니다.'
+          }, { status: 404 })
+        }
+
+        userData = userInfo
+
+        // 사용자 권한 확인 (company_name으로 확인)
+        if (returnStatement.company_name !== userData.company_name) {
+          return NextResponse.json({
+            success: false,
+            error: '접근 권한이 없습니다.'
+          }, { status: 403 })
+        }
+      } else if (companyName) {
+        // 인증이 없는 경우 company_name으로 권한 확인
+        if (returnStatement.company_name !== companyName) {
+          return NextResponse.json({
+            success: false,
+            error: '접근 권한이 없습니다.'
+          }, { status: 403 })
+        }
+
+        // company_name으로 사용자 정보 조회
+        const { data: userInfo, error: userError } = await supabase
+          .from('users')
+          .select(`
+            company_name,
+            representative_name,
+            email,
+            phone,
+            address,
+            business_number,
+            customer_grade
+          `)
+          .eq('company_name', companyName)
+          .single()
+
+        if (userError || !userInfo) {
+          return NextResponse.json({
+            success: false,
+            error: '회사 정보를 찾을 수 없습니다.'
+          }, { status: 404 })
+        }
+
+        userData = userInfo
+      } else {
+        // companyName이 있는지 최종 확인
+        if (!companyName) {
+          return NextResponse.json({
+            success: false,
+            error: '회사 정보를 찾을 수 없습니다.'
+          }, { status: 404 })
+        }
+
+        // companyName으로 권한 확인
+        if (returnStatement.company_name !== companyName) {
+          return NextResponse.json({
+            success: false,
+            error: '접근 권한이 없습니다.'
+          }, { status: 403 })
+        }
+
+        // companyName으로 사용자 정보 조회
+        const { data: userInfo, error: userError } = await supabase
+          .from('users')
+          .select(`
+            company_name,
+            representative_name,
+            email,
+            phone,
+            address,
+            business_number,
+            customer_grade
+          `)
+          .eq('company_name', companyName)
+          .single()
+
+        if (userError || !userInfo) {
+          return NextResponse.json({
+            success: false,
+            error: '회사 정보를 찾을 수 없습니다.'
+          }, { status: 404 })
+        }
+
+        userData = userInfo
       }
 
       const statementData: ReturnStatementData = {
@@ -196,13 +307,7 @@ export async function GET(
       // 차감명세서 (새로운 유틸리티 사용)
       const { data: deductionStatement, error: deductionError } = await supabase
         .from('deduction_statements')
-        .select(`
-          *,
-          orders!deduction_statements_order_id_fkey (
-            order_number,
-            user_id
-          )
-        `)
+        .select('*')
         .eq('id', actualId)
         .single()
 
@@ -213,35 +318,112 @@ export async function GET(
         }, { status: 404 })
       }
 
-      // 사용자 권한 확인
-      const order = Array.isArray(deductionStatement.orders) ? deductionStatement.orders[0] : deductionStatement.orders
-      if (!order || order.user_id !== user.id) {
-        return NextResponse.json({
-          success: false,
-          error: '접근 권한이 없습니다.'
-        }, { status: 403 })
-      }
+      let userData: any = null
 
-      // company_name으로 사용자 정보 조회
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select(`
-          company_name,
-          representative_name,
-          email,
-          phone,
-          address,
-          business_number,
-          customer_grade
-        `)
-        .eq('company_name', deductionStatement.company_name)
-        .single()
+      // 인증된 사용자가 있으면 사용자 정보 조회
+      if (user) {
+        const { data: userInfo, error: userError } = await supabase
+          .from('users')
+          .select(`
+            company_name,
+            representative_name,
+            email,
+            phone,
+            address,
+            business_number,
+            customer_grade
+          `)
+          .eq('id', user.id)
+          .single()
 
-      if (userError || !userData) {
-        return NextResponse.json({
-          success: false,
-          error: '회사 정보를 찾을 수 없습니다.'
-        }, { status: 404 })
+        if (userError || !userInfo) {
+          return NextResponse.json({
+            success: false,
+            error: '사용자 정보를 찾을 수 없습니다.'
+          }, { status: 404 })
+        }
+
+        userData = userInfo
+
+        // 사용자 권한 확인 (company_name으로 확인)
+        if (deductionStatement.company_name !== userData.company_name) {
+          return NextResponse.json({
+            success: false,
+            error: '접근 권한이 없습니다.'
+          }, { status: 403 })
+        }
+      } else if (companyName) {
+        // 인증이 없는 경우 company_name으로 권한 확인
+        if (deductionStatement.company_name !== companyName) {
+          return NextResponse.json({
+            success: false,
+            error: '접근 권한이 없습니다.'
+          }, { status: 403 })
+        }
+
+        // company_name으로 사용자 정보 조회
+        const { data: userInfo, error: userError } = await supabase
+          .from('users')
+          .select(`
+            company_name,
+            representative_name,
+            email,
+            phone,
+            address,
+            business_number,
+            customer_grade
+          `)
+          .eq('company_name', companyName)
+          .single()
+
+        if (userError || !userInfo) {
+          return NextResponse.json({
+            success: false,
+            error: '회사 정보를 찾을 수 없습니다.'
+          }, { status: 404 })
+        }
+
+        userData = userInfo
+      } else {
+        // companyName이 있는지 최종 확인
+        if (!companyName) {
+          return NextResponse.json({
+            success: false,
+            error: '회사 정보를 찾을 수 없습니다.'
+          }, { status: 404 })
+        }
+
+        // companyName으로 권한 확인
+        if (deductionStatement.company_name !== companyName) {
+          return NextResponse.json({
+            success: false,
+            error: '접근 권한이 없습니다.'
+          }, { status: 403 })
+        }
+
+        // companyName으로 사용자 정보 조회
+        const { data: userInfo, error: userError } = await supabase
+          .from('users')
+          .select(`
+            company_name,
+            representative_name,
+            email,
+            phone,
+            address,
+            business_number,
+            customer_grade
+          `)
+          .eq('company_name', companyName)
+          .single()
+
+        if (userError || !userInfo) {
+          return NextResponse.json({
+            success: false,
+            error: '회사 정보를 찾을 수 없습니다.'
+          }, { status: 404 })
+        }
+
+        userData = userInfo
       }
 
       const statementData: DeductionStatementData = {

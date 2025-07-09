@@ -127,20 +127,23 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 아이템 검증 및 total_price 계산
+    // 아이템 검증 및 total_price 계산 (부가세 포함)
     const validItems = items.map((item: any) => {
       if (!item.product_name || !item.return_quantity || !item.unit_price) {
         throw new Error('상품 정보가 올바르지 않습니다.')
       }
       
-      const total_price = item.return_quantity * item.unit_price
+      const supplyAmount = item.return_quantity * item.unit_price
+      const vat = Math.floor(supplyAmount * 0.1)
+      const total_price = supplyAmount + vat
+      
       return {
         ...item,
         total_price
       }
     })
 
-    // 총 금액 계산
+    // 총 금액 계산 (부가세 포함)
     const total_amount = validItems.reduce((sum: number, item: any) => sum + item.total_price, 0)
     const refund_amount = total_amount
 
@@ -243,7 +246,7 @@ export async function PATCH(request: NextRequest) {
         processed_at: getKoreaTime()
       })
       .in('id', statementIds)
-      .select()
+      .select('id, order_id')
 
     if (error) {
       console.error('Return statement processing error:', error)
@@ -251,6 +254,19 @@ export async function PATCH(request: NextRequest) {
         success: false,
         error: '반품명세서 처리 중 오류가 발생했습니다.'
       }, { status: 500 })
+    }
+
+    // 관련 주문들 상태 업데이트 (선택사항)
+    if (data && data.length > 0) {
+      const orderIds = data.map(stmt => stmt.order_id).filter(Boolean)
+      if (orderIds.length > 0) {
+        await supabase
+          .from('orders')
+          .update({
+            updated_at: getKoreaTime()
+          })
+          .in('id', orderIds)
+      }
     }
 
     return NextResponse.json({

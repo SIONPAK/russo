@@ -14,27 +14,51 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate') || ''
     const endDate = searchParams.get('endDate') || ''
 
-    // 회사명 파라미터 확인
+    // 인증 확인 (마이페이지용)
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    // 회사명 파라미터 확인 (인증이 없을 경우)
     const companyName = searchParams.get('companyName')
-    if (!companyName) {
+    
+    let userData: any = null
+
+    if (user) {
+      // 인증된 사용자의 정보 조회
+      const { data: userInfo, error: userDataError } = await supabase
+        .from('users')
+        .select('id, company_name')
+        .eq('id', user.id)
+        .single()
+
+      if (userDataError || !userInfo) {
+        return NextResponse.json({
+          success: false,
+          error: '사용자 정보를 찾을 수 없습니다.'
+        }, { status: 404 })
+      }
+
+      userData = userInfo
+    } else if (companyName) {
+      // 인증이 없는 경우 회사명으로 조회
+      const { data: userInfo, error: userDataError } = await supabase
+        .from('users')
+        .select('id, company_name')
+        .eq('company_name', companyName)
+        .single()
+
+      if (userDataError || !userInfo) {
+        return NextResponse.json({
+          success: false,
+          error: '회사 정보를 찾을 수 없습니다.'
+        }, { status: 404 })
+      }
+
+      userData = userInfo
+    } else {
       return NextResponse.json({
         success: false,
-        error: '회사명이 필요합니다.'
-      }, { status: 400 })
-    }
-
-    // 회사 정보 조회
-    const { data: userData, error: userDataError } = await supabase
-      .from('users')
-      .select('id, company_name')
-      .eq('company_name', companyName)
-      .single()
-
-    if (userDataError || !userData) {
-      return NextResponse.json({
-        success: false,
-        error: '회사 정보를 찾을 수 없습니다.'
-      }, { status: 404 })
+        error: '인증 또는 회사명이 필요합니다.'
+      }, { status: 401 })
     }
 
     const offset = (page - 1) * limit
@@ -68,7 +92,7 @@ export async function GET(request: NextRequest) {
       if (orders) {
         orders.forEach(order => {
           allStatements.push({
-            id: `order_${order.id}`,
+            id: `shipping_${order.id}`,
             statement_number: order.order_number,
             statement_type: 'transaction',
             total_amount: order.total_amount + (order.shipping_fee || 0),
@@ -81,100 +105,88 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 2. 반품명세서
+    // 2. 반품명세서 (처리 완료된 것만)
     if (type === 'all' || type === 'return') {
-      // 먼저 사용자의 주문 ID들을 가져온 후 반품명세서 조회
-      const { data: userOrders } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('user_id', userData.id)
+      // company_name을 통해 직접 반품명세서 조회 (refunded 상태만)
+      const { data: returnStatements } = await supabase
+        .from('return_statements')
+        .select(`
+          id,
+          statement_number,
+          total_amount,
+          refund_amount,
+          status,
+          return_reason,
+          created_at,
+          items,
+          company_name,
+          order_id,
+          orders!return_statements_order_id_fkey (
+            order_number
+          )
+        `)
+        .eq('company_name', userData.company_name)
+        .eq('status', 'refunded') // 환불 완료된 반품명세서만
+        .order('created_at', { ascending: false })
 
-      if (userOrders && userOrders.length > 0) {
-        const orderIds = userOrders.map(order => order.id)
-        
-        const { data: returnStatements } = await supabase
-          .from('return_statements')
-          .select(`
-            id,
-            statement_number,
-            total_amount,
-            refund_amount,
-            status,
-            return_reason,
-            created_at,
-            items,
-            order_id,
-            orders!return_statements_order_id_fkey (
-              order_number
-            )
-          `)
-          .in('order_id', orderIds)
-          .order('created_at', { ascending: false })
-
-        if (returnStatements) {
-          returnStatements.forEach(statement => {
-            const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
-            allStatements.push({
-              id: `return_${statement.id}`,
-              statement_number: statement.statement_number,
-              statement_type: 'return',
-              total_amount: statement.refund_amount || statement.total_amount,
-              status: statement.status === 'pending' ? 'issued' : 'sent',
-              created_at: statement.created_at,
-              order_number: order?.order_number || '',
-              reason: statement.return_reason,
-              items: statement.items || []
-            })
+      if (returnStatements) {
+        returnStatements.forEach(statement => {
+          const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
+          
+          allStatements.push({
+            id: `return_${statement.id}`,
+            statement_number: statement.statement_number,
+            statement_type: 'return',
+            total_amount: statement.refund_amount || statement.total_amount,
+            status: 'sent', // 환불 완료된 것은 발송완료로 표시
+            created_at: statement.created_at,
+            order_number: order?.order_number || '',
+            reason: statement.return_reason,
+            items: statement.items || []
           })
-        }
+        })
       }
     }
 
-    // 3. 차감명세서
+    // 3. 차감명세서 (처리 완료된 것만)
     if (type === 'all' || type === 'deduction') {
-      // 먼저 사용자의 주문 ID들을 가져온 후 차감명세서 조회
-      const { data: userOrders } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('user_id', userData.id)
+      // company_name을 통해 직접 차감명세서 조회 (processed 상태만)
+      const { data: deductionStatements } = await supabase
+        .from('deduction_statements')
+        .select(`
+          id,
+          statement_number,
+          total_amount,
+          deduction_reason,
+          status,
+          created_at,
+          items,
+          company_name,
+          order_id,
+          orders!left (
+            order_number
+          )
+        `)
+        .eq('company_name', userData.company_name)
+        .eq('status', 'completed') // 처리 완료된 차감명세서만
+        .order('created_at', { ascending: false })
 
-      if (userOrders && userOrders.length > 0) {
-        const orderIds = userOrders.map(order => order.id)
-        
-        const { data: deductionStatements } = await supabase
-          .from('deduction_statements')
-          .select(`
-            id,
-            statement_number,
-            total_amount,
-            deduction_reason,
-            status,
-            created_at,
-            items,
-            order_id,
-            orders!deduction_statements_order_id_fkey (
-              order_number
-            )
-          `)
-          .in('order_id', orderIds)
-          .order('created_at', { ascending: false })
-
-        if (deductionStatements) {
-          deductionStatements.forEach(statement => {
-            const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
-            allStatements.push({
-              id: `deduction_${statement.id}`,
-              statement_number: statement.statement_number,
-              statement_type: 'deduction',
-              total_amount: statement.total_amount,
-              status: statement.status === 'pending' ? 'issued' : 'sent',
-              created_at: statement.created_at,
-              order_number: order?.order_number || '',
-              reason: statement.deduction_reason,
-              items: statement.items || []
-            })
+      if (deductionStatements) {
+        deductionStatements.forEach(statement => {
+          const order = Array.isArray(statement.orders) ? statement.orders[0] : statement.orders
+          
+          allStatements.push({
+            id: `deduction_${statement.id}`,
+            statement_number: statement.statement_number,
+            statement_type: 'deduction',
+            total_amount: statement.total_amount,
+            status: 'sent', // 처리 완료된 것은 발송완료로 표시
+            created_at: statement.created_at,
+            order_number: order?.order_number || '',
+            reason: statement.deduction_reason,
+            items: statement.items || []
           })
-        }
+        })
       }
     }
 
