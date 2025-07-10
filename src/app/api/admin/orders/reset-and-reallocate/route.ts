@@ -12,21 +12,41 @@ export async function POST(request: NextRequest) {
     // 1단계: 모든 발주 주문 아이템의 할당 상태 초기화
     console.log('📝 [1단계] 주문 아이템 할당 상태 초기화')
     
-    const { data: orderItems, error: resetItemsError } = await supabase
-      .from('order_items')
-      .update({
-        shipped_quantity: 0,
-        allocated_quantity: 0,
-        updated_at: getKoreaTime()
-      })
-      .in('order_id', 
-        supabase
-          .from('orders')
-          .select('id')
-          .like('order_number', 'PO%')
-          .in('status', ['pending', 'processing', 'confirmed', 'partial'])
-      )
+    // 먼저 발주 주문 ID들을 조회
+    const { data: targetOrders, error: targetOrdersError } = await supabase
+      .from('orders')
       .select('id')
+      .like('order_number', 'PO%')
+      .in('status', ['pending', 'processing', 'confirmed', 'partial'])
+
+    if (targetOrdersError) {
+      console.error('❌ [1단계] 대상 주문 조회 실패:', targetOrdersError)
+      return NextResponse.json({
+        success: false,
+        error: '대상 주문 조회에 실패했습니다.'
+      }, { status: 500 })
+    }
+
+    const orderIds = targetOrders?.map(order => order.id) || []
+    console.log(`🔍 [1단계] 대상 주문 ${orderIds.length}개 발견`)
+
+    let orderItems = null
+    let resetItemsError = null
+
+    if (orderIds.length > 0) {
+      const result = await supabase
+        .from('order_items')
+        .update({
+          shipped_quantity: 0,
+          allocated_quantity: 0,
+          updated_at: getKoreaTime()
+        })
+        .in('order_id', orderIds)
+        .select('id')
+
+      orderItems = result.data
+      resetItemsError = result.error
+    }
 
     if (resetItemsError) {
       console.error('❌ [1단계] 주문 아이템 초기화 실패:', resetItemsError)
@@ -147,7 +167,8 @@ export async function POST(request: NextRequest) {
     // 각 주문을 시간순으로 처리
     for (const order of allOrders || []) {
       try {
-        console.log(`🔄 [재할당] 처리 중: ${order.order_number} (${order.users?.company_name})`)
+        const companyName = (order.users as any)?.company_name || '알 수 없음'
+        console.log(`🔄 [재할당] 처리 중: ${order.order_number} (${companyName})`)
         
         let orderFullyAllocated = true
         let orderHasPartialAllocation = false
