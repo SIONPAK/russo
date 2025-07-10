@@ -1254,9 +1254,13 @@ export function OrdersPage() {
                                             className="w-16 px-1 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                             autoFocus
                                             onBlur={(e) => {
-                                              const value = parseInt(e.target.value) || 0
+                                              const value = Math.max(0, parseInt(e.target.value) || 0) // 0 이상의 값만 허용
                                               if (value !== item.quantity) {
-                                                if (confirm(`수량을 ${item.quantity}개에서 ${value}개로 변경하시겠습니까?`)) {
+                                                const confirmMessage = value === 0 
+                                                  ? `수량을 ${item.quantity}개에서 0개로 변경하시겠습니까?\n(0개로 변경하면 해당 상품이 주문에서 제거됩니다)`
+                                                  : `수량을 ${item.quantity}개에서 ${value}개로 변경하시겠습니까?`
+                                                
+                                                if (confirm(confirmMessage)) {
                                                   handleUpdateOrderItem(order.id, item.id, value)
                                                 } else {
                                                   setEditingItem(null)
@@ -1267,9 +1271,13 @@ export function OrdersPage() {
                                             }}
                                             onKeyDown={(e) => {
                                               if (e.key === 'Enter') {
-                                                const value = parseInt(e.currentTarget.value) || 0
+                                                const value = Math.max(0, parseInt(e.currentTarget.value) || 0) // 0 이상의 값만 허용
                                                 if (value !== item.quantity) {
-                                                  if (confirm(`수량을 ${item.quantity}개에서 ${value}개로 변경하시겠습니까?`)) {
+                                                  const confirmMessage = value === 0 
+                                                    ? `수량을 ${item.quantity}개에서 0개로 변경하시겠습니까?\n(0개로 변경하면 해당 상품이 주문에서 제거됩니다)`
+                                                    : `수량을 ${item.quantity}개에서 ${value}개로 변경하시겠습니까?`
+                                                  
+                                                  if (confirm(confirmMessage)) {
                                                     handleUpdateOrderItem(order.id, item.id, value)
                                                   } else {
                                                     setEditingItem(null)
@@ -1286,9 +1294,17 @@ export function OrdersPage() {
                                             onClick={() => {
                                               const input = document.querySelector('input[type="number"]:focus') as HTMLInputElement
                                               if (input) {
-                                                const value = parseInt(input.value) || 0
+                                                const value = Math.max(0, parseInt(input.value) || 0) // 0 이상의 값만 허용
                                                 if (value !== item.quantity) {
-                                                  handleUpdateOrderItem(order.id, item.id, value)
+                                                  const confirmMessage = value === 0 
+                                                    ? `수량을 ${item.quantity}개에서 0개로 변경하시겠습니까?\n(0개로 변경하면 해당 상품이 주문에서 제거됩니다)`
+                                                    : `수량을 ${item.quantity}개에서 ${value}개로 변경하시겠습니까?`
+                                                  
+                                                  if (confirm(confirmMessage)) {
+                                                    handleUpdateOrderItem(order.id, item.id, value)
+                                                  } else {
+                                                    setEditingItem(null)
+                                                  }
                                                 } else {
                                                   setEditingItem(null)
                                                 }
