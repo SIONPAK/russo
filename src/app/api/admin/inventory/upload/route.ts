@@ -119,6 +119,25 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ [엑셀 업로드] 물리적 재고 조정 완료')
 
+        // 📝 재고 변동 이력 기록
+        const { error: movementError } = await supabase
+          .from('stock_movements')
+          .insert({
+            product_id: product.id,
+            movement_type: 'adjustment',
+            quantity: stockQuantity,
+            color: (color && color !== '-') ? color : null,
+            size: (size && size !== '-') ? size : null,
+            notes: `엑셀 일괄 업로드 - ${stockQuantity > 0 ? '입고' : '출고'} (${productCode})`,
+            created_at: getKoreaTime()
+          })
+
+        if (movementError) {
+          console.error('❌ 재고 변동 이력 기록 실패:', movementError)
+        } else {
+          console.log('✅ 재고 변동 이력 기록 완료')
+        }
+
         // 🎯 입고 처리 이후 자동 할당 (양수인 경우만)
         if (stockQuantity > 0) {
           console.log(`🔄 자동 할당 시작: ${product.id}, ${color}, ${size}`)
@@ -515,13 +534,24 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       return { success: true, message: '미출고 주문이 없습니다.', allocations: [] }
     }
 
-    // 실제 미출고 수량이 있는 아이템만 필터링
-    const itemsWithUnshipped = unshippedItems.filter((item: any) => {
-      const unshippedQuantity = item.quantity - (item.shipped_quantity || 0)
-      return unshippedQuantity > 0
-    })
+    // 실제 미출고 수량이 있는 아이템만 필터링 후 시간순 재정렬
+    const itemsWithUnshipped = unshippedItems
+      .filter((item: any) => {
+        const unshippedQuantity = item.quantity - (item.shipped_quantity || 0)
+        return unshippedQuantity > 0
+      })
+      .sort((a: any, b: any) => {
+        // 🔧 수정: 필터링 후 시간순으로 재정렬
+        return new Date(a.orders.created_at).getTime() - new Date(b.orders.created_at).getTime()
+      })
 
     console.log(`📋 미출고 아이템 ${itemsWithUnshipped.length}개 발견`)
+    
+    // 시간순 정렬 디버깅 로그
+    console.log(`📅 [엑셀 업로드] 시간순 정렬 확인:`)
+    itemsWithUnshipped.forEach((item: any, index: number) => {
+      console.log(`  ${index + 1}. ${item.orders.order_number} (${item.orders.users?.company_name}): ${item.orders.created_at}`)
+    })
 
     if (itemsWithUnshipped.length === 0) {
       return { success: true, message: '할당할 미출고 주문이 없습니다.', allocations: [] }

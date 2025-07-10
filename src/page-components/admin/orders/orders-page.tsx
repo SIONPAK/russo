@@ -825,21 +825,32 @@ export function OrdersPage() {
     }
   }
 
-  // 할당재고 기준 공급가액 계산 함수
+  // 할당재고 기준 총 금액 계산 함수 (공급가액 + 부가세액 + 배송비)
   const calculateAllocatedAmount = (order: any) => {
     if (!order.order_items || order.order_items.length === 0) {
       return 0
     }
     
-    return order.order_items.reduce((sum: number, item: any) => {
+    // 1. 공급가액 계산 (할당된 수량 × 단가)
+    const supplyAmount = order.order_items.reduce((sum: number, item: any) => {
       const allocatedQuantity = item.shipped_quantity || 0
       const unitPrice = item.unit_price || 0
-      
-      // 할당된 수량에 대한 실제 제품가격 계산
       const allocatedAmount = allocatedQuantity * unitPrice
-      
       return sum + allocatedAmount
     }, 0)
+    
+    // 2. 부가세액 계산 (공급가액 × 10%)
+    const vatAmount = Math.floor(supplyAmount * 0.1)
+    
+    // 3. 배송비 계산 (20장 미만 시 3000원)
+    const totalAllocatedQuantity = order.order_items.reduce((sum: number, item: any) => {
+      return sum + (item.shipped_quantity || 0)
+    }, 0)
+    
+    const shippingFee = totalAllocatedQuantity < 20 ? 3000 : 0
+    
+    // 4. 총 금액 = 공급가액 + 부가세액 + 배송비
+    return supplyAmount + vatAmount + shippingFee
   }
 
   // 미출고 여부 확인 함수
@@ -904,7 +915,10 @@ export function OrdersPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">작업중</p>
-              <p className="text-2xl font-bold text-blue-600">{stats.processing || 0}</p>
+              <p className="text-2xl font-bold text-blue-600">{
+                // confirmed 상태 주문의 개수를 계산 (shipped는 제외)
+                orders.filter(order => order.status === 'confirmed').length
+              }</p>
             </div>
             <FileText className="w-8 h-8 text-blue-500" />
           </div>
@@ -913,7 +927,10 @@ export function OrdersPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">출고완료</p>
-              <p className="text-2xl font-bold text-green-600">{stats.confirmed || 0}</p>
+              <p className="text-2xl font-bold text-green-600">{
+                // shipped 상태 주문의 개수를 계산
+                orders.filter(order => order.status === 'shipped').length
+              }</p>
             </div>
             <TrendingUp className="w-8 h-8 text-green-500" />
           </div>
@@ -1408,7 +1425,7 @@ export function OrdersPage() {
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <span className="text-blue-700">총 할당 공급가액:</span>
+              <span className="text-blue-700">총 금액 (공급가액+부가세+배송비):</span>
               <span className="font-medium text-blue-900 ml-2">
                 {formatCurrency(
                   selectedOrdersData.reduce((sum, order) => sum + calculateAllocatedAmount(order), 0)
@@ -1460,4 +1477,4 @@ export function OrdersPage() {
       )}
     </div>
   )
-} 
+}

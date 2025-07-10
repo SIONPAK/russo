@@ -21,8 +21,13 @@ export interface ShippingStatementData {
     quantity: number
     unitPrice: number
     totalPrice: number
+    supplyAmount: number
+    taxAmount: number
   }>
   totalAmount: number
+  supplyAmount: number
+  taxAmount: number
+  shippingFee: number
 }
 
 // 반품 명세서 데이터 인터페이스
@@ -477,104 +482,36 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
 // 출고 명세서 생성 함수
 export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
   try {
-    const groupItemsByColorAndProduct = (items: any[]) => {
-      const grouped: { [key: string]: { 
-        productName: string
-        color: string
-        totalQuantity: number
-        unitPrice: number
-        totalPrice: number
-        supplyAmount: number
-        taxAmount: number
-      }} = {}
-      
-      items.forEach(item => {
-        const color = item.color || '기본'
-        const key = `${item.productName}_${color}`
-        
-        console.log('🔍 아이템 그룹화 처리:', {
-          productName: item.productName,
-          color: item.color,
-          quantity: item.quantity,
-          quantityType: typeof item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: item.totalPrice
-        })
-        
-        if (grouped[key]) {
-          const additionalPrice = item.totalPrice || (item.unitPrice * (item.quantity || 0))
-          // 수량 = 공급가액 / 단가
-          const additionalQuantity = additionalPrice / item.unitPrice
-          grouped[key].totalQuantity += additionalQuantity
-          grouped[key].totalPrice += additionalPrice
-        } else {
-          const quantity = item.quantity || 0
-          const totalPrice = item.totalPrice || (item.unitPrice * quantity)
-          const supplyAmount = totalPrice
-          // 배송비는 부가세 없음
-          const taxAmount = item.productName === '배송비' ? 0 : Math.floor(supplyAmount * 0.1)
-          // 수량 = 공급가액 / 단가
-          const calculatedQuantity = totalPrice / item.unitPrice
-          
-          console.log('🔍 새 그룹 생성:', {
-            key,
-            originalQuantity: quantity,
-            calculatedQuantity,
-            totalPrice,
-            supplyAmount,
-            taxAmount
-          })
-          
-          grouped[key] = {
-            productName: item.productName,
-            color,
-            totalQuantity: calculatedQuantity,
-            unitPrice: item.unitPrice,
-            totalPrice,
-            supplyAmount,
-            taxAmount
-          }
-        }
-      })
-      
-      // 합계 재계산
-      Object.keys(grouped).forEach(key => {
-        const item = grouped[key]
-        item.supplyAmount = item.totalPrice
-        // 배송비는 부가세 없음
-        if (item.productName === '배송비') {
-          item.taxAmount = 0
-        } else {
-          item.taxAmount = Math.floor(item.supplyAmount * 0.1)
-        }
-        // 수량 재계산 (공급가액 / 단가)
-        item.totalQuantity = item.supplyAmount / item.unitPrice
-      })
-      
-      return Object.values(grouped)
-    }
+    console.log('🔍 출고 명세서 생성 시작:', {
+      companyName: data.companyName,
+      itemsCount: data.items.length,
+      supplyAmount: data.supplyAmount,
+      taxAmount: data.taxAmount,
+      shippingFee: data.shippingFee,
+      totalAmount: data.totalAmount
+    })
 
-    const groupedItems = groupItemsByColorAndProduct(data.items)
-    console.log('🔍 그룹화된 아이템:', groupedItems)
+    // 🔧 API에서 전달받은 데이터를 그대로 활용
+    const processedItems = data.items.map(item => ({
+      productName: item.productName,
+      color: item.color || '기본',
+      totalQuantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+      supplyAmount: item.supplyAmount, // API에서 계산된 값 사용
+      taxAmount: item.taxAmount       // API에서 계산된 값 사용
+    }))
 
-    // 총 출고 수량 계산 (배송비 제외)
-    const totalShippedQuantity = groupedItems
-      .filter(item => item.productName !== '배송비')
-      .reduce((sum, item) => sum + item.totalQuantity, 0)
-    
-    // 20장 미만일 때 배송비 3000원 추가
-    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
-    
-    // 배송비 아이템 추가
-    const itemsWithShipping = [...groupedItems]
-    if (shippingFee > 0) {
+    // 배송비 추가 (API에서 계산된 값 사용)
+    const itemsWithShipping = [...processedItems]
+    if (data.shippingFee > 0) {
       itemsWithShipping.push({
         productName: '배송비',
         color: '-',
         totalQuantity: 1,
-        unitPrice: shippingFee,
-        totalPrice: shippingFee,
-        supplyAmount: shippingFee,
+        unitPrice: data.shippingFee,
+        totalPrice: data.shippingFee,
+        supplyAmount: data.shippingFee,
         taxAmount: 0 // 배송비는 부가세 없음
       })
     }
@@ -584,8 +521,8 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
       customerGrade: data.customerGrade,
       date: data.shippedAt,
       itemsCount: itemsWithShipping.length,
-      totalShippedQuantity,
-      shippingFee
+      totalSupplyAmount: itemsWithShipping.reduce((sum, item) => sum + item.supplyAmount, 0),
+      totalTaxAmount: itemsWithShipping.reduce((sum, item) => sum + item.taxAmount, 0)
     })
 
     return processTemplate(

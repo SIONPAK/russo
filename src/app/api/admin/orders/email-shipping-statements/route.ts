@@ -91,6 +91,36 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // 🔧 총 출고 수량 계산 (배송비 계산용)
+        const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => {
+          const actualQuantity = item.shipped_quantity || 0
+          return sum + actualQuantity
+        }, 0)
+
+        // 🔧 공급가액 계산 (출고된 상품 기준)
+        const supplyAmount = shippedItems.reduce((sum: number, item: any) => {
+          const actualQuantity = item.shipped_quantity || 0
+          return sum + (actualQuantity * item.unit_price)
+        }, 0)
+
+        // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
+        const taxAmount = Math.floor(supplyAmount * 0.1)
+
+        // 🔧 배송비 계산 (20장 미만일 때 3,000원)
+        const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+
+        // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
+        const totalAmount = supplyAmount + taxAmount + shippingFee
+
+        console.log('🔍 이메일 발송 - 금액 계산:', {
+          orderNumber: order.order_number,
+          totalShippedQuantity,
+          supplyAmount,
+          taxAmount,
+          shippingFee,
+          totalAmount
+        })
+
         // 출고 명세서 데이터 구성
         const statementData = {
           orderNumber: order.order_number,
@@ -104,11 +134,17 @@ export async function POST(request: NextRequest) {
           shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
           items: shippedItems.map((item: any) => {
             const actualQuantity = item.shipped_quantity || 0
+            const itemTotalPrice = actualQuantity * item.unit_price
+            const itemSupplyAmount = itemTotalPrice
+            const itemTaxAmount = Math.floor(itemSupplyAmount * 0.1)
+            
             console.log('🔍 출고 명세서 이메일 발송 - 아이템 수량 확인:', {
               productName: item.product_name,
               shipped_quantity: item.shipped_quantity,
               quantity: item.quantity,
-              actualQuantity
+              actualQuantity,
+              itemSupplyAmount,
+              itemTaxAmount
             })
             return {
               productName: item.product_name,
@@ -116,13 +152,16 @@ export async function POST(request: NextRequest) {
               size: item.size || '',
               quantity: actualQuantity,
               unitPrice: item.unit_price,
-              totalPrice: actualQuantity * item.unit_price
+              totalPrice: itemTotalPrice,
+              supplyAmount: itemSupplyAmount,
+              taxAmount: itemTaxAmount
             }
           }),
-          totalAmount: shippedItems.reduce((sum: number, item: any) => {
-            const actualQuantity = item.shipped_quantity || 0
-            return sum + (actualQuantity * item.unit_price)
-          }, 0)
+          // 🔧 수정: 배송비 포함된 총 금액 전달
+          totalAmount: totalAmount,
+          supplyAmount: supplyAmount,
+          taxAmount: taxAmount,
+          shippingFee: shippingFee
         }
 
         // 거래명세서 엑셀 생성 (템플릿 사용)

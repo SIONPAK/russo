@@ -330,6 +330,25 @@ export async function PATCH(
 
       console.log(`✅ 물리적 재고 조정 완료: ${productId} (${color}/${size}) ${adjustment > 0 ? '+' : ''}${adjustment}`)
 
+      // 📝 재고 변동 이력 기록
+      const { error: movementError } = await supabase
+        .from('stock_movements')
+        .insert({
+          product_id: productId,
+          movement_type: 'adjustment',
+          quantity: adjustment,
+          color: color,
+          size: size,
+          notes: `관리자 재고 조정 (${color}/${size}) - ${reason || '수동 재고 조정'}`,
+          created_at: getKoreaTime()
+        })
+
+      if (movementError) {
+        console.error('❌ 재고 변동 이력 기록 실패:', movementError)
+      } else {
+        console.log('✅ 재고 변동 이력 기록 완료')
+      }
+
       // 🎯 재고 증가 시 자동 할당 처리
       if (adjustment > 0) {
         console.log(`🔄 재고 증가로 자동 할당 시작 - 상품: ${productId}, 색상: ${color}, 사이즈: ${size}, 증가량: ${adjustment}`)
@@ -366,6 +385,25 @@ export async function PATCH(
       }
 
       console.log(`✅ 물리적 재고 조정 완료: ${productId} ${adjustment > 0 ? '+' : ''}${adjustment}`)
+
+      // 📝 재고 변동 이력 기록
+      const { error: movementError } = await supabase
+        .from('stock_movements')
+        .insert({
+          product_id: productId,
+          movement_type: 'adjustment',
+          quantity: adjustment,
+          color: null,
+          size: null,
+          notes: `관리자 재고 조정 - ${reason || '수동 재고 조정'}`,
+          created_at: getKoreaTime()
+        })
+
+      if (movementError) {
+        console.error('❌ 재고 변동 이력 기록 실패:', movementError)
+      } else {
+        console.log('✅ 재고 변동 이력 기록 완료')
+      }
 
       // 🎯 재고 증가 시 자동 할당 처리
       if (adjustment > 0) {
@@ -708,7 +746,7 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       `)
       .eq('product_id', productId)
       .not('orders.status', 'in', '(shipped,delivered,cancelled,returned,refunded)')
-      .order('id', { ascending: true }) // order_items ID로 정렬 (시간순과 유사)
+      .order('created_at', { ascending: true, foreignTable: 'orders' }) // 🔧 수정: 주문 시간순 정렬
 
     // 색상/사이즈 옵션이 있는 경우 필터링
     if (color && size) {
@@ -716,9 +754,6 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
         .eq('color', color)
         .eq('size', size)
     }
-
-    // 실제 미출고 수량이 있는 아이템만 조회 (JavaScript에서 필터링)
-    // orderItemsQuery = orderItemsQuery.lt('shipped_quantity', 'quantity')
 
     console.log(`🔍 미출고 주문 조회 시작`)
     const { data: orderItems, error: itemsError } = await orderItemsQuery
@@ -735,13 +770,24 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       return { success: true, message: '해당 상품의 주문이 없습니다.', allocations: [] }
     }
 
-    // JavaScript에서 실제 미출고 수량이 있는 아이템만 필터링
-    const unshippedItems = orderItems.filter((item: any) => {
-      const shippedQuantity = item.shipped_quantity || 0
-      return shippedQuantity < item.quantity
-    })
+    // JavaScript에서 실제 미출고 수량이 있는 아이템만 필터링 후 시간순 재정렬
+    const unshippedItems = orderItems
+      .filter((item: any) => {
+        const shippedQuantity = item.shipped_quantity || 0
+        return shippedQuantity < item.quantity
+      })
+      .sort((a: any, b: any) => {
+        // 🔧 수정: 필터링 후 시간순으로 재정렬
+        return new Date(a.orders.created_at).getTime() - new Date(b.orders.created_at).getTime()
+      })
 
     console.log(`📊 미출고 주문 필터링 결과: ${unshippedItems.length}건`)
+    
+    // 시간순 정렬 디버깅 로그
+    console.log(`📅 시간순 정렬 확인:`)
+    unshippedItems.forEach((item: any, index: number) => {
+      console.log(`  ${index + 1}. ${item.orders.order_number} (${item.orders.users.company_name}): ${item.orders.created_at}`)
+    })
 
     if (unshippedItems.length === 0) {
       console.log('📋 미출고 주문이 없습니다.')

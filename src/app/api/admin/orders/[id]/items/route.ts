@@ -649,8 +649,8 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
     if (color) query = query.eq('color', color)
     if (size) query = query.eq('size', size)
 
-    // 🔧 수정: 올바른 order 구문 사용
-    query = query.order('id', { ascending: true })
+    // 🔧 수정: 주문 시간순 정렬
+    query = query.order('created_at', { ascending: true, foreignTable: 'orders' })
 
     const { data: unshippedItems, error: queryError } = await query
 
@@ -664,13 +664,24 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       return { success: true, message: '미출고 주문이 없습니다.', allocations: [] }
     }
 
-    // 실제 미출고 수량이 있는 아이템만 필터링
-    const itemsWithUnshipped = unshippedItems.filter((item: any) => {
-      const unshippedQuantity = item.quantity - (item.shipped_quantity || 0)
-      return unshippedQuantity > 0
-    })
+    // 실제 미출고 수량이 있는 아이템만 필터링 후 시간순 재정렬
+    const itemsWithUnshipped = unshippedItems
+      .filter((item: any) => {
+        const unshippedQuantity = item.quantity - (item.shipped_quantity || 0)
+        return unshippedQuantity > 0
+      })
+      .sort((a: any, b: any) => {
+        // 🔧 수정: 필터링 후 시간순으로 재정렬
+        return new Date(a.orders.created_at).getTime() - new Date(b.orders.created_at).getTime()
+      })
 
     console.log(`📋 미출고 아이템 ${itemsWithUnshipped.length}개 발견`)
+    
+    // 시간순 정렬 디버깅 로그
+    console.log(`📅 시간순 정렬 확인:`)
+    itemsWithUnshipped.forEach((item: any, index: number) => {
+      console.log(`  ${index + 1}. ${item.orders.order_number} (${item.orders.users?.company_name}): ${item.orders.created_at}`)
+    })
 
     if (itemsWithUnshipped.length === 0) {
       return { success: true, message: '할당할 미출고 주문이 없습니다.', allocations: [] }

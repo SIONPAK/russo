@@ -52,6 +52,35 @@ export async function GET(
     // 모든 상품 포함 (미출고 상품도 품명과 규격 표시)
     const allItems = order.order_items
 
+    // 🔧 총 출고 수량 계산 (배송비 계산용)
+    const totalShippedQuantity = allItems.reduce((sum: number, item: any) => {
+      const actualQuantity = item.shipped_quantity || 0
+      return sum + actualQuantity
+    }, 0)
+
+    // 🔧 공급가액 계산 (출고된 상품 기준)
+    const supplyAmount = allItems.reduce((sum: number, item: any) => {
+      const actualQuantity = item.shipped_quantity || 0
+      return sum + (actualQuantity * item.unit_price)
+    }, 0)
+
+    // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
+    const taxAmount = Math.floor(supplyAmount * 0.1)
+
+    // 🔧 배송비 계산 (20장 미만일 때 3,000원)
+    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+
+    // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
+    const totalAmount = supplyAmount + taxAmount + shippingFee
+
+    console.log('🔍 영수증 다운로드 - 금액 계산:', {
+      totalShippedQuantity,
+      supplyAmount,
+      taxAmount,
+      shippingFee,
+      totalAmount
+    })
+
     // 출고 명세서 데이터 구성
     const statementData = {
       orderNumber: order.order_number,
@@ -66,13 +95,18 @@ export async function GET(
       items: allItems.map((item: any) => {
         const actualQuantity = item.shipped_quantity || 0
         const isUnshipped = actualQuantity === 0
+        const itemTotalPrice = isUnshipped ? 0 : actualQuantity * item.unit_price
+        const itemSupplyAmount = itemTotalPrice
+        const itemTaxAmount = Math.floor(itemSupplyAmount * 0.1)
         
         console.log('🔍 출고 명세서 다운로드 - 아이템 수량 확인:', {
           productName: item.product_name,
           shipped_quantity: item.shipped_quantity,
           quantity: item.quantity,
           actualQuantity,
-          isUnshipped
+          isUnshipped,
+          itemSupplyAmount,
+          itemTaxAmount
         })
         
         return {
@@ -81,13 +115,16 @@ export async function GET(
           size: item.size || '',
           quantity: isUnshipped ? 0 : actualQuantity,
           unitPrice: isUnshipped ? 0 : item.unit_price,
-          totalPrice: isUnshipped ? 0 : actualQuantity * item.unit_price
+          totalPrice: itemTotalPrice,
+          supplyAmount: itemSupplyAmount,
+          taxAmount: itemTaxAmount
         }
       }),
-      totalAmount: allItems.reduce((sum: number, item: any) => {
-        const actualQuantity = item.shipped_quantity || 0
-        return sum + (actualQuantity * item.unit_price)
-      }, 0)
+      // 🔧 수정: 배송비 포함된 총 금액 전달
+      totalAmount: totalAmount,
+      supplyAmount: supplyAmount,
+      taxAmount: taxAmount,
+      shippingFee: shippingFee
     }
 
     // 엑셀 파일 생성

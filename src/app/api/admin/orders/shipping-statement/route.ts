@@ -270,6 +270,17 @@ export async function GET(request: NextRequest) {
           return actualQuantity > 0
         })
         
+        // 🔧 PDF 폴백용 금액 계산
+        const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => {
+          return sum + (item.shipped_quantity || 0)
+        }, 0)
+        const supplyAmount = shippedItems.reduce((sum: number, item: any) => {
+          return sum + (item.unit_price * item.shipped_quantity)
+        }, 0)
+        const taxAmount = Math.floor(supplyAmount * 0.1)
+        const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+        const calculatedTotalAmount = supplyAmount + taxAmount + shippingFee
+
         const shippingStatementData = {
           orderNumber: order.order_number,
           companyName: order.users.company_name,
@@ -282,11 +293,17 @@ export async function GET(request: NextRequest) {
           shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
           items: shippedItems.map((item: any) => {
             const actualQuantity = item.shipped_quantity || 0
+            const itemTotalPrice = item.unit_price * actualQuantity
+            const itemSupplyAmount = itemTotalPrice
+            const itemTaxAmount = Math.floor(itemSupplyAmount * 0.1)
+            
             console.log('🔍 출고 명세서 개별 다운로드 - 아이템 수량 확인:', {
               productName: item.products?.name || item.product_name,
               shipped_quantity: item.shipped_quantity,
               quantity: item.quantity,
-              actualQuantity
+              actualQuantity,
+              itemSupplyAmount,
+              itemTaxAmount
             })
             return {
               productName: item.products?.name || item.product_name,
@@ -294,13 +311,15 @@ export async function GET(request: NextRequest) {
               size: item.size || '',
               quantity: actualQuantity,
               unitPrice: item.unit_price,
-              totalPrice: item.unit_price * actualQuantity
+              totalPrice: itemTotalPrice,
+              supplyAmount: itemSupplyAmount,
+              taxAmount: itemTaxAmount
             }
           }),
-          totalAmount: shippedItems.reduce((sum: number, item: any) => {
-            const actualQuantity = item.shipped_quantity || 0
-            return sum + (item.unit_price * actualQuantity)
-          }, 0)
+          totalAmount: calculatedTotalAmount,
+          supplyAmount: supplyAmount,
+          taxAmount: taxAmount,
+          shippingFee: shippingFee
         }
         
         const excelBuffer = await generateShippingStatement(shippingStatementData)
@@ -337,6 +356,35 @@ export async function GET(request: NextRequest) {
       // "미출고" 건은 금액 0원 처리
       const isUnshipped = order.tracking_number === '미출고'
       
+      // 🔧 총 출고 수량 계산 (배송비 계산용)
+      const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => {
+        return sum + (item.shipped_quantity || 0)
+      }, 0)
+
+      // 🔧 공급가액 계산 (출고된 상품 기준)
+      const supplyAmount = shippedItems.reduce((sum: number, item: any) => {
+        return sum + (item.unit_price * item.shipped_quantity)
+      }, 0)
+
+      // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
+      const taxAmount = Math.floor(supplyAmount * 0.1)
+
+      // 🔧 배송비 계산 (20장 미만일 때 3,000원)
+      const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+
+      // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
+      const calculatedTotalAmount = supplyAmount + taxAmount + shippingFee
+      
+      console.log('🔍 개별 다운로드 GET - 금액 계산:', {
+        orderNumber: order.order_number,
+        totalShippedQuantity,
+        supplyAmount,
+        taxAmount,
+        shippingFee,
+        calculatedTotalAmount,
+        isUnshipped
+      })
+      
       const shippingStatementData = {
         orderNumber: order.order_number,
         companyName: order.users.company_name,
@@ -347,15 +395,27 @@ export async function GET(request: NextRequest) {
         postalCode: order.users.postal_code || '',
         customerGrade: order.users.customer_grade || 'general',
         shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
-        items: shippedItems.map((item: any) => ({
-          productName: item.products?.name || item.product_name,
-          color: item.color || '기본',
-          size: item.size || '',
-          quantity: isUnshipped ? 0 : item.shipped_quantity,
-          unitPrice: isUnshipped ? 0 : item.unit_price,
-          totalPrice: isUnshipped ? 0 : item.unit_price * item.shipped_quantity
-        })),
-        totalAmount: isUnshipped ? 0 : shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
+        items: shippedItems.map((item: any) => {
+          const itemTotalPrice = isUnshipped ? 0 : item.unit_price * item.shipped_quantity
+          const itemSupplyAmount = itemTotalPrice
+          const itemTaxAmount = Math.floor(itemSupplyAmount * 0.1)
+          
+          return {
+            productName: item.products?.name || item.product_name,
+            color: item.color || '기본',
+            size: item.size || '',
+            quantity: isUnshipped ? 0 : item.shipped_quantity,
+            unitPrice: isUnshipped ? 0 : item.unit_price,
+            totalPrice: itemTotalPrice,
+            supplyAmount: itemSupplyAmount,
+            taxAmount: itemTaxAmount
+          }
+        }),
+        // 🔧 수정: 배송비 포함된 총 금액 전달
+        totalAmount: isUnshipped ? 0 : calculatedTotalAmount,
+        supplyAmount: isUnshipped ? 0 : supplyAmount,
+        taxAmount: isUnshipped ? 0 : taxAmount,
+        shippingFee: isUnshipped ? 0 : shippingFee
       }
       
       console.log('🔍 Excel 전달 데이터:', {
@@ -403,6 +463,37 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
     // "미출고" 건은 금액 0원 처리
     const isUnshipped = order.tracking_number === '미출고'
     
+    // 🔧 총 출고 수량 계산 (배송비 계산용)
+    const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => {
+      const actualQuantity = item.shipped_quantity || 0
+      return sum + actualQuantity
+    }, 0)
+
+    // 🔧 공급가액 계산 (출고된 상품 기준)
+    const supplyAmount = shippedItems.reduce((sum: number, item: any) => {
+      const actualQuantity = item.shipped_quantity || 0
+      return sum + (actualQuantity * item.unit_price)
+    }, 0)
+
+    // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
+    const taxAmount = Math.floor(supplyAmount * 0.1)
+
+    // 🔧 배송비 계산 (20장 미만일 때 3,000원)
+    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+
+    // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
+    const calculatedTotalAmount = supplyAmount + taxAmount + shippingFee
+    
+    console.log('🔍 일괄 다운로드 엑셀 - 금액 계산:', {
+      orderNumber: order.order_number,
+      totalShippedQuantity,
+      supplyAmount,
+      taxAmount,
+      shippingFee,
+      calculatedTotalAmount,
+      isUnshipped
+    })
+    
     const shippingStatementData = {
       orderNumber: order.order_number,
       companyName: customer.company_name,
@@ -413,28 +504,37 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
       postalCode: customer.postal_code || '',
       customerGrade: customer.customer_grade || 'general',
       shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
-      items: shippedItems.map((item: any) => {
-        const actualQuantity = item.shipped_quantity || 0
-        console.log('🔍 출고 명세서 다중 다운로드 - 아이템 수량 확인:', {
-          productName: item.products?.name || item.product_name,
-          shipped_quantity: item.shipped_quantity,
-          quantity: item.quantity,
-          actualQuantity,
-          isUnshipped
-        })
-        return {
-          productName: item.products?.name || item.product_name,
-          color: item.color || '기본',
-          size: item.size || '',
-          quantity: isUnshipped ? 0 : actualQuantity,
-          unitPrice: isUnshipped ? 0 : item.unit_price,
-          totalPrice: isUnshipped ? 0 : item.unit_price * actualQuantity
-        }
-      }),
-      totalAmount: isUnshipped ? 0 : shippedItems.reduce((sum: number, item: any) => {
-        const actualQuantity = item.shipped_quantity || 0
-        return sum + (item.unit_price * actualQuantity)
-      }, 0)
+              items: shippedItems.map((item: any) => {
+          const actualQuantity = item.shipped_quantity || 0
+          const itemTotalPrice = isUnshipped ? 0 : item.unit_price * actualQuantity
+          const itemSupplyAmount = itemTotalPrice
+          const itemTaxAmount = Math.floor(itemSupplyAmount * 0.1)
+          
+          console.log('🔍 출고 명세서 다중 다운로드 - 아이템 수량 확인:', {
+            productName: item.products?.name || item.product_name,
+            shipped_quantity: item.shipped_quantity,
+            quantity: item.quantity,
+            actualQuantity,
+            isUnshipped,
+            itemSupplyAmount,
+            itemTaxAmount
+          })
+          return {
+            productName: item.products?.name || item.product_name,
+            color: item.color || '기본',
+            size: item.size || '',
+            quantity: isUnshipped ? 0 : actualQuantity,
+            unitPrice: isUnshipped ? 0 : item.unit_price,
+            totalPrice: itemTotalPrice,
+            supplyAmount: itemSupplyAmount,
+            taxAmount: itemTaxAmount
+          }
+        }),
+      // 🔧 수정: 배송비 포함된 총 금액 전달
+      totalAmount: isUnshipped ? 0 : calculatedTotalAmount,
+      supplyAmount: isUnshipped ? 0 : supplyAmount,
+      taxAmount: isUnshipped ? 0 : taxAmount,
+      shippingFee: isUnshipped ? 0 : shippingFee
     }
     
     // 영수증 엑셀 생성 (개별 다운로드와 동일한 함수 사용)

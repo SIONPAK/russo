@@ -90,6 +90,8 @@ export function InventoryPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [currentTab, setCurrentTab] = useState('overview') // overview, inbound, outbound, history
+
+
   const [stats, setStats] = useState<InventoryStats>({
     totalStock: 0,
     totalValue: 0,

@@ -31,7 +31,13 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
 
     // 입고/출고 타입에 따른 필터링
-    query = query.eq('movement_type', type)
+    if (type === 'inbound') {
+      // 입고: 재고 증가 (양수) - adjustment(+), purchase, return, sample_return 등
+      query = query.gt('quantity', 0)
+    } else if (type === 'outbound') {
+      // 출고: 재고 감소 (음수) - order_shipment, sample_out, order_allocation, adjustment(-) 등
+      query = query.lt('quantity', 0)
+    }
 
     const { data: movements, error: movementsError } = await query
 

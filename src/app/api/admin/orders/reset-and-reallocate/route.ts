@@ -143,7 +143,8 @@ export async function POST(request: NextRequest) {
           product_name,
           color,
           size,
-          quantity
+          quantity,
+          shipped_quantity
         )
       `)
       .like('order_number', 'PO%')
@@ -188,7 +189,11 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          const allocatableQuantity = Math.min(item.quantity, availableStock || 0)
+          // 🔧 수정: 실제 필요한 수량 계산 (전체 주문 수량 - 이미 출고된 수량)
+          const remainingQuantity = item.quantity - (item.shipped_quantity || 0)
+          const allocatableQuantity = Math.min(remainingQuantity, availableStock || 0)
+
+          console.log(`🔍 [할당 계산] ${item.product_name} (${item.color}/${item.size}): 전체 ${item.quantity}개, 기출고 ${item.shipped_quantity || 0}개, 잔여 ${remainingQuantity}개, 가용재고 ${availableStock || 0}개 → 할당 ${allocatableQuantity}개`)
 
           if (allocatableQuantity > 0) {
             // 재고 할당
@@ -201,19 +206,20 @@ export async function POST(request: NextRequest) {
               })
 
             if (!allocationError && allocationResult) {
-              // 주문 아이템 업데이트
+              // 주문 아이템 업데이트 (기존 출고 수량에 추가)
+              const newShippedQuantity = (item.shipped_quantity || 0) + allocatableQuantity
               const { error: updateError } = await supabase
                 .from('order_items')
                 .update({
-                  shipped_quantity: allocatableQuantity,
-                  allocated_quantity: allocatableQuantity
+                  shipped_quantity: newShippedQuantity,
+                  allocated_quantity: newShippedQuantity
                 })
                 .eq('id', item.id)
 
               if (!updateError) {
-                console.log(`✅ 할당 완료 - ${item.product_name} (${item.color}/${item.size}): ${allocatableQuantity}/${item.quantity}`)
+                console.log(`✅ 할당 완료 - ${item.product_name} (${item.color}/${item.size}): ${allocatableQuantity}개 추가 할당 (총 ${newShippedQuantity}/${item.quantity})`)
                 
-                if (allocatableQuantity < item.quantity) {
+                if (newShippedQuantity < item.quantity) {
                   orderHasPartialAllocation = true
                   orderFullyAllocated = false
                 }
@@ -226,7 +232,7 @@ export async function POST(request: NextRequest) {
               orderFullyAllocated = false
             }
           } else {
-            console.log(`⚠️ 재고 부족 - ${item.product_name} (${item.color}/${item.size}): 요청 ${item.quantity}, 가용 ${availableStock || 0}`)
+            console.log(`⚠️ 재고 부족 - ${item.product_name} (${item.color}/${item.size}): 필요 ${remainingQuantity}개, 가용 ${availableStock || 0}개`)
             orderFullyAllocated = false
           }
         }
