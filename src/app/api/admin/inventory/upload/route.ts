@@ -516,7 +516,7 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
     }
 
     // 실제 미출고 수량이 있는 아이템만 필터링
-    const itemsWithUnshipped = unshippedItems.filter(item => {
+    const itemsWithUnshipped = unshippedItems.filter((item: any) => {
       const unshippedQuantity = item.quantity - (item.shipped_quantity || 0)
       return unshippedQuantity > 0
     })
@@ -623,11 +623,11 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
         .select('quantity, shipped_quantity')
         .eq('order_id', orderId)
 
-      const allFullyShipped = orderItems?.every(item => 
+      const allFullyShipped = orderItems?.every((item: any) => 
         (item.shipped_quantity || 0) >= item.quantity
       )
 
-      const hasPartialShipped = orderItems?.some(item => 
+      const hasPartialShipped = orderItems?.some((item: any) => 
         (item.shipped_quantity || 0) > 0
       )
 
