@@ -160,26 +160,10 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // 🎯 재고 차감 시 시간순 재할당 처리
+        // 🎯 재고 차감 시 추가 처리 없음 (가용재고만 사용)
         if (stockQuantity < 0) {
-          console.log(`🔄 재고 차감으로 전체 재할당 시작: ${product.id}, ${color}, ${size}`)
-          const reallocationResult = await reallocateAfterStockReduction(
-            supabase, 
-            product.id, 
-            (color && color !== '-') ? color : undefined,
-            (size && size !== '-') ? size : undefined
-          )
-          
-          if (reallocationResult.reallocations && reallocationResult.reallocations.length > 0) {
-            allocationResults.push({
-              productCode,
-              productName: product.name,
-              color: (color && color !== '-') ? color : null,
-              size: (size && size !== '-') ? size : null,
-              reductionQuantity: Math.abs(stockQuantity),
-              reallocations: reallocationResult.reallocations
-            })
-          }
+          console.log(`ℹ️ 재고 차감 완료: ${product.id}, ${color}, ${size} - ${Math.abs(stockQuantity)}개 차감`)
+          console.log(`📊 기존 할당재고는 그대로 유지되며, 가용재고만 조정됩니다.`)
         }
 
         successCount++

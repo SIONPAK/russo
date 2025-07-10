@@ -139,8 +139,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             }
           }
         } else {
-          // 가용재고가 부족한 경우 - 시간순 재할당 수행
-          console.log('⚠️ [가용재고 부족] 시간순 재할당 수행:', {
+          // 가용재고가 부족한 경우 - 가용재고만큼만 할당 (다른 주문 할당재고 건드리지 않음)
+          console.log('⚠️ [가용재고 부족] 가용재고만큼만 할당:', {
             productId: currentItem.product_id,
             color: currentItem.color,
             size: currentItem.size,
@@ -148,65 +148,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             availableStock: availableStock || 0
           })
           
-          console.log('🚨 [중요] 시간순 재할당이 필요한 상황입니다!')
-
-          // 현재 주문의 생성 시간 조회
-          const { data: currentOrder, error: orderError } = await supabase
-            .from('orders')
-            .select('created_at')
-            .eq('id', orderId)
-            .single()
-
-          if (orderError) {
-            console.error('현재 주문 조회 실패:', orderError)
-            return NextResponse.json({ 
-              error: '주문 정보 조회에 실패했습니다.' 
-            }, { status: 500 })
-          }
-
-          // 시간순 재할당 수행
-          console.log('🔄 [시간순 재할당] 함수 호출 시작...')
-          const reallocationResult = await performTimeBasedReallocation(
-            supabase,
-            currentItem.product_id,
-            currentItem.color,
-            currentItem.size,
-            orderId,
-            currentOrder.created_at,
-            quantityDiff
-          )
-
-          console.log('🔄 [시간순 재할당] 함수 호출 완료:', reallocationResult)
-
-          if (!reallocationResult.success) {
-            console.error('❌ [시간순 재할당] 실패:', reallocationResult.error)
-            // 재할당 실패해도 가용재고만큼은 할당
-            additionalShippable = Math.min(quantityDiff, availableStock || 0)
-            console.log(`⚠️ [시간순 재할당 실패] 가용재고만큼 할당: ${additionalShippable}개`)
-          } else {
-            // 재할당 성공 - 요청한 수량만큼 할당 가능
-            const reclaimedQuantity = reallocationResult.availableQuantity || 0
-            additionalShippable = Math.min(quantityDiff, reclaimedQuantity + (availableStock || 0))
-            
-            console.log('✅ [시간순 재할당 성공] 늦은 주문들의 재고 회수 완료:', {
-              productId: currentItem.product_id,
-              color: currentItem.color,
-              size: currentItem.size,
-              requestedQuantity: quantityDiff,
-              reclaimedQuantity: reclaimedQuantity,
-              originalAvailableStock: availableStock || 0,
-              totalAvailableNow: reclaimedQuantity + (availableStock || 0),
-              additionalShippable: additionalShippable,
-              affectedOrders: reallocationResult.affectedOrders
-            })
-            
-            if (reallocationResult.affectedOrders && reallocationResult.affectedOrders.length > 0) {
-              console.log('🎯 [재고 회수 완료] 영향받은 주문들:')
-              reallocationResult.affectedOrders.forEach((affected: any) => {
-                console.log(`  - ${affected.orderNumber}: ${affected.reclaimedQuantity}개 회수`)
-              })
-            }
-          }
+          additionalShippable = Math.min(quantityDiff, availableStock || 0)
+          
+          console.log('📊 [가용재고만 할당] 결과:', {
+            productId: currentItem.product_id,
+            color: currentItem.color,
+            size: currentItem.size,
+            requestedQuantity: quantityDiff,
+            availableStock: availableStock || 0,
+            additionalShippable: additionalShippable
+          })
         }
 
         // 🎯 할당 수량 및 출고 수량 증가 (시간순 재할당으로 재고 확보 완료)

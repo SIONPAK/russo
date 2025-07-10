@@ -307,64 +307,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             size: item.size
           })
           
-          // 새 아이템인 경우 - 시간순 재할당 필요
-          console.log(`⚠️ [수정] 새 아이템 - 시간순 재할당 수행`)
+          // 새 아이템인 경우 - 가용재고에서만 할당
+          console.log(`ℹ️ [수정] 새 아이템 - 가용재고에서만 할당`)
           
-          const reallocationResult = await performTimeBasedReallocation(
-            supabase,
-            item.product_id,
-            item.color,
-            item.size,
-            orderId,
-            existingOrder.created_at,
-            item.quantity
-          )
-          
-          let allocatedQuantity = 0
-          
-          if (reallocationResult.success) {
-            const reclaimedQuantity = reallocationResult.availableQuantity || 0
-            
-            // 가용 재고도 확인
-            const { data: availableStock, error: stockError } = await supabase
-              .rpc('calculate_available_stock', {
-                p_product_id: item.product_id,
-                p_color: item.color,
-                p_size: item.size
-              })
-            
-            const totalAvailable = reclaimedQuantity + (availableStock || 0)
-            allocatedQuantity = Math.min(item.quantity, totalAvailable)
-            
-            console.log(`✅ [수정] 새 아이템 시간순 재할당 성공:`, {
-              productId: item.product_id,
-              color: item.color,
-              size: item.size,
-              reclaimedQuantity,
-              availableStock: availableStock || 0,
-              totalAvailable,
-              requestedQuantity: item.quantity,
-              allocatedQuantity
+          // 가용 재고 확인
+          const { data: availableStock, error: stockError } = await supabase
+            .rpc('calculate_available_stock', {
+              p_product_id: item.product_id,
+              p_color: item.color,
+              p_size: item.size
             })
-          } else {
-            // 재할당 실패 시 가용 재고만 확인
-            const { data: availableStock, error: stockError } = await supabase
-              .rpc('calculate_available_stock', {
-                p_product_id: item.product_id,
-                p_color: item.color,
-                p_size: item.size
-              })
-            
-            allocatedQuantity = Math.min(item.quantity, availableStock || 0)
-            
-            console.log(`❌ [수정] 새 아이템 시간순 재할당 실패 - 가용재고만 할당:`, {
-              productId: item.product_id,
-              color: item.color,
-              size: item.size,
-              availableStock: availableStock || 0,
-              allocatedQuantity
-            })
-          }
+          
+          const allocatedQuantity = Math.min(item.quantity, availableStock || 0)
+          
+          console.log(`📊 [수정] 새 아이템 가용재고만 할당:`, {
+            productId: item.product_id,
+            color: item.color,
+            size: item.size,
+            requestedQuantity: item.quantity,
+            availableStock: availableStock || 0,
+            allocatedQuantity
+          })
           
           // 재고 할당 수행
           if (allocatedQuantity > 0) {
@@ -404,11 +367,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         
         // 기존 아이템 수정인 경우
         if (existingItem.quantity < item.quantity) {
-          // 수량 증가 - 시간순 재할당 수행
+          // 수량 증가 - 가용재고에서만 추가 할당
           const quantityDiff = item.quantity - existingItem.quantity
           const currentShippedQuantity = existingItem.shipped_quantity || 0
           
-          console.log(`📈 [수량 증가] 시간순 재할당 수행:`, {
+          console.log(`📈 [수량 증가] 가용재고에서만 추가 할당:`, {
             productId: item.product_id,
             color: item.color,
             size: item.size,
@@ -418,7 +381,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             currentShippedQuantity: currentShippedQuantity
           })
 
-          // 먼저 가용재고 확인
+          // 가용재고 확인
           const { data: availableStock, error: stockError } = await supabase
             .rpc('calculate_available_stock', {
               p_product_id: item.product_id,
@@ -435,106 +398,57 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             quantityDiff: quantityDiff
           })
 
+          // 가용재고에서만 할당 (다른 주문 할당재고 건드리지 않음)
+          const totalUnshipped = item.quantity - currentShippedQuantity
+          const maxAllocatable = Math.min(totalUnshipped, availableStock || 0)
+          
+          console.log('📊 [가용재고만 할당] 미출고 수량 할당:', {
+            productId: item.product_id,
+            color: item.color,
+            size: item.size,
+            totalQuantity: item.quantity,
+            currentShippedQuantity: currentShippedQuantity,
+            totalUnshipped: totalUnshipped,
+            availableStock: availableStock,
+            maxAllocatable: maxAllocatable
+          })
+
           let additionalShippable = 0
 
-          if (!stockError && availableStock >= quantityDiff) {
-            // 가용재고가 충분한 경우 - 전체 미출고 수량 확인하여 모두 할당
-            const totalUnshipped = item.quantity - currentShippedQuantity
-            const maxAllocatable = Math.min(totalUnshipped, availableStock)
-            
-            console.log('✅ [가용재고 충분] 전체 미출고 수량 할당 시작:', {
-              productId: item.product_id,
-              color: item.color,
-              size: item.size,
-              totalQuantity: item.quantity,
-              currentShippedQuantity: currentShippedQuantity,
-              totalUnshipped: totalUnshipped,
-              availableStock: availableStock,
-              maxAllocatable: maxAllocatable
-            })
+          if (maxAllocatable > 0) {
+            // 전체 미출고 수량에 대해 재고 할당 수행
+            const { data: allocationResult, error: allocationError } = await supabase
+              .rpc('allocate_stock', {
+                p_product_id: item.product_id,
+                p_quantity: maxAllocatable,
+                p_color: item.color,
+                p_size: item.size
+              })
 
-            if (maxAllocatable > 0) {
-              // 전체 미출고 수량에 대해 재고 할당 수행
-              const { data: allocationResult, error: allocationError } = await supabase
-                .rpc('allocate_stock', {
-                  p_product_id: item.product_id,
-                  p_quantity: maxAllocatable,
-                  p_color: item.color,
-                  p_size: item.size
-                })
-
-              if (allocationError || !allocationResult) {
-                console.error('❌ [재고 할당 실패]:', allocationError)
-                additionalShippable = 0
-              } else {
-                additionalShippable = maxAllocatable
-                console.log('✅ [재고 할당 성공] 전체 미출고 수량 할당 완료:', {
-                  productId: item.product_id,
-                  color: item.color,
-                  size: item.size,
-                  allocatedQuantity: maxAllocatable,
-                  newTotalShipped: currentShippedQuantity + maxAllocatable
-                })
-              }
+            if (allocationError || !allocationResult) {
+              console.error('❌ [재고 할당 실패]:', allocationError)
+              additionalShippable = 0
+            } else {
+              additionalShippable = maxAllocatable
+              console.log('✅ [재고 할당 성공] 전체 미출고 수량 할당 완료:', {
+                productId: item.product_id,
+                color: item.color,
+                size: item.size,
+                allocatedQuantity: maxAllocatable,
+                newTotalShipped: currentShippedQuantity + maxAllocatable
+              })
             }
           } else {
-            // 가용재고가 부족한 경우 - 시간순 재할당 수행
-            console.log('⚠️ [가용재고 부족] 시간순 재할당 수행:', {
+            console.log('📊 [가용재고 부족] 가용재고만큼만 할당:', {
               productId: item.product_id,
               color: item.color,
               size: item.size,
               requestedQuantity: quantityDiff,
               availableStock: availableStock || 0
             })
-            
-            console.log('🚨 [중요] 시간순 재할당이 필요한 상황입니다!')
-
-            // 시간순 재할당 수행
-            console.log('🔄 [시간순 재할당] 함수 호출 시작...')
-            const reallocationResult = await performTimeBasedReallocation(
-              supabase,
-              item.product_id,
-              item.color,
-              item.size,
-              orderId,
-              existingOrder.created_at,
-              quantityDiff
-            )
-
-            console.log('🔄 [시간순 재할당] 함수 호출 완료:', reallocationResult)
-
-            if (!reallocationResult.success) {
-              console.error('❌ [시간순 재할당] 실패:', reallocationResult.error)
-              // 재할당 실패해도 가용재고만큼은 할당
-              additionalShippable = Math.min(quantityDiff, availableStock || 0)
-              console.log(`⚠️ [시간순 재할당 실패] 가용재고만큼 할당: ${additionalShippable}개`)
-            } else {
-              // 재할당 성공 - 요청한 수량만큼 할당 가능
-              const reclaimedQuantity = reallocationResult.availableQuantity || 0
-              additionalShippable = Math.min(quantityDiff, reclaimedQuantity + (availableStock || 0))
-              
-              console.log('✅ [시간순 재할당 성공] 늦은 주문들의 재고 회수 완료:', {
-                productId: item.product_id,
-                color: item.color,
-                size: item.size,
-                requestedQuantity: quantityDiff,
-                reclaimedQuantity: reclaimedQuantity,
-                originalAvailableStock: availableStock || 0,
-                totalAvailableNow: reclaimedQuantity + (availableStock || 0),
-                additionalShippable: additionalShippable,
-                affectedOrders: reallocationResult.affectedOrders
-              })
-              
-              if (reallocationResult.affectedOrders && reallocationResult.affectedOrders.length > 0) {
-                console.log('🎯 [재고 회수 완료] 영향받은 주문들:')
-                reallocationResult.affectedOrders.forEach((affected: any) => {
-                  console.log(`  - ${affected.orderNumber}: ${affected.reclaimedQuantity}개 회수`)
-                })
-              }
-            }
           }
 
-          // 🎯 할당 수량 및 출고 수량 증가 (시간순 재할당으로 재고 확보 완료)
+          // 🎯 할당 수량 및 출고 수량 증가 (가용재고에서만 할당 완료)
           if (additionalShippable > 0) {
             // 새로운 주문 아이템 업데이트 (이미 생성된 아이템의 shipped_quantity 업데이트)
             const { error: updateError } = await supabase

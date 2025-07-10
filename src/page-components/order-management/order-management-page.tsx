@@ -1240,7 +1240,7 @@ export function OrderManagementPage() {
                              order.status === 'pending' ? '대기' : 
                              order.status === 'processing' ? '처리중' :
                              order.status === 'completed' ? '완료' :
-                             order.status === 'shipped' ? '배송중' : order.status}
+                             order.status === 'shipped' ? '출고완료' : order.status}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
@@ -1492,7 +1492,7 @@ export function OrderManagementPage() {
                         selectedOrder.status === 'pending' ? '대기' :
                         selectedOrder.status === 'processing' ? '처리중' :
                         selectedOrder.status === 'completed' ? '완료' :
-                        selectedOrder.status === 'shipped' ? '배송중' : selectedOrder.status}
+                        selectedOrder.status === 'shipped' ? '출고완료' : selectedOrder.status}
                       </span>
                     </div>
                   </div>
