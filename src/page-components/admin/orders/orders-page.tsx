@@ -726,25 +726,19 @@ export function OrdersPage() {
 
   const getStockStatusColor = (item: any) => {
     const available = item.available_stock || 0
-    const required = item.quantity
 
-    if (available >= required) {
-      return 'text-green-600'
-    } else if (available > 0) {
-      return 'text-orange-600'
+    if (available > 0) {
+      return 'text-green-600'    // 재고 있음
     } else {
-      return 'text-red-600'
+      return 'text-red-600'      // 재고 없음
     }
   }
 
   const getStockStatusText = (item: any) => {
     const available = item.available_stock || 0
-    const required = item.quantity
 
-    if (available >= required) {
-      return '재고충분'
-    } else if (available > 0) {
-      return '재고부족'
+    if (available > 0) {
+      return '재고있음'
     } else {
       return '재고없음'
     }
