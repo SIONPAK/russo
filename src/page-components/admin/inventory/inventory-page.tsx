@@ -292,7 +292,9 @@ export function InventoryPage() {
   // 재고 조정 실행
   const executeAdjustment = async () => {
     const value = parseInt(adjustmentValue)
-    if (!value || value <= 0) {
+    
+    // 🎯 입력값 검증 (음수 허용)
+    if (isNaN(value)) {
       showError('유효한 수량을 입력해주세요.')
       return
     }
@@ -302,23 +304,90 @@ export function InventoryPage() {
       return
     }
 
-    const adjustment = adjustmentType === 'add' ? value : -value
-    const adjustmentId = `${adjustmentModal.productId}-${adjustmentModal.color || ''}-${adjustmentModal.size || ''}`
-    
-    try {
-      setAdjusting(adjustmentId)
+    // 🎯 음수값 입력 시 최종 결과가 0이 되는 경우 확인 메시지
+    if (value < 0) {
+      const confirmMessage = '실 재고값을 0으로 설정하시겠습니까?'
+      if (!confirm(confirmMessage)) {
+        return
+      }
       
+      // 절대값으로 0 설정
       const requestData = {
-        adjustment,
+        absolute_value: 0,
         color: adjustmentModal.color,
         size: adjustmentModal.size,
         reason: adjustmentReason
       }
       
+      await performStockAdjustment(requestData, 0)
+      return
+    }
+
+    // 🎯 조정수량이 0인 경우 재고를 0으로 설정
+    if (value === 0) {
+      const confirmMessage = '실 재고값을 0으로 설정하시겠습니까?'
+      if (!confirm(confirmMessage)) {
+        return
+      }
+      
+      // 절대값으로 0 설정
+      const requestData = {
+        absolute_value: 0,
+        color: adjustmentModal.color,
+        size: adjustmentModal.size,
+        reason: adjustmentReason
+      }
+      
+      await performStockAdjustment(requestData, 0)
+      return
+    }
+
+    // 일반적인 증감 처리
+    const adjustment = adjustmentType === 'add' ? value : -value
+    const expectedStock = adjustmentModal.currentStock + adjustment
+    
+    // 재고가 0 이하가 되는 경우 확인 메시지 및 조정
+    if (expectedStock <= 0) {
+      const confirmMessage = '실 재고값을 0으로 설정하시겠습니까?'
+      if (!confirm(confirmMessage)) {
+        return
+      }
+      
+      // 현재 재고를 모두 출고하도록 조정 (절대값 설정)
+      const requestData = {
+        absolute_value: 0,
+        color: adjustmentModal.color,
+        size: adjustmentModal.size,
+        reason: adjustmentReason
+      }
+      
+      await performStockAdjustment(requestData, 0)
+      return
+    }
+
+    // 일반적인 증감 처리
+    const requestData = {
+      adjustment,
+      color: adjustmentModal.color,
+      size: adjustmentModal.size,
+      reason: adjustmentReason
+    }
+    
+    await performStockAdjustment(requestData, expectedStock)
+  }
+
+  // 재고 조정 실제 처리 함수
+  const performStockAdjustment = async (requestData: any, expectedStock: number) => {
+    const adjustmentId = `${adjustmentModal.productId}-${adjustmentModal.color || ''}-${adjustmentModal.size || ''}`
+    
+    try {
+      setAdjusting(adjustmentId)
+      
       console.log('🔄 재고 조정 API 호출 시작:', {
         productId: adjustmentModal.productId,
         requestData,
-        adjustmentType
+        adjustmentType,
+        expectedStock
       })
       
       const response = await fetch(`/api/admin/products/${adjustmentModal.productId}/stock`, {
@@ -334,7 +403,9 @@ export function InventoryPage() {
       console.log('📦 재고 조정 API 응답:', result)
 
       if (result.success) {
-        let message = `재고가 ${adjustmentType === 'add' ? '증가' : '감소'}되었습니다.`
+        let message = expectedStock === 0 
+          ? '재고가 0개로 설정되었습니다.'
+          : `재고가 ${adjustmentType === 'add' ? '증가' : '감소'}되었습니다.`
         
         // 재할당 결과가 있는 경우 추가 정보 표시
         if (result.data.allocation) {
@@ -344,7 +415,7 @@ export function InventoryPage() {
           if (allocation.success) {
             if (adjustmentType === 'add' && allocation.allocations && allocation.allocations.length > 0) {
               message += ` 추가로 ${allocation.allocations.length}건의 주문에 재고가 자동 할당되었습니다.`
-            } else if (adjustmentType === 'subtract' && allocation.reallocations && allocation.reallocations.length > 0) {
+            } else if ((adjustmentType === 'subtract' || expectedStock === 0) && allocation.reallocations && allocation.reallocations.length > 0) {
               message += ` ${allocation.reallocations.length}건의 주문이 시간순으로 재할당되었습니다.`
             }
           }
@@ -582,6 +653,27 @@ export function InventoryPage() {
       if (!file) return
       
       try {
+        // 🎯 엑셀 파일 읽기 및 0인 값 확인
+        const arrayBuffer = await file.arrayBuffer()
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+        
+        // 헤더 제외하고 데이터 행만 확인
+        const dataRows = jsonData.slice(1) as any[]
+        const hasZeroOrNegativeQuantity = dataRows.some((row: any[]) => {
+          // 수량 컬럼이 0 또는 음수인 행이 있는지 확인 (일반적으로 4번째 컬럼이 수량)
+          const quantity = row[3] // 0-based index이므로 4번째 컬럼
+          return quantity === 0 || quantity === '0' || quantity < 0
+        })
+        
+        if (hasZeroOrNegativeQuantity) {
+          const confirmMessage = '수량이 0 또는 음수로 설정되어 있는 행이 있습니다. 실 재고를 0으로 수정하시겠습니까?'
+          if (!confirm(confirmMessage)) {
+            return
+          }
+        }
+        
         setLoading(true)
         
         const formData = new FormData()
@@ -1540,12 +1632,21 @@ export function InventoryPage() {
                 <label className="text-sm text-gray-600">조정 수량</label>
                 <Input
                   type="number"
-                  min="1"
-                  placeholder="수량 입력"
+                  placeholder="수량 입력 (0 또는 음수 입력시 재고 0으로 설정)"
                   value={adjustmentValue}
                   onChange={(e) => setAdjustmentValue(e.target.value)}
                   className="mt-1"
                 />
+                {(parseInt(adjustmentValue) === 0 || parseInt(adjustmentValue) < 0) && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    ⚠️ 재고가 0으로 설정됩니다.
+                  </p>
+                )}
+                {adjustmentType === 'subtract' && parseInt(adjustmentValue) > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    현재 재고({adjustmentModal.currentStock}개) 이상 입력 시 재고가 0이 됩니다.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1562,8 +1663,29 @@ export function InventoryPage() {
                 <div className="bg-gray-50 p-3 rounded-lg">
                   <p className="text-sm text-gray-600">조정 후 예상 재고</p>
                   <p className="font-medium text-lg">
-                    {(adjustmentModal.currentStock + (adjustmentType === 'add' ? parseInt(adjustmentValue) : -parseInt(adjustmentValue))).toLocaleString()}개
+                    {(() => {
+                      const value = parseInt(adjustmentValue) || 0
+                      
+                      // 0 또는 음수 입력시 재고 0으로 설정
+                      if (value === 0 || value < 0) {
+                        return '0'
+                      }
+                      
+                      const change = adjustmentType === 'add' ? value : -value
+                      const result = adjustmentModal.currentStock + change
+                      return Math.max(0, result).toLocaleString()
+                    })()}개
                   </p>
+                  {parseInt(adjustmentValue) === 0 && (
+                    <p className="text-xs text-orange-600 mt-1">
+                      ⚠️ 재고가 0으로 설정됩니다.
+                    </p>
+                  )}
+                  {adjustmentType === 'subtract' && parseInt(adjustmentValue) > 0 && parseInt(adjustmentValue) >= adjustmentModal.currentStock && (
+                    <p className="text-xs text-orange-600 mt-1">
+                      ⚠️ 재고가 0으로 설정됩니다.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

@@ -91,6 +91,7 @@ export function OrderManagementPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [shippedAmounts, setShippedAmounts] = useState<{ [key: string]: number }>({})
   
 
   
@@ -237,6 +238,15 @@ export function OrderManagementPage() {
         
         setPurchaseOrders(purchaseOrders)
         console.log('✅ [발주관리] 발주 내역 조회 성공:', purchaseOrders.length + '건 (전체: ' + allOrders.length + '건)')
+        
+        // 각 주문의 실출고 금액 계산 (백그라운드에서 처리)
+        purchaseOrders.forEach(async (order: any) => {
+          const shippedAmount = await calculateShippedAmount(order.order_number)
+          setShippedAmounts(prev => ({
+            ...prev,
+            [order.order_number]: shippedAmount
+          }))
+        })
       } else {
         console.error('❌ [발주관리] 주문 조회 실패:', result.error)
         setPurchaseOrders([])
@@ -246,6 +256,8 @@ export function OrderManagementPage() {
       setPurchaseOrders([])
     } finally {
       setIsLoadingOrders(false)
+      // 실출고 금액 상태 초기화
+      setShippedAmounts({})
     }
   }
 
@@ -677,6 +689,28 @@ export function OrderManagementPage() {
     }
   }
 
+  // 실출고 금액 계산 함수
+  const calculateShippedAmount = async (orderNumber: string) => {
+    try {
+      const response = await fetch(`/api/orders?orderNumber=${orderNumber}`)
+      const result = await response.json()
+
+      if (result.success && result.data.order_items) {
+        const shippedAmount = result.data.order_items.reduce((total: number, item: any) => {
+          const shippedQuantity = item.shipped_quantity || 0
+          const unitPrice = item.unit_price || 0
+          return total + (shippedQuantity * unitPrice)
+        }, 0)
+        
+        return shippedAmount
+      }
+      return 0
+    } catch (error) {
+      console.error('실출고 금액 계산 오류:', error)
+      return 0
+    }
+  }
+
   const handleViewDetail = async (order: PurchaseOrder) => {
     try {
       // 주문 상세 정보 가져오기
@@ -700,8 +734,9 @@ export function OrderManagementPage() {
 
   // 업무일 기준 수정 가능 시간 확인 함수
   const isEditableTime = (orderDate: string) => {
+    // 정확한 한국 시간 계산 (Asia/Seoul 시간대 사용)
     const now = new Date()
-    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const koreaTime = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
     
     // 현재 업무일 범위 계산
     let businessDayStart: Date
@@ -727,10 +762,20 @@ export function OrderManagementPage() {
     
     // 주문 생성 시간을 한국 시간으로 변환
     const orderTime = new Date(orderDate)
-    const orderKoreaTime = new Date(orderTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const orderKoreaTime = new Date(orderTime.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
     
     // 주문이 현재 업무일 범위에 있는지 확인
     const isWithinBusinessDay = orderKoreaTime >= businessDayStart && orderKoreaTime <= businessDayEnd
+    
+    console.log('🕐 [삭제 시간 확인]', {
+      orderDate,
+      koreaTimeNow: koreaTime.toISOString().replace('T', ' ').substring(0, 19),
+      orderKoreaTime: orderKoreaTime.toISOString().replace('T', ' ').substring(0, 19),
+      businessDayStart: businessDayStart.toISOString().replace('T', ' ').substring(0, 19),
+      businessDayEnd: businessDayEnd.toISOString().replace('T', ' ').substring(0, 19),
+      koreaCurrentHour: koreaTime.getHours(),
+      isWithinBusinessDay
+    })
     
     return isWithinBusinessDay
   }
@@ -1212,7 +1257,12 @@ export function OrderManagementPage() {
                         <td className="px-4 py-3 text-sm text-gray-900">
                           <div>{new Date(order.created_at).toLocaleString('ko-KR')}</div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency(order.total_amount)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                          {shippedAmounts[order.order_number] !== undefined 
+                            ? formatCurrency(shippedAmounts[order.order_number])
+                            : '계산 중...'
+                          }
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             order.tracking_number === '미출고' ? 'bg-gray-100 text-gray-800' :
@@ -1538,9 +1588,9 @@ export function OrderManagementPage() {
                           <td className="px-4 py-3 text-sm text-gray-600">
                             {item.color && item.size ? `${item.color} / ${item.size}` : '-'}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{item.shipped_quantity || 0}</td>
                           <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.unit_price)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency(item.total_price)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency((item.unit_price || 0) * (item.shipped_quantity || 0))}</td>
                         </tr>
                       )) || (
                         <tr>

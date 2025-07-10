@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { formatCurrency, formatDateTime } from '@/shared/lib/utils'
@@ -176,7 +176,7 @@ export function SamplesPage() {
   }
 
   // 명세서 목록 조회
-  const fetchStatements = async (filterParams = filters) => {
+  const fetchStatements = useCallback(async (filterParams = filters) => {
     try {
       setLoading(true)
       const queryParams = new URLSearchParams({
@@ -236,14 +236,12 @@ export function SamplesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, itemsPerPage, filters.search, filters.status, filters.dateFrom, filters.dateTo])
 
-  // 페이지 변경 시 데이터 재조회 (업체별 보기에서만)
+  // 데이터 로드 (페이지 변경 및 필터 변경 시)
   useEffect(() => {
-    if (viewMode === 'grouped') {
-      fetchStatements()
-    }
-  }, [currentPage, viewMode, fetchStatements])
+    fetchStatements()
+  }, [fetchStatements, viewMode])
 
   // 일괄 상태 업데이트 함수
   const handleBulkAction = async (status: string) => {

@@ -579,7 +579,7 @@ export async function generateTradeStatement(data: TradeStatementData, fileName:
         item.quantity,
         item.shippedQuantity,
         item.unitPrice.toLocaleString(),
-        item.totalPrice.toLocaleString()
+        (item.unitPrice * item.shippedQuantity).toLocaleString()
       ]
 
       cells.forEach((value, cellIndex) => {

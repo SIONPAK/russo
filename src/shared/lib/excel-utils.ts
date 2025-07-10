@@ -383,6 +383,7 @@ export interface AdminOrderItem {
     color: string
     size: string
     quantity: number
+    shipped_quantity?: number
     unit_price: number
     total_price: number
   }>
@@ -850,7 +851,7 @@ export function downloadOrderShippingExcel(orders: AdminOrderItem[], filename?: 
         '받는분 주소': order.shipping_address,
         '품목명': '의류',
         '내품명': `${item.product_name} (${item.color}/${item.size})`,
-        '내품수량': item.quantity,
+        '내품수량': item.shipped_quantity || 0,
         '배송 메세지': order.notes || '',
         '상호명': order.user.company_name
       })

@@ -28,14 +28,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 양수와 음수 항목 분리
-    const positiveItems = items.filter((item: any) => item.quantity > 0)
+    // 양수/0과 음수 항목 분리
+    const positiveItems = items.filter((item: any) => item.quantity >= 0)
     const negativeItems = items.filter((item: any) => item.quantity < 0)
 
     // 하루 1건 제한 확인 (양수 항목이 있는 경우만 - 반품은 제한 없음)
     if (positiveItems.length > 0 && user_id) {
       const now = new Date()
-      const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+      const koreaTime = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
       
       // 현재 업무일 범위 계산 (전일 15:00 ~ 당일 14:59)
       let workdayStart: Date
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       if (purchaseOrders.length > 0) {
         const existingOrder = purchaseOrders[0]
         const orderTime = new Date(existingOrder.created_at)
-        const orderKoreaTime = new Date(orderTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+        const orderKoreaTime = new Date(orderTime.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
         
         return NextResponse.json({
           success: false,
