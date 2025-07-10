@@ -116,6 +116,31 @@ export async function GET(
       // 모든 상품 포함 (미출고 상품도 품명과 규격 표시)
       const allItems = order.order_items
 
+      // 계산 로직
+      const mappedItems = allItems.map((item: any) => {
+        const actualQuantity = item.shipped_quantity || 0
+        const isUnshipped = actualQuantity === 0
+        const supplyAmount = isUnshipped ? 0 : actualQuantity * item.unit_price
+        const taxAmount = isUnshipped ? 0 : Math.floor(supplyAmount * 0.1)
+        
+        return {
+          productName: item.product_name,
+          color: item.color || '-',
+          size: item.size || '-',
+          quantity: isUnshipped ? 0 : actualQuantity,
+          unitPrice: isUnshipped ? 0 : item.unit_price,
+          totalPrice: isUnshipped ? 0 : actualQuantity * item.unit_price,
+          supplyAmount,
+          taxAmount
+        }
+      })
+
+      const totalSupplyAmount = mappedItems.reduce((sum: number, item: any) => sum + item.supplyAmount, 0)
+      const totalTaxAmount = mappedItems.reduce((sum: number, item: any) => sum + item.taxAmount, 0)
+      const totalQuantity = mappedItems.reduce((sum: number, item: any) => sum + item.quantity, 0)
+      const shippingFee = totalQuantity < 20 ? 3000 : 0
+      const totalAmount = totalSupplyAmount + totalTaxAmount + shippingFee
+
       const statementData: ShippingStatementData = {
         orderNumber: order.order_number,
         companyName: orderUser.company_name,
@@ -126,23 +151,11 @@ export async function GET(
         postalCode: '',
         customerGrade: orderUser.customer_grade || 'BRONZE',
         shippedAt: order.shipped_at || new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString(),
-        items: allItems.map((item: any) => {
-          const actualQuantity = item.shipped_quantity || 0
-          const isUnshipped = actualQuantity === 0
-          
-          return {
-            productName: item.product_name,
-            color: item.color || '-',
-            size: item.size || '-',
-            quantity: isUnshipped ? 0 : actualQuantity,
-            unitPrice: isUnshipped ? 0 : item.unit_price,
-            totalPrice: isUnshipped ? 0 : actualQuantity * item.unit_price
-          }
-        }),
-        totalAmount: allItems.reduce((sum: number, item: any) => {
-          const actualQuantity = item.shipped_quantity || 0
-          return sum + (actualQuantity * item.unit_price)
-        }, 0)
+        items: mappedItems,
+        totalAmount,
+        supplyAmount: totalSupplyAmount,
+        taxAmount: totalTaxAmount,
+        shippingFee
       }
 
       excelBuffer = await generateShippingStatement(statementData)
