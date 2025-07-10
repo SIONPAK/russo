@@ -264,6 +264,25 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // 🎯 5. 물리적 재고 차감 (실제 출고 처리)
+        for (const item of shippedItems) {
+          const { data: stockResult, error: stockError } = await supabase
+            .rpc('adjust_physical_stock', {
+              p_product_id: item.product_id,
+              p_color: item.color,
+              p_size: item.size,
+              p_quantity_change: -item.shipped_quantity, // 음수로 차감
+              p_reason: `출고 완료 - 주문번호: ${order.order_number}`
+            })
+
+          if (stockError) {
+            console.error('물리적 재고 차감 실패:', stockError)
+            // 재고 차감 실패해도 주문은 출고 완료로 처리 (이미 명세서와 마일리지 처리됨)
+          } else {
+            console.log(`✅ 물리적 재고 차감 완료: ${item.product_name} (${item.color}/${item.size}) ${item.shipped_quantity}개`)
+          }
+        }
+
         results.push({
           orderId: order.id,
           orderNumber: order.order_number,

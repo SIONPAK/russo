@@ -122,40 +122,17 @@ export async function POST(request: NextRequest) {
                 .eq('id', item.id)
             )
 
-            // 2. 재고 차감
-            if (product.inventory_options && Array.isArray(product.inventory_options)) {
-              // 옵션별 재고 차감
-              const updatedOptions = product.inventory_options.map((opt: any) => {
-                if (opt.color === item.color && opt.size === item.size) {
-                  return { ...opt, stock_quantity: opt.stock_quantity - shippableQuantity }
-                }
-                return opt
-              })
-              
-              const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-              
-              updatePromises.push(
-                supabase
-                  .from('products')
-                  .update({
-                    inventory_options: updatedOptions,
-                    stock_quantity: totalStock,
-                    updated_at: getKoreaTime()
-                  })
-                  .eq('id', item.product_id)
-              )
-            } else {
-              // 전체 재고 차감
-              updatePromises.push(
-                supabase
-                  .from('products')
-                  .update({
-                    stock_quantity: product.stock_quantity - shippableQuantity,
-                    updated_at: getKoreaTime()
-                  })
-                  .eq('id', item.product_id)
-              )
-            }
+            // 2. 물리적 재고 차감 (새로운 RPC 함수 사용)
+            updatePromises.push(
+              supabase
+                .rpc('adjust_physical_stock', {
+                  p_product_id: item.product_id,
+                  p_color: item.color,
+                  p_size: item.size,
+                  p_quantity_change: -shippableQuantity, // 음수로 차감
+                  p_reason: `벌크 출고 처리 - 주문번호: ${order.order_number}`
+                })
+            )
 
             // 3. 재고 변동 이력 기록
             const movementData = {

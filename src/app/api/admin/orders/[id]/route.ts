@@ -86,6 +86,7 @@ export async function GET(
 // 재고 계산 함수
 function getAvailableStock(product: any, color?: string, size?: string): number {
   if (!product || !product.inventory_options) {
+    console.log(`🔍 [개별 주문] 기본 재고: ${product?.stock_quantity || 0}`)
     return product?.stock_quantity || 0
   }
 
@@ -95,16 +96,43 @@ function getAvailableStock(product: any, color?: string, size?: string): number 
       : product.inventory_options
 
     if (!Array.isArray(inventoryOptions)) {
+      console.log(`🔍 [개별 주문] 옵션 배열 아님, 기본 재고: ${product.stock_quantity || 0}`)
       return product.stock_quantity || 0
     }
+
+    console.log(`🔍 [개별 주문] 재고 계산 시작 - 상품 ID: ${product.id}, 색상: ${color || 'N/A'}, 사이즈: ${size || 'N/A'}`)
+    console.log(`🔍 [개별 주문] inventory_options:`, JSON.stringify(inventoryOptions, null, 2))
 
     const matchingOption = inventoryOptions.find((option: any) => 
       option.color === color && option.size === size
     )
 
-    return matchingOption?.stock || 0
+    console.log(`🔍 [개별 주문] 매칭 옵션:`, matchingOption)
+
+    if (matchingOption) {
+      // 🔧 새로운 구조 우선 확인
+      if (matchingOption.physical_stock !== undefined && matchingOption.allocated_stock !== undefined) {
+        const physicalStock = matchingOption.physical_stock || 0
+        const allocatedStock = matchingOption.allocated_stock || 0
+        const availableStock = Math.max(0, physicalStock - allocatedStock)
+        console.log(`🔍 [개별 주문] 새로운 구조 - 물리적재고: ${physicalStock}, 할당재고: ${allocatedStock}, 가용재고: ${availableStock}`)
+        return availableStock
+      } else if (matchingOption.stock_quantity !== undefined) {
+        // 기존 구조: stock_quantity 사용
+        const availableStock = matchingOption.stock_quantity || 0
+        console.log(`🔍 [개별 주문] 기존 구조 - stock_quantity: ${availableStock}`)
+        return availableStock
+      } else {
+        console.log(`🔍 [개별 주문] 오류 - 재고 필드를 찾을 수 없음`)
+        return 0
+      }
+    } else {
+      console.log(`🔍 [개별 주문] 오류 - 매칭되는 옵션을 찾을 수 없음`)
+      return 0
+    }
+    
   } catch (error) {
-    console.error('재고 정보 파싱 오류:', error)
+    console.error('🔍 [개별 주문] 재고 정보 파싱 오류:', error)
     return product.stock_quantity || 0
   }
 }

@@ -88,6 +88,31 @@ export async function POST(request: NextRequest) {
           console.log(`📦 미출고건 처리: ${order.order_number} - 출고수량 0개, 마일리지 차감 0원`)
         }
 
+        // 🎯 물리적 재고 차감 (실제 출고 처리)
+        if (!isUnshipped && order.order_items) {
+          for (const item of order.order_items) {
+            const shippedQuantity = item.shipped_quantity || 0
+            
+            if (shippedQuantity > 0) {
+              const { data: stockResult, error: stockError } = await supabase
+                .rpc('adjust_physical_stock', {
+                  p_product_id: item.product_id,
+                  p_color: item.color,
+                  p_size: item.size,
+                  p_quantity_change: -shippedQuantity, // 음수로 차감
+                  p_reason: `출고 처리 - 주문번호: ${order.order_number}`
+                })
+
+              if (stockError) {
+                console.error('물리적 재고 차감 실패:', stockError)
+                // 재고 차감 실패해도 주문은 출고 처리 계속 진행
+              } else {
+                console.log(`✅ 물리적 재고 차감 완료: ${item.product_name} (${item.color}/${item.size}) ${shippedQuantity}개`)
+              }
+            }
+          }
+        }
+
         // 주문 상태를 shipped로 업데이트 (출고완료)
         const { error: orderUpdateError } = await supabase
           .from('orders')

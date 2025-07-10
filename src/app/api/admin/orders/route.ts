@@ -370,7 +370,10 @@ async function calculateAllocationStatus(supabase: any, orderItems: any[]): Prom
 async function getAvailableStock(supabase: any, product: any, color?: string, size?: string): Promise<number> {
   if (!product) return 0
   
-  let currentStock = 0
+  let availableStock = 0
+  
+  console.log(`🔍 [재고 계산 시작] 상품 ID: ${product.id}, 색상: ${color || 'N/A'}, 사이즈: ${size || 'N/A'}`)
+  console.log(`🔍 [재고 데이터] inventory_options:`, JSON.stringify(product.inventory_options, null, 2))
   
   // 옵션별 재고가 있는 경우
   if (product.inventory_options && Array.isArray(product.inventory_options) && product.inventory_options.length > 0) {
@@ -379,75 +382,50 @@ async function getAvailableStock(supabase: any, product: any, color?: string, si
       const matchingOption = product.inventory_options.find((option: any) => 
         option.color === color && option.size === size
       )
-      currentStock = matchingOption ? (matchingOption.stock_quantity || 0) : 0
+      
+      console.log(`🔍 [매칭 옵션] 찾은 옵션:`, matchingOption)
+      
+      if (matchingOption) {
+        // 🔧 새로운 구조 우선 확인
+        if (matchingOption.physical_stock !== undefined && matchingOption.allocated_stock !== undefined) {
+          const physicalStock = matchingOption.physical_stock || 0
+          const allocatedStock = matchingOption.allocated_stock || 0
+          availableStock = Math.max(0, physicalStock - allocatedStock)
+          console.log(`🔍 [새로운 구조] 물리적재고: ${physicalStock}, 할당재고: ${allocatedStock}, 가용재고: ${availableStock}`)
+        } else if (matchingOption.stock_quantity !== undefined) {
+          // 기존 구조: stock_quantity 사용
+          availableStock = matchingOption.stock_quantity || 0
+          console.log(`🔍 [기존 구조] stock_quantity: ${availableStock}`)
+        } else {
+          console.log(`🔍 [오류] 재고 필드를 찾을 수 없음`)
+          availableStock = 0
+        }
+      } else {
+        console.log(`🔍 [오류] 매칭되는 옵션을 찾을 수 없음`)
+        availableStock = 0
+      }
     } else {
       // 전체 재고 합계
-      currentStock = product.inventory_options.reduce((total: number, option: any) => {
-        return total + (option.stock_quantity || 0)
+      availableStock = product.inventory_options.reduce((total: number, option: any) => {
+        if (option.physical_stock !== undefined && option.allocated_stock !== undefined) {
+          const physicalStock = option.physical_stock || 0
+          const allocatedStock = option.allocated_stock || 0
+          return total + Math.max(0, physicalStock - allocatedStock)
+        } else {
+          return total + (option.stock_quantity || 0)
+        }
       }, 0)
+      console.log(`🔍 [전체 재고] 합계: ${availableStock}`)
     }
   } else {
     // 기본 재고
-    currentStock = product.stock_quantity || 0
+    availableStock = product.stock_quantity || 0
+    console.log(`🔍 [기본 재고] stock_quantity: ${availableStock}`)
   }
   
-  // 예약된 재고 계산 (발주로 예약된 수량)
-  try {
-    const { data: reservedItems } = await supabase
-      .from('order_items')
-      .select(`
-        quantity,
-        shipped_quantity,
-        color,
-        size,
-        orders!order_items_order_id_fkey (
-          status,
-          order_type
-        )
-      `)
-      .eq('product_id', product.id)
-      .in('orders.status', ['pending', 'confirmed', 'processing'])
-      .in('orders.order_type', ['normal', 'purchase'])
-    
-    let reservedQuantity = 0
-    
-    if (reservedItems && reservedItems.length > 0) {
-      reservedQuantity = reservedItems.reduce((sum: number, item: any) => {
-        const order = Array.isArray(item.orders) ? item.orders[0] : item.orders
-        
-        // 색상/사이즈가 지정된 경우 해당 옵션만 계산
-        if (color && size && (item.color !== color || item.size !== size)) {
-          return sum
-        }
-        
-        // 발주 주문(purchase)의 경우 이미 재고가 차감되어 있으므로 예약 수량에서 완전히 제외
-        if (order && order.order_type === 'purchase') {
-          return sum // 발주는 예약 수량에 포함하지 않음 (이미 재고 차감됨)
-        }
-        
-        // 일반 주문(normal)의 경우에만 아직 출고되지 않은 수량을 예약으로 계산
-        if (order && order.order_type === 'normal') {
-          const pendingQuantity = item.quantity - (item.shipped_quantity || 0)
-          return sum + Math.max(0, pendingQuantity)
-        }
-        
-        return sum
-      }, 0)
-    }
-    
-    // 가용 재고 = 현재 재고 - 예약된 재고
-    const availableStock = Math.max(0, currentStock - reservedQuantity)
-    
-    console.log(`재고 계산 - 상품 ID: ${product.id}, 색상: ${color || 'N/A'}, 사이즈: ${size || 'N/A'}`)
-    console.log(`  현재 재고: ${currentStock}, 예약된 재고: ${reservedQuantity}, 가용 재고: ${availableStock}`)
-    
-    return availableStock
-    
-  } catch (error) {
-    console.error('예약된 재고 계산 오류:', error)
-    // 오류 발생 시 현재 재고 반환
-    return currentStock
-  }
+  console.log(`📦 [최종 결과] 가용 재고: ${availableStock}개`)
+  
+  return availableStock
 }
 
 // 아이템별 할당 상태 계산

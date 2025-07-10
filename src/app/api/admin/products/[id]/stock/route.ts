@@ -291,79 +291,27 @@ export async function PATCH(
 
     let allocationResults = null
 
-    // 옵션별 재고 조정
+    // 옵션별 재고 조정 - 새로운 구조 사용
     if (color && size) {
-      const inventoryOptions = product.inventory_options || []
-      const optionIndex = inventoryOptions.findIndex(
-        (option: any) => option.color === color && option.size === size
-      )
-
-      if (optionIndex === -1) {
-        return NextResponse.json({
-          success: false,
-          error: '해당 옵션을 찾을 수 없습니다.'
-        }, { status: 404 })
-      }
-
-      const currentQuantity = inventoryOptions[optionIndex].stock_quantity
-      const newQuantity = Math.max(0, currentQuantity + adjustment)
-
-      // 재고가 부족한 경우 체크
-      if (adjustment < 0 && currentQuantity < Math.abs(adjustment)) {
-        return NextResponse.json({
-          success: false,
-          error: `현재 재고(${currentQuantity}개)가 부족합니다.`
-        }, { status: 400 })
-      }
-
-      // 옵션 재고 업데이트
-      inventoryOptions[optionIndex].stock_quantity = newQuantity
-
-      // 전체 재고량 재계산
-      const totalStock = inventoryOptions.reduce((sum: number, option: any) => sum + option.stock_quantity, 0)
-
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({
-          inventory_options: inventoryOptions,
-          stock_quantity: totalStock,
-          updated_at: getKoreaTime()
+      // 🔄 물리적 재고 조정 RPC 사용
+      const { data: adjustResult, error: adjustError } = await supabase
+        .rpc('adjust_physical_stock', {
+          p_product_id: productId,
+          p_color: color,
+          p_size: size,
+          p_quantity_change: adjustment,
+          p_reason: `관리자 재고 조정 (${color}/${size}) - ${reason || '수동 재고 조정'}`
         })
-        .eq('id', productId)
 
-      if (updateError) {
-        console.error('Stock update error:', updateError)
+      if (adjustError || !adjustResult) {
+        console.error('물리적 재고 조정 실패:', adjustError)
         return NextResponse.json({
           success: false,
           error: '재고 조정에 실패했습니다.'
         }, { status: 500 })
       }
 
-      // 재고 변동 이력 기록
-      const movementData = {
-        product_id: productId,
-        movement_type: 'adjustment',
-        quantity: adjustment,
-        color: color || null,
-        size: size || null,
-        notes: `옵션별 재고 조정 (${color}/${size}) - ${reason || '수동 재고 조정'}`,
-        created_at: getKoreaTime()
-      }
-      
-      console.log('재고 변동 이력 기록 시도:', movementData)
-      
-      const { data: movementResult, error: movementError } = await supabase
-        .from('stock_movements')
-        .insert(movementData)
-        .select()
-      
-      if (movementError) {
-        console.error('재고 변동 이력 기록 실패:', movementError)
-      } else {
-        console.log('재고 변동 이력 기록 성공:', movementResult)
-      }
-
-      console.log(`재고 조정 완료: ${product.id} (${color}/${size}) ${currentQuantity} → ${newQuantity}`)
+      console.log(`✅ 물리적 재고 조정 완료: ${productId} (${color}/${size}) ${adjustment > 0 ? '+' : ''}${adjustment}`)
 
       // 🎯 재고 증가 시 자동 할당 처리
       if (adjustment > 0) {
@@ -373,57 +321,25 @@ export async function PATCH(
       }
 
     } else {
-      // 일반 재고 조정
-      const currentQuantity = product.stock_quantity
-      const newQuantity = Math.max(0, currentQuantity + adjustment)
-
-      // 재고가 부족한 경우 체크
-      if (adjustment < 0 && currentQuantity < Math.abs(adjustment)) {
-        return NextResponse.json({
-          success: false,
-          error: `현재 재고(${currentQuantity}개)가 부족합니다.`
-        }, { status: 400 })
-      }
-
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({
-          stock_quantity: newQuantity,
-          updated_at: getKoreaTime()
+      // 일반 재고 조정 - 새로운 구조 사용
+      const { data: adjustResult, error: adjustError } = await supabase
+        .rpc('adjust_physical_stock', {
+          p_product_id: productId,
+          p_color: null,
+          p_size: null,
+          p_quantity_change: adjustment,
+          p_reason: `관리자 재고 조정 - ${reason || '수동 재고 조정'}`
         })
-        .eq('id', productId)
 
-      if (updateError) {
-        console.error('Stock update error:', updateError)
+      if (adjustError || !adjustResult) {
+        console.error('물리적 재고 조정 실패:', adjustError)
         return NextResponse.json({
           success: false,
           error: '재고 조정에 실패했습니다.'
         }, { status: 500 })
       }
 
-      // 재고 변동 이력 기록
-      const movementData = {
-        product_id: productId,
-        movement_type: 'adjustment',
-        quantity: adjustment,
-        notes: `전체 재고 조정 - ${reason || '수동 재고 조정'}`,
-        created_at: getKoreaTime()
-      }
-      
-      console.log('재고 변동 이력 기록 시도:', movementData)
-      
-      const { data: movementResult, error: movementError } = await supabase
-        .from('stock_movements')
-        .insert(movementData)
-        .select()
-      
-      if (movementError) {
-        console.error('재고 변동 이력 기록 실패:', movementError)
-      } else {
-        console.log('재고 변동 이력 기록 성공:', movementResult)
-      }
-
-      console.log(`재고 조정 완료: ${product.id} ${currentQuantity} → ${newQuantity}`)
+      console.log(`✅ 물리적 재고 조정 완료: ${productId} ${adjustment > 0 ? '+' : ''}${adjustment}`)
 
       // 🎯 재고 증가 시 자동 할당 처리
       if (adjustment > 0) {
