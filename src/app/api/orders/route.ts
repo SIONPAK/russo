@@ -439,63 +439,29 @@ export async function POST(request: NextRequest) {
         let allocatedQuantity = 0
         const requestedQuantity = item.quantity
 
-        // 옵션별 재고 관리인 경우
-        if (product.inventory_options && Array.isArray(product.inventory_options)) {
-          const inventoryOption = product.inventory_options.find(
-            (option: any) => option.color === item.color && option.size === item.size
-          )
+        // 가용 재고 확인
+        const { data: availableStock, error: stockError } = await supabase
+          .rpc('calculate_available_stock', {
+            p_product_id: item.productId,
+            p_color: item.color,
+            p_size: item.size
+          })
 
-          if (inventoryOption) {
-            const availableStock = inventoryOption.stock_quantity || 0
-            allocatedQuantity = Math.min(requestedQuantity, availableStock)
-            
-            if (allocatedQuantity > 0) {
-              // 옵션별 재고 차감
-              const updatedOptions = product.inventory_options.map((option: any) => {
-                if (option.color === item.color && option.size === item.size) {
-                  return {
-                    ...option,
-                    stock_quantity: option.stock_quantity - allocatedQuantity
-                  }
-                }
-                return option
-              })
-
-              // 전체 재고량 재계산
-              const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-
-              const { error: stockUpdateError } = await supabase
-                .from('products')
-                .update({
-                  inventory_options: updatedOptions,
-                  stock_quantity: totalStock,
-                  updated_at: getKoreaTime()
-                })
-                .eq('id', item.productId)
-
-              if (stockUpdateError) {
-                console.error('재고 업데이트 실패:', stockUpdateError)
-                allItemsFullyAllocated = false
-                continue
-              }
-            }
-          }
-        } else {
-          // 일반 재고 관리인 경우
-          const availableStock = product.stock_quantity || 0
+        if (!stockError && availableStock > 0) {
           allocatedQuantity = Math.min(requestedQuantity, availableStock)
           
           if (allocatedQuantity > 0) {
-            const { error: stockUpdateError } = await supabase
-              .from('products')
-              .update({
-                stock_quantity: availableStock - allocatedQuantity,
-                updated_at: getKoreaTime()
+            // 재고 할당 - RPC 사용
+            const { error: allocationError } = await supabase
+              .rpc('allocate_stock', {
+                p_product_id: item.productId,
+                p_quantity: allocatedQuantity,
+                p_color: item.color,
+                p_size: item.size
               })
-              .eq('id', item.productId)
 
-            if (stockUpdateError) {
-              console.error('재고 업데이트 실패:', stockUpdateError)
+            if (allocationError) {
+              console.error('재고 할당 실패:', allocationError)
               allItemsFullyAllocated = false
               continue
             }

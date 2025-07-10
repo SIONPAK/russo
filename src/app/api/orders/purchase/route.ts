@@ -211,23 +211,15 @@ export async function POST(request: NextRequest) {
         const product = productMap.get(item.product_id)
         if (!product) continue
         
-        // 재고 복원
-        if (product.inventory_options && Array.isArray(product.inventory_options)) {
-          const updatedOptions = product.inventory_options.map((option: any) => {
-            if (option.color === item.color && option.size === item.size) {
-              return {
-                ...option,
-                stock_quantity: option.stock_quantity + item.shipped_quantity
-              }
-            }
-            return option
+        // 재고 복원 - RPC 사용
+        await supabase
+          .rpc('adjust_physical_stock', {
+            p_product_id: item.product_id,
+            p_color: item.color,
+            p_size: item.size,
+            p_quantity_change: item.shipped_quantity, // 양수로 복원
+            p_reason: `발주서 생성 시 재고 복원 - 주문번호: ${order.order_number}`
           })
-          
-          product.inventory_options = updatedOptions
-          product.stock_quantity = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-        } else {
-          product.stock_quantity = product.stock_quantity + item.shipped_quantity
-        }
       }
     }
     
@@ -260,41 +252,30 @@ export async function POST(request: NextRequest) {
         let allocatedQuantity = 0
         const requestedQuantity = item.quantity
         
-        if (product.inventory_options && Array.isArray(product.inventory_options)) {
-          // 옵션별 재고 관리
-          const inventoryOption = product.inventory_options.find(
-            (option: any) => option.color === item.color && option.size === item.size
-          )
-          
-          if (inventoryOption) {
-            const availableStock = inventoryOption.stock_quantity || 0
-            allocatedQuantity = Math.min(requestedQuantity, availableStock)
-            
-            if (allocatedQuantity > 0) {
-              // 옵션별 재고 차감
-              const updatedOptions = product.inventory_options.map((option: any) => {
-                if (option.color === item.color && option.size === item.size) {
-                  return {
-                    ...option,
-                    stock_quantity: option.stock_quantity - allocatedQuantity
-                  }
-                }
-                return option
-              })
-              
-              product.inventory_options = updatedOptions
-              product.stock_quantity = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-            }
-          }
-        } else {
-          // 일반 재고 관리
-          const availableStock = product.stock_quantity || 0
+        // 가용 재고 확인 (발주서는 재고 없어도 주문 가능)
+        const { data: availableStock, error: stockError } = await supabase
+          .rpc('calculate_available_stock', {
+            p_product_id: item.product_id,
+            p_color: item.color,
+            p_size: item.size
+          })
+
+        if (!stockError && availableStock > 0) {
           allocatedQuantity = Math.min(requestedQuantity, availableStock)
           
           if (allocatedQuantity > 0) {
-            product.stock_quantity = availableStock - allocatedQuantity
+            // 재고 할당 - RPC 사용
+            await supabase
+              .rpc('allocate_stock', {
+                p_product_id: item.product_id,
+                p_quantity: allocatedQuantity,
+                p_color: item.color,
+                p_size: item.size
+              })
           }
         }
+        
+        // 재고 부족해도 주문 아이템은 생성 (발주서 특성)
         
         // 주문 아이템 업데이트
         if (allocatedQuantity > 0) {
@@ -337,17 +318,7 @@ export async function POST(request: NextRequest) {
         .eq('id', orderToProcess.id)
     }
     
-    // 6. 상품 재고 업데이트 (배치 처리)
-    for (const product of productMap.values()) {
-      await supabase
-        .from('products')
-        .update({
-          inventory_options: product.inventory_options,
-          stock_quantity: product.stock_quantity,
-          updated_at: getKoreaTime()
-        })
-        .eq('id', product.id)
-    }
+    // 6. 상품 재고 업데이트는 RPC에서 자동 처리됨
     
     console.log('✅ 시간순 재고 할당 완료')
 

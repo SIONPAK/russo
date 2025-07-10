@@ -184,8 +184,16 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // 새로운 재고 구조를 위한 inventory_options 변환
+    const convertedInventoryOptions = body.inventory_options.map(opt => ({
+      ...opt,
+      physical_stock: opt.stock_quantity, // 물리적 재고로 설정
+      allocated_stock: 0, // 할당된 재고는 0으로 초기화
+      stock_quantity: opt.stock_quantity // 가용재고 = 물리적재고 - 할당재고
+    }))
+
     // 총 재고량 계산
-    const totalStockQuantity = body.inventory_options.reduce((sum, opt) => sum + opt.stock_quantity, 0)
+    const totalStockQuantity = convertedInventoryOptions.reduce((sum, opt) => sum + opt.stock_quantity, 0)
 
     // 상품 생성
     const { data: product, error } = await supabase
@@ -202,7 +210,7 @@ export async function POST(request: NextRequest) {
         is_featured: body.is_featured || false,
         is_active: body.is_active ?? true,
         stock_quantity: totalStockQuantity,
-        inventory_options: body.inventory_options,
+        inventory_options: convertedInventoryOptions,
         unit: body.unit || '개',
         sku: body.sku,
         weight: body.weight,
@@ -262,12 +270,12 @@ export async function POST(request: NextRequest) {
     // 상품 등록 시 초기 재고 기록 (stock_movements)
     if (totalStockQuantity > 0) {
       // 옵션별로 재고 변동 이력 기록
-      for (const option of body.inventory_options) {
-        if (option.stock_quantity > 0) {
+      for (const option of convertedInventoryOptions) {
+        if (option.physical_stock > 0) {
           const movementData = {
             product_id: product.id,
             movement_type: 'initial_stock',
-            quantity: option.stock_quantity,
+            quantity: option.physical_stock,
             color: option.color || null,
             size: option.size || null,
             notes: `상품 등록 시 초기 재고 (${option.color}/${option.size})`,

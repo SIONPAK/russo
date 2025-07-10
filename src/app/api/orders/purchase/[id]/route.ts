@@ -361,37 +361,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         
         if (currentProductError || !currentProduct) continue
         
-        // 재고 복원 (데이터베이스 직접 업데이트)
-        if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options)) {
-          const updatedOptions = currentProduct.inventory_options.map((option: any) => {
-            if (option.color === item.color && option.size === item.size) {
-              return {
-                ...option,
-                stock_quantity: option.stock_quantity + item.shipped_quantity
-              }
-            }
-            return option
+        // 재고 복원 - RPC 사용
+        await supabase
+          .rpc('adjust_physical_stock', {
+            p_product_id: item.product_id,
+            p_color: item.color,
+            p_size: item.size,
+            p_quantity_change: item.shipped_quantity, // 양수로 복원
+            p_reason: `발주서 수정 시 재고 복원 - 주문번호: ${existingOrder.order_number}`
           })
-          
-          const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-          
-          await supabase
-            .from('products')
-            .update({
-              inventory_options: updatedOptions,
-              stock_quantity: totalStock,
-              updated_at: getKoreaTime()
-            })
-            .eq('id', item.product_id)
-        } else {
-          await supabase
-            .from('products')
-            .update({
-              stock_quantity: currentProduct.stock_quantity + item.shipped_quantity,
-              updated_at: getKoreaTime()
-            })
-            .eq('id', item.product_id)
-        }
       }
     }
 
@@ -427,55 +405,30 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         let allocatedQuantity = 0
         const requestedQuantity = item.quantity
         
-        if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options)) {
-          // 옵션별 재고 관리
-          const inventoryOption = currentProduct.inventory_options.find(
-            (option: any) => option.color === item.color && option.size === item.size
-          )
-          
-          if (inventoryOption) {
-            const availableStock = inventoryOption.stock_quantity || 0
-            allocatedQuantity = Math.min(requestedQuantity, availableStock)
-            
-            if (allocatedQuantity > 0) {
-              // 옵션별 재고 차감 (데이터베이스 직접 업데이트)
-              const updatedOptions = currentProduct.inventory_options.map((option: any) => {
-                if (option.color === item.color && option.size === item.size) {
-                  return {
-                    ...option,
-                    stock_quantity: option.stock_quantity - allocatedQuantity
-                  }
-                }
-                return option
-              })
-              
-              const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-              
-              await supabase
-                .from('products')
-                .update({
-                  inventory_options: updatedOptions,
-                  stock_quantity: totalStock,
-                  updated_at: getKoreaTime()
-                })
-                .eq('id', item.product_id)
-            }
-          }
-        } else {
-          // 일반 재고 관리
-          const availableStock = currentProduct.stock_quantity || 0
+        // 가용 재고 확인 (발주서는 재고 없어도 주문 가능)
+        const { data: availableStock, error: stockError } = await supabase
+          .rpc('calculate_available_stock', {
+            p_product_id: item.product_id,
+            p_color: item.color,
+            p_size: item.size
+          })
+
+        if (!stockError && availableStock > 0) {
           allocatedQuantity = Math.min(requestedQuantity, availableStock)
           
           if (allocatedQuantity > 0) {
+            // 재고 할당 - RPC 사용
             await supabase
-              .from('products')
-              .update({
-                stock_quantity: availableStock - allocatedQuantity,
-                updated_at: getKoreaTime()
+              .rpc('allocate_stock', {
+                p_product_id: item.product_id,
+                p_quantity: allocatedQuantity,
+                p_color: item.color,
+                p_size: item.size
               })
-              .eq('id', item.product_id)
           }
         }
+        
+        // 재고 부족해도 주문 아이템은 생성 (발주서 특성)
         
         // 주문 아이템 업데이트
         if (allocatedQuantity > 0) {
