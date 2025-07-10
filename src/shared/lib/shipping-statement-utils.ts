@@ -477,23 +477,6 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
 // 출고 명세서 생성 함수
 export async function generateShippingStatement(data: ShippingStatementData): Promise<Buffer> {
   try {
-    console.log('🔍 Excel 생성 데이터:', {
-      companyName: data.companyName,
-      customerGrade: data.customerGrade,
-      shippedAt: data.shippedAt,
-      itemsCount: data.items.length,
-      firstItem: data.items[0],
-      allItems: data.items.map(item => ({
-        productName: item.productName,
-        color: item.color,
-        size: item.size,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalPrice: item.totalPrice
-      }))
-    })
-
-    // 색상별 상품 그룹화
     const groupItemsByColorAndProduct = (items: any[]) => {
       const grouped: { [key: string]: { 
         productName: string
@@ -574,14 +557,35 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
     const groupedItems = groupItemsByColorAndProduct(data.items)
     console.log('🔍 그룹화된 아이템:', groupedItems)
 
-    // 배송비 제거 - 출고명세서에는 배송비 포함하지 않음
+    // 총 출고 수량 계산 (배송비 제외)
+    const totalShippedQuantity = groupedItems
+      .filter(item => item.productName !== '배송비')
+      .reduce((sum, item) => sum + item.totalQuantity, 0)
+    
+    // 20장 미만일 때 배송비 3000원 추가
+    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+    
+    // 배송비 아이템 추가
     const itemsWithShipping = [...groupedItems]
+    if (shippingFee > 0) {
+      itemsWithShipping.push({
+        productName: '배송비',
+        color: '-',
+        totalQuantity: 1,
+        unitPrice: shippingFee,
+        totalPrice: shippingFee,
+        supplyAmount: shippingFee,
+        taxAmount: 0 // 배송비는 부가세 없음
+      })
+    }
 
     console.log('🔍 최종 처리 데이터:', {
       companyName: data.companyName,
       customerGrade: data.customerGrade,
       date: data.shippedAt,
-      itemsCount: itemsWithShipping.length
+      itemsCount: itemsWithShipping.length,
+      totalShippedQuantity,
+      shippingFee
     })
 
     return processTemplate(

@@ -19,7 +19,8 @@ import {
   Users,
   TrendingUp,
   Upload,
-  ChevronDown
+  ChevronDown,
+  RefreshCw
 } from 'lucide-react'
 
 export function OrdersPage() {
@@ -35,14 +36,56 @@ export function OrdersPage() {
     allocateInventory,
     toggleOrderSelection,
     toggleAllSelection,
-    updateFilters
+    updateFilters,
+    refreshOrders
   } = useOrderManagement()
 
-  const [selectedDate, setSelectedDate] = useState(() => {
-    // 한국 시간 기준으로 오늘 날짜
+  // 오후 3시 기준 날짜 계산 (주말 주문 월요일 처리 포함)
+  const getDateBasedOn3PM = () => {
+    // 한국 시간으로 현재 시간 가져오기
     const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
-    return koreaTime.toISOString().split('T')[0]
+    const koreaTimeString = now.toLocaleString("en-US", {timeZone: "Asia/Seoul"})
+    const koreaTime = new Date(koreaTimeString)
+    const hour = koreaTime.getHours()
+    const dayOfWeek = koreaTime.getDay() // 0=일요일, 1=월요일, ..., 6=토요일
+    
+    // 날짜 계산을 위한 기준 날짜 설정
+    const targetDate = new Date(koreaTime)
+    
+    // 주말 처리 로직
+    if (dayOfWeek === 1) { // 월요일인 경우
+      // 월요일에는 주말 주문들(토~일)을 모두 표시
+      // 특별한 처리 없이 월요일 그대로 사용
+      console.log('📅 월요일 - 주말 주문 포함하여 표시')
+    } else if (dayOfWeek === 6) { // 토요일인 경우
+      if (hour >= 15) {
+        // 토요일 오후 3시 이후는 월요일로 이동
+        targetDate.setDate(targetDate.getDate() + 2) // 토요일 + 2일 = 월요일
+        console.log('📅 토요일 오후 3시 이후 - 월요일로 설정')
+      }
+    } else if (dayOfWeek === 0) { // 일요일인 경우
+      // 일요일은 항상 월요일로 이동
+      targetDate.setDate(targetDate.getDate() + 1) // 일요일 + 1일 = 월요일
+      console.log('📅 일요일 - 월요일로 설정')
+    } else {
+      // 평일 (화~금)의 경우 기존 로직 적용
+      if (hour >= 15) {
+        targetDate.setDate(targetDate.getDate() + 1)
+        console.log('📅 평일 오후 3시 이후 - 다음날로 설정')
+      }
+    }
+    
+    // YYYY-MM-DD 형식으로 반환
+    const year = targetDate.getFullYear()
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0')
+    const day = String(targetDate.getDate()).padStart(2, '0')
+    const result = `${year}-${month}-${day}`
+    
+    return result
+  }
+
+  const [selectedDate, setSelectedDate] = useState(() => {
+    return getDateBasedOn3PM()
   })
 
   const [sortBy, setSortBy] = useState<'company_name' | 'created_at' | 'total_amount'>('company_name')
@@ -604,20 +647,31 @@ export function OrdersPage() {
     }
   }
 
-  // 날짜 변경 시 오후 3시 기준 조회
-  const handleDateChange = (date: string) => {
+  // 날짜 변경 시 오후 3시 기준 조회 및 자동 할당
+  const handleDateChange = async (date: string) => {
     setSelectedDate(date)
     updateFilters({ 
       startDate: date,
       is_3pm_based: true,
       status: 'all'  // 모든 상태 조회 (일반 모드에서는 모든 주문 표시)
     })
+    
+    // 날짜 변경 후 자동 할당 실행
+    setTimeout(async () => {
+      await handleAutoAllocation()
+    }, 1000) // 주문 조회 완료 후 실행
   }
 
 
 
   // 주문 아이템 수정 함수 (수량만 변경 가능)
   const handleUpdateOrderItem = async (orderId: string, itemId: string, value: number) => {
+    console.log('🔄 [클라이언트] 주문 수량 수정 시작:', {
+      orderId,
+      itemId,
+      newQuantity: value
+    })
+
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/items`, {
         method: 'PUT',
@@ -630,27 +684,28 @@ export function OrdersPage() {
         }),
       })
 
+      console.log('📡 [클라이언트] API 응답 상태:', response.status)
+
       const result = await response.json()
+
+      console.log('📡 [클라이언트] API 응답 내용:', result)
 
       if (result.success) {
         showSuccess('주문 수량이 수정되었습니다.')
+        console.log('✅ [클라이언트] 주문 수량 수정 성공')
         // 현재 날짜로 주문 목록 새로고침 (전체 목록 변경 방지)
         await fetchTodayOrders()
       } else {
         showError(result.error || '주문 수량 수정에 실패했습니다.')
+        console.error('❌ [클라이언트] 주문 수량 수정 실패:', result.error)
       }
     } catch (error) {
-      console.error('주문 수량 수정 오류:', error)
+      console.error('❌ [클라이언트] 주문 수량 수정 오류:', error)
       showError('주문 수량 수정 중 오류가 발생했습니다.')
     } finally {
       setEditingItem(null)
     }
   }
-
-  // 초기 로딩 시 오늘 날짜로 조회
-  useEffect(() => {
-    fetchTodayOrders()
-  }, [])
 
   // 드롭다운 외부 클릭 시 닫기
   useEffect(() => {
@@ -733,10 +788,69 @@ export function OrdersPage() {
     }
   }
 
-  // 페이지 초기화 시 오늘 주문 자동 조회
+  // 페이지 초기화 시 오늘 주문 자동 조회 및 자동 할당
   useEffect(() => {
-    fetchTodayOrders()
+    const initializePage = async () => {
+      await fetchTodayOrders()
+      // 주문 조회 후 자동 할당 실행
+      await handleAutoAllocation()
+    }
+    
+    initializePage()
   }, [])
+
+  // 페이지 로드 시 자동 재고 할당
+  const handleAutoAllocation = async () => {
+    try {
+      console.log('🔄 [자동 할당] 페이지 로드 시 미출고 주문 자동 할당 시작')
+      
+      const response = await fetch('/api/admin/orders/auto-allocation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+
+      if (result.success && result.data?.allocated > 0) {
+        console.log('✅ [자동 할당] 페이지 로드 시 자동 할당 완료:', result.data)
+        // 주문 목록 새로고침 (토스트 메시지 제거)
+        await fetchTodayOrders()
+      } else {
+        console.log('📋 [자동 할당] 할당할 미출고 주문이 없습니다.')
+      }
+    } catch (error) {
+      console.error('❌ [자동 할당] 페이지 로드 시 자동 할당 오류:', error)
+    }
+  }
+
+  // 할당재고 기준 공급가액 계산 함수
+  const calculateAllocatedAmount = (order: any) => {
+    if (!order.order_items || order.order_items.length === 0) {
+      return 0
+    }
+    
+    return order.order_items.reduce((sum: number, item: any) => {
+      const allocatedQuantity = item.shipped_quantity || 0
+      const unitPrice = item.unit_price || 0
+      
+      // 할당된 수량에 대한 실제 제품가격 계산
+      const allocatedAmount = allocatedQuantity * unitPrice
+      
+      return sum + allocatedAmount
+    }, 0)
+  }
+
+  // 미출고 여부 확인 함수
+  const isUnshippedOrder = (order: any) => {
+    if (!order.order_items || order.order_items.length === 0) {
+      return true
+    }
+    
+    const totalShipped = order.order_items.reduce((sum: number, item: any) => sum + (item.shipped_quantity || 0), 0)
+    return totalShipped === 0
+  }
 
   return (
     <div className="p-6 max-w-full">
@@ -763,9 +877,12 @@ export function OrdersPage() {
         <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
           <h2 className="text-lg font-semibold text-blue-900 mb-2">📋 새로운 주문 관리 플로우</h2>
           <div className="text-sm text-blue-800 space-y-1">
+            <p><strong>⏰ 오후 3시 기준 운영:</strong> 현재 {new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false })} - 오후 3시 이후 주문은 다음날 처리</p>
+            <p><strong>📅 주말 주문 처리:</strong> 토요일 오후 3시 이후 및 일요일 주문은 월요일에 일괄 처리</p>
+            <p><strong>🔄 자동 재고 할당:</strong> 페이지 로드 시 미출고 주문 자동 할당 처리</p>
             <p><strong>1. 확정전 명세서 다운로드</strong> - 엑셀 템플릿 파일 다운로드</p>
             <p><strong>2. 포장 및 재고 체크</strong> - 엑셀 자료 반영 (수동 과정)</p>
-            <p><strong>3. 수량 수정</strong> - 필요 시 주문 수량 수정</p>
+            <p><strong>3. 수량 수정</strong> - 필요 시 주문 수량 수정 (자동 재고 할당)</p>
             <p><strong>4. 확정 명세서 생성 및 이메일 발송</strong> - 마일리지 차감 및 고객 통보</p>
             <p><strong>5. 운송장 번호 등록 및 출고처리</strong> - 엑셀 자료 업로드 후 최종 출고</p>
           </div>
@@ -826,6 +943,17 @@ export function OrdersPage() {
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            
+            {/* 새로고침 버튼 추가 */}
+            <Button
+              onClick={refreshOrders}
+              disabled={loading}
+              variant="outline"
+              className="text-xs px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-300"
+            >
+              <RefreshCw className={`w-3 h-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+              새로고침
+            </Button>
             
             <div className="text-xs text-gray-500">
               '* 오후 3시 기준 조회 (전날 15:00 ~ 당일 14:59)'
@@ -1107,28 +1235,67 @@ export function OrdersPage() {
                                     <div className="flex items-center gap-1">
                                       <span className="text-gray-700">수량:</span>
                                       {editingItem?.orderId === order.id && editingItem?.itemId === item.id ? (
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          defaultValue={item.quantity}
-                                          className="w-16 px-1 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                          autoFocus
-                                          onBlur={(e) => {
-                                            const value = parseInt(e.target.value) || 0
-                                            if (value !== item.quantity) {
-                                              handleUpdateOrderItem(order.id, item.id, value)
-                                            } else {
-                                              setEditingItem(null)
-                                            }
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                              e.currentTarget.blur()
-                                            } else if (e.key === 'Escape') {
-                                              setEditingItem(null)
-                                            }
-                                          }}
-                                        />
+                                        <div className="flex items-center space-x-1">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            defaultValue={item.quantity}
+                                            className="w-16 px-1 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            autoFocus
+                                            onBlur={(e) => {
+                                              const value = parseInt(e.target.value) || 0
+                                              if (value !== item.quantity) {
+                                                if (confirm(`수량을 ${item.quantity}개에서 ${value}개로 변경하시겠습니까?`)) {
+                                                  handleUpdateOrderItem(order.id, item.id, value)
+                                                } else {
+                                                  setEditingItem(null)
+                                                }
+                                              } else {
+                                                setEditingItem(null)
+                                              }
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                const value = parseInt(e.currentTarget.value) || 0
+                                                if (value !== item.quantity) {
+                                                  if (confirm(`수량을 ${item.quantity}개에서 ${value}개로 변경하시겠습니까?`)) {
+                                                    handleUpdateOrderItem(order.id, item.id, value)
+                                                  } else {
+                                                    setEditingItem(null)
+                                                  }
+                                                } else {
+                                                  setEditingItem(null)
+                                                }
+                                              } else if (e.key === 'Escape') {
+                                                setEditingItem(null)
+                                              }
+                                            }}
+                                          />
+                                          <button
+                                            onClick={() => {
+                                              const input = document.querySelector('input[type="number"]:focus') as HTMLInputElement
+                                              if (input) {
+                                                const value = parseInt(input.value) || 0
+                                                if (value !== item.quantity) {
+                                                  handleUpdateOrderItem(order.id, item.id, value)
+                                                } else {
+                                                  setEditingItem(null)
+                                                }
+                                              }
+                                            }}
+                                            className="px-1 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                                            title="변경"
+                                          >
+                                            ✓
+                                          </button>
+                                          <button
+                                            onClick={() => setEditingItem(null)}
+                                            className="px-1 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600"
+                                            title="취소"
+                                          >
+                                            ✕
+                                          </button>
+                                        </div>
                                       ) : (
                                         <span 
                                           className="text-gray-700 cursor-pointer hover:text-blue-600 hover:underline"
@@ -1203,7 +1370,25 @@ export function OrdersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          {formatCurrency(order.total_amount)}
+                          {(() => {
+                            const allocatedAmount = calculateAllocatedAmount(order)
+                            const isUnshipped = isUnshippedOrder(order)
+                            
+                            if (isUnshipped) {
+                              return (
+                                <div>
+                                  <div className="text-gray-500">₩0</div>
+                                  <div className="text-xs text-gray-400">미출고</div>
+                                </div>
+                              )
+                            } else {
+                              return (
+                                <div>
+                                  <div>{formatCurrency(allocatedAmount)}</div>
+                                </div>
+                              )
+                            }
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -1223,10 +1408,10 @@ export function OrdersPage() {
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <span className="text-blue-700">총 주문 금액:</span>
+              <span className="text-blue-700">총 할당 공급가액:</span>
               <span className="font-medium text-blue-900 ml-2">
                 {formatCurrency(
-                  selectedOrdersData.reduce((sum, order) => sum + order.total_amount, 0)
+                  selectedOrdersData.reduce((sum, order) => sum + calculateAllocatedAmount(order), 0)
                 )}
               </span>
             </div>

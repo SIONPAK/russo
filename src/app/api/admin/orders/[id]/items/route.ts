@@ -73,19 +73,71 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             p_size: currentItem.size
           })
 
+        console.log('🔍 [수량 수정] 가용 재고 확인 결과:', {
+          productId: currentItem.product_id,
+          color: currentItem.color,
+          size: currentItem.size,
+          availableStock: availableStock,
+          stockError: stockError,
+          quantityDiff: quantityDiff,
+          currentQuantity: oldQuantity,
+          newQuantity: quantity
+        })
+
+        // 현재 상품 정보도 함께 조회하여 로그 출력
+        const { data: productInfo, error: productError } = await supabase
+          .from('products')
+          .select('id, name, code, inventory_options, stock_quantity')
+          .eq('id', currentItem.product_id)
+          .single()
+
+        console.log('🔍 [수량 수정] 상품 정보:', {
+          product: productInfo,
+          productError: productError
+        })
+
         let additionalShippable = 0
 
         if (!stockError && availableStock >= quantityDiff) {
-          // 가용재고가 충분한 경우 - 바로 할당
-          additionalShippable = quantityDiff
+          // 가용재고가 충분한 경우 - 전체 미출고 수량 확인하여 모두 할당
+          const totalUnshipped = quantity - currentShippedQuantity
+          const maxAllocatable = Math.min(totalUnshipped, availableStock)
           
-          console.log('✅ [가용재고 충분] 바로 할당 가능:', {
+          console.log('✅ [가용재고 충분] 전체 미출고 수량 할당 시작:', {
             productId: currentItem.product_id,
             color: currentItem.color,
             size: currentItem.size,
-            requestedQuantity: quantityDiff,
-            availableStock: availableStock
+            totalQuantity: quantity,
+            currentShippedQuantity: currentShippedQuantity,
+            totalUnshipped: totalUnshipped,
+            availableStock: availableStock,
+            maxAllocatable: maxAllocatable
           })
+
+          if (maxAllocatable > 0) {
+            // 전체 미출고 수량에 대해 재고 할당 수행
+            const { data: allocationResult, error: allocationError } = await supabase
+              .rpc('allocate_stock', {
+                p_product_id: currentItem.product_id,
+                p_quantity: maxAllocatable,
+                p_color: currentItem.color,
+                p_size: currentItem.size
+              })
+
+            if (allocationError || !allocationResult) {
+              console.error('❌ [재고 할당 실패]:', allocationError)
+              additionalShippable = 0
+            } else {
+              additionalShippable = maxAllocatable
+              console.log('✅ [재고 할당 성공] 전체 미출고 수량 할당 완료:', {
+                productId: currentItem.product_id,
+                color: currentItem.color,
+                size: currentItem.size,
+                allocatedQuantity: maxAllocatable,
+                newTotalShipped: currentShippedQuantity + maxAllocatable
+              })
+            }
+          }
         } else {
           // 가용재고가 부족한 경우 - 시간순 재할당 수행
           console.log('⚠️ [가용재고 부족] 시간순 재할당 수행:', {

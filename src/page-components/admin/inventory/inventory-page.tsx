@@ -35,6 +35,8 @@ interface InventoryOption {
   size: string
   stock_quantity: number
   additional_price?: number
+  physical_stock?: number
+  allocated_stock?: number
 }
 
 interface Product {
@@ -160,7 +162,7 @@ export function InventoryPage() {
     }
   }
 
-  // 통계 계산
+  // 통계 계산 (새로운 재고 구조 반영)
   const calculateStats = (productList: Product[]) => {
     let totalStock = 0
     let totalValue = 0
@@ -170,9 +172,16 @@ export function InventoryPage() {
     productList.forEach(product => {
       if (product.inventory_options && product.inventory_options.length > 0) {
         product.inventory_options.forEach(option => {
-          const quantity = option.stock_quantity || 0
+          // 새로운 구조 우선 확인
+          let quantity = 0
+          if (option.physical_stock !== undefined && option.allocated_stock !== undefined) {
+            quantity = Math.max(0, (option.physical_stock || 0) - (option.allocated_stock || 0))
+          } else {
+            quantity = option.stock_quantity || 0
+          }
+          
           totalStock += quantity
-          totalValue += quantity * product.price
+          totalValue += quantity * (product.price + (option.additional_price || 0))
           if (quantity === 0) outOfStockCount++
           else if (quantity <= 10) lowStockCount++
         })
@@ -201,6 +210,36 @@ export function InventoryPage() {
     if (quantity === 0) return 'out_of_stock'
     if (quantity <= 10) return 'low'
     return 'normal'
+  }
+
+  // 재고 수량 계산 (새로운 구조 반영)
+  const getStockQuantity = (option: any) => {
+    if (option.physical_stock !== undefined && option.allocated_stock !== undefined) {
+      return Math.max(0, (option.physical_stock || 0) - (option.allocated_stock || 0))
+    }
+    return option.stock_quantity || 0
+  }
+
+  // 물리적 재고 표시 (새로운 구조에서만)
+  const getPhysicalStock = (option: any) => {
+    if (option.physical_stock !== undefined) {
+      return option.physical_stock || 0
+    }
+    return null
+  }
+
+  // 할당된 재고 표시 (새로운 구조에서만)
+  const getAllocatedStock = (option: any) => {
+    if (option.allocated_stock !== undefined) {
+      return option.allocated_stock || 0
+    }
+    return null
+  }
+
+  // 재고 상태 판단 (옵션 객체 기준)
+  const getStockStatusForOption = (option: any) => {
+    const quantity = getStockQuantity(option)
+    return getStockStatus(quantity)
   }
 
   const getStatusColor = (status: string) => {
@@ -267,23 +306,52 @@ export function InventoryPage() {
     try {
       setAdjusting(adjustmentId)
       
+      const requestData = {
+        adjustment,
+        color: adjustmentModal.color,
+        size: adjustmentModal.size,
+        reason: adjustmentReason
+      }
+      
+      console.log('🔄 재고 조정 API 호출 시작:', {
+        productId: adjustmentModal.productId,
+        requestData,
+        adjustmentType
+      })
+      
       const response = await fetch(`/api/admin/products/${adjustmentModal.productId}/stock`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          adjustment,
-          color: adjustmentModal.color,
-          size: adjustmentModal.size,
-          reason: adjustmentReason
-        })
+        body: JSON.stringify(requestData)
       })
 
       const result = await response.json()
+      
+      console.log('📦 재고 조정 API 응답:', result)
 
       if (result.success) {
-        showSuccess(`재고가 ${adjustmentType === 'add' ? '증가' : '감소'}되었습니다.`)
+        let message = `재고가 ${adjustmentType === 'add' ? '증가' : '감소'}되었습니다.`
+        
+        // 재할당 결과가 있는 경우 추가 정보 표시
+        if (result.data.allocation) {
+          const allocation = result.data.allocation
+          console.log('🔄 재할당 결과:', allocation)
+          
+          if (allocation.success) {
+            if (adjustmentType === 'add' && allocation.allocations && allocation.allocations.length > 0) {
+              message += ` 추가로 ${allocation.allocations.length}건의 주문에 재고가 자동 할당되었습니다.`
+            } else if (adjustmentType === 'subtract' && allocation.reallocations && allocation.reallocations.length > 0) {
+              message += ` ${allocation.reallocations.length}건의 주문이 시간순으로 재할당되었습니다.`
+            }
+          }
+        } else {
+          console.log('⚠️ 재할당 결과가 없습니다.')
+        }
+        
+        showSuccess(message)
+        showInfo('주문 관리 페이지에서 변경된 재고 할당 상태를 확인하세요.')
         await fetchProducts()
         closeAdjustmentModal()
       } else {
@@ -524,10 +592,24 @@ export function InventoryPage() {
         
         const result = await response.json()
         if (result.success) {
-          showSuccess(`${result.data.successCount}개의 재고가 업데이트되었습니다.`)
+          let message = `${result.data.successCount}개의 재고가 업데이트되었습니다.`
+          
+          // 재할당 결과가 있는 경우 추가 정보 표시
+          if (result.data.allocationResults && result.data.allocationResults.length > 0) {
+            const totalAllocations = result.data.allocationResults.reduce((sum: number, item: any) => {
+              return sum + (item.allocations?.length || 0) + (item.deallocations?.length || 0)
+            }, 0)
+            
+            if (totalAllocations > 0) {
+              message += ` ${totalAllocations}건의 주문에 재고 재할당이 수행되었습니다.`
+            }
+          }
+          
+          showSuccess(message)
           if (result.data.errorCount > 0) {
             showError(`${result.data.errorCount}개의 오류가 발생했습니다.`)
           }
+          showInfo('주문 관리 페이지에서 변경된 재고 할당 상태를 확인하세요.')
           await fetchProducts() // 목록 새로고침
         } else {
           throw new Error(result.error)
@@ -954,11 +1036,11 @@ export function InventoryPage() {
                                 {option.color} / {option.size}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                                {(option.stock_quantity || 0).toLocaleString()}개
+                                {getStockQuantity(option).toLocaleString()}개
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(getStockStatus(option.stock_quantity || 0))}`}>
-                                  {getStatusText(getStockStatus(option.stock_quantity || 0))}
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(getStockStatusForOption(option))}`}>
+                                  {getStatusText(getStockStatusForOption(option))}
                                 </span>
                               </td>
                               {index === 0 && (
@@ -970,13 +1052,13 @@ export function InventoryPage() {
                                 {option.additional_price ? formatCurrency(option.additional_price) : '-'}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                                {formatCurrency((option.stock_quantity || 0) * (product.price + (option.additional_price || 0)))}
+                                {formatCurrency(getStockQuantity(option) * (product.price + (option.additional_price || 0)))}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                                 <Button 
                                   size="sm" 
                                   variant="outline"
-                                  onClick={() => openAdjustmentModal(product.id, product.name, option.stock_quantity, option.color, option.size)}
+                                  onClick={() => openAdjustmentModal(product.id, product.name, getStockQuantity(option), option.color, option.size)}
                                   disabled={adjusting === `${product.id}-${option.color}-${option.size}`}
                                 >
                                   <Edit className="h-3 w-3 mr-1" />

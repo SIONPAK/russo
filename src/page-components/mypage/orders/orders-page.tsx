@@ -129,12 +129,32 @@ export function OrdersPage() {
   const { isAuthenticated, user } = useAuthStore()
   const [activeTab, setActiveTab] = useState<'purchase' | 'sample' | 'unshipped'>('purchase')
   
+  // 오후 3시 기준 날짜 계산 함수
+  const getDateBasedOn3PM = () => {
+    const now = new Date()
+    const koreaTimeString = now.toLocaleString("en-US", {timeZone: "Asia/Seoul"})
+    const koreaTime = new Date(koreaTimeString)
+    const hour = koreaTime.getHours()
+    
+    // 오후 3시 이후면 다음날로 설정
+    if (hour >= 15) {
+      koreaTime.setDate(koreaTime.getDate() + 1)
+    }
+    
+    const year = koreaTime.getFullYear()
+    const month = String(koreaTime.getMonth() + 1).padStart(2, '0')
+    const day = String(koreaTime.getDate()).padStart(2, '0')
+    
+    return `${year}-${month}-${day}`
+  }
+  
   // 발주 주문 관련 상태 (기존 일반 주문 상태를 발주용으로 변경)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [dateRange, setDateRange] = useState<'today' | '1month' | '3month' | '6month' | 'all'>('all')
+  const [dateRange, setDateRange] = useState<'today' | '1month' | '3month' | '6month' | 'all'>('today')
+  const [selectedDate, setSelectedDate] = useState(() => getDateBasedOn3PM()) // 오후 3시 기준 날짜로 초기화
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -151,7 +171,8 @@ export function OrdersPage() {
   
   // 샘플 주문 전용 필터 상태
   const [sampleStatusFilter, setSampleStatusFilter] = useState('')
-  const [sampleDateRange, setSampleDateRange] = useState<'today' | '1month' | '3month' | '6month' | 'all'>('all')
+  const [sampleDateRange, setSampleDateRange] = useState<'today' | '1month' | '3month' | '6month' | 'all'>('today')
+  const [sampleSelectedDate, setSampleSelectedDate] = useState(() => getDateBasedOn3PM()) // 샘플 주문도 오후 3시 기준
   const [sampleStartDate, setSampleStartDate] = useState('')
   const [sampleEndDate, setSampleEndDate] = useState('')
 
@@ -159,68 +180,212 @@ export function OrdersPage() {
   const [unshippedStatements, setUnshippedStatements] = useState<any[]>([])
   const [unshippedLoading, setUnshippedLoading] = useState(false)
 
-  // 날짜 범위 설정 (일반 주문용)
-  const setDateRangeFilter = (range: 'today' | '1month' | '3month' | '6month' | 'all') => {
-    setDateRange(range)
-    const today = new Date()
-    const endDateStr = today.toISOString().split('T')[0]
+  // 오후 3시 기준 발주 내역 조회 함수
+  const fetchPurchaseOrdersBy3PM = async (selectedDate: string) => {
+    if (!user) return
     
-    let startDateStr = ''
-    if (range === 'today') {
-      startDateStr = endDateStr
-    } else if (range !== 'all') {
-      const startDateObj = new Date(today)
-      const months = range === '1month' ? 1 : range === '3month' ? 3 : 6
-      startDateObj.setMonth(startDateObj.getMonth() - months)
-      startDateStr = startDateObj.toISOString().split('T')[0]
+    try {
+      setLoading(true)
+      
+      // 프론트엔드에서 오후 3시 기준 날짜 범위 계산
+      const dateObj = new Date(selectedDate + 'T00:00:00')
+      
+      // 전날 15:00 (한국) = 전날 06:00 (UTC)
+      const startTimeUTC = new Date(Date.UTC(
+        dateObj.getFullYear(), 
+        dateObj.getMonth(), 
+        dateObj.getDate() - 1, 
+        6, 0, 0
+      ))
+      
+      // 당일 14:59 (한국) = 당일 05:59 (UTC)
+      const endTimeUTC = new Date(Date.UTC(
+        dateObj.getFullYear(), 
+        dateObj.getMonth(), 
+        dateObj.getDate(), 
+        5, 59, 59
+      ))
+      
+      // API 엔드포인트를 사용하여 발주 내역 조회
+      const params = new URLSearchParams({
+        type: 'purchase',
+        startDate: startTimeUTC.toISOString(),
+        endDate: endTimeUTC.toISOString(),
+        userId: user.id,
+        is_3pm_based: 'true',
+        limit: '100'
+      })
+      
+      const response = await fetch(`/api/orders?${params}`)
+      const result = await response.json()
+      
+      if (response.ok) {
+        setOrders(result.orders || [])
+        setTotalCount(result.orders?.length || 0)
+      } else {
+        console.error('발주 내역 조회 실패:', result.error)
+        setOrders([])
+        setTotalCount(0)
+      }
+    } catch (error) {
+      console.error('발주 내역 조회 오류:', error)
+      setOrders([])
+      setTotalCount(0)
+    } finally {
+      setLoading(false)
     }
-    
-    setStartDate(startDateStr)
-    setEndDate(range === 'all' ? '' : endDateStr)
-    setCurrentPage(1)
-    
-    // 일반 주문 데이터 즉시 로드
-    setTimeout(() => {
-      fetchOrdersWithParams(1, startDateStr, range === 'all' ? '' : endDateStr)
-    }, 50)
   }
 
-  // 날짜 범위 설정 (샘플 주문용)
+  // 오후 3시 기준 샘플 주문 조회 함수
+  const fetchSampleOrdersBy3PM = async (selectedDate: string) => {
+    if (!user) return
+    
+    try {
+      setSampleLoading(true)
+      
+      // 프론트엔드에서 오후 3시 기준 날짜 범위 계산
+      const dateObj = new Date(selectedDate + 'T00:00:00')
+      
+      // 전날 15:00 (한국) = 전날 06:00 (UTC)
+      const startTimeUTC = new Date(Date.UTC(
+        dateObj.getFullYear(), 
+        dateObj.getMonth(), 
+        dateObj.getDate() - 1, 
+        6, 0, 0
+      ))
+      
+      // 당일 14:59 (한국) = 당일 05:59 (UTC)
+      const endTimeUTC = new Date(Date.UTC(
+        dateObj.getFullYear(), 
+        dateObj.getMonth(), 
+        dateObj.getDate(), 
+        5, 59, 59
+      ))
+      
+      // API 엔드포인트를 사용하여 샘플 주문 조회
+      const params = new URLSearchParams({
+        type: 'sample',
+        startDate: startTimeUTC.toISOString(),
+        endDate: endTimeUTC.toISOString(),
+        userId: user.id,
+        is_3pm_based: 'true',
+        limit: '100'
+      })
+      
+      const response = await fetch(`/api/orders?${params}`)
+      const result = await response.json()
+      
+      if (response.ok) {
+        setSampleOrders(result.orders || [])
+        setSampleTotal(result.orders?.length || 0)
+      } else {
+        console.error('샘플 주문 조회 실패:', result.error)
+        setSampleOrders([])
+        setSampleTotal(0)
+      }
+    } catch (error) {
+      console.error('샘플 주문 조회 오류:', error)
+      setSampleOrders([])
+      setSampleTotal(0)
+    } finally {
+      setSampleLoading(false)
+    }
+  }
+
+  // 날짜 범위 설정 (일반 주문용) - 오후 3시 기준으로 수정
+  const setDateRangeFilter = (range: 'today' | '1month' | '3month' | '6month' | 'all') => {
+    setDateRange(range)
+    
+    if (range === 'today') {
+      const todayDate = getDateBasedOn3PM()
+      setSelectedDate(todayDate)
+      fetchPurchaseOrdersBy3PM(todayDate)
+    } else {
+      // 기간 범위 선택 시 기존 로직 유지
+      const today = new Date()
+      const endDateStr = today.toISOString().split('T')[0]
+      
+      let startDateStr = ''
+      if (range !== 'all') {
+        const startDateObj = new Date(today)
+        const months = range === '1month' ? 1 : range === '3month' ? 3 : 6
+        startDateObj.setMonth(startDateObj.getMonth() - months)
+        startDateStr = startDateObj.toISOString().split('T')[0]
+      }
+      
+      setStartDate(startDateStr)
+      setEndDate(range === 'all' ? '' : endDateStr)
+      setCurrentPage(1)
+      
+      // 기간 범위 조회 시 기존 함수 사용
+      setTimeout(() => {
+        fetchOrdersWithParams(1, startDateStr, range === 'all' ? '' : endDateStr)
+      }, 50)
+    }
+  }
+
+  // 날짜 범위 설정 (샘플 주문용) - 오후 3시 기준으로 수정
   const setSampleDateRangeFilter = (range: 'today' | '1month' | '3month' | '6month' | 'all') => {
     setSampleDateRange(range)
-    const today = new Date()
-    const endDateStr = today.toISOString().split('T')[0]
     
-    let startDateStr = ''
     if (range === 'today') {
-      startDateStr = endDateStr
-    } else if (range !== 'all') {
-      const startDateObj = new Date(today)
-      const months = range === '1month' ? 1 : range === '3month' ? 3 : 6
-      startDateObj.setMonth(startDateObj.getMonth() - months)
-      startDateStr = startDateObj.toISOString().split('T')[0]
+      const todayDate = getDateBasedOn3PM()
+      setSampleSelectedDate(todayDate)
+      fetchSampleOrdersBy3PM(todayDate)
+    } else {
+      // 기간 범위 선택 시 기존 로직 유지
+      const today = new Date()
+      const endDateStr = today.toISOString().split('T')[0]
+      
+      let startDateStr = ''
+      if (range !== 'all') {
+        const startDateObj = new Date(today)
+        const months = range === '1month' ? 1 : range === '3month' ? 3 : 6
+        startDateObj.setMonth(startDateObj.getMonth() - months)
+        startDateStr = startDateObj.toISOString().split('T')[0]
+      }
+      
+      setSampleStartDate(startDateStr)
+      setSampleEndDate(range === 'all' ? '' : endDateStr)
+      setSamplePage(1)
+      
+      // 기간 범위 조회 시 기존 함수 사용
+      setTimeout(() => {
+        fetchSampleOrdersWithParams(1, startDateStr, range === 'all' ? '' : endDateStr)
+      }, 50)
     }
-    
-    setSampleStartDate(startDateStr)
-    setSampleEndDate(range === 'all' ? '' : endDateStr)
-    setSamplePage(1)
-    
-    // 샘플 주문 데이터 즉시 로드
-    setTimeout(() => {
-      fetchSampleOrdersWithParams(1, startDateStr, range === 'all' ? '' : endDateStr)
-    }, 50)
+  }
+
+  // 날짜 직접 선택 시 오후 3시 기준 조회
+  const handleDateChange = (date: string) => {
+    setSelectedDate(date)
+    fetchPurchaseOrdersBy3PM(date)
+  }
+
+  // 샘플 주문 날짜 직접 선택 시 오후 3시 기준 조회
+  const handleSampleDateChange = (date: string) => {
+    setSampleSelectedDate(date)
+    fetchSampleOrdersBy3PM(date)
   }
 
   // 검색 실행
   const handleSearch = () => {
-    setCurrentPage(1)
-    fetchOrders(1)
+    if (dateRange === 'today') {
+      fetchPurchaseOrdersBy3PM(selectedDate)
+    } else {
+      setCurrentPage(1)
+      fetchOrders(1)
+    }
   }
 
   // 샘플 주문 검색 실행
   const handleSampleSearch = () => {
-    setSamplePage(1)
-    fetchSampleOrders(1)
+    if (sampleDateRange === 'today') {
+      fetchSampleOrdersBy3PM(sampleSelectedDate)
+    } else {
+      setSamplePage(1)
+      fetchSampleOrders(1)
+    }
   }
 
   // 초기 데이터 로드
@@ -228,9 +393,11 @@ export function OrdersPage() {
     if (user?.id) {
       // 현재 활성 탭에 따라 해당 데이터만 로드
       if (activeTab === 'purchase') {
-        fetchOrders()
-      } else {
-        fetchSampleOrders()
+        // 오늘 날짜로 초기화하여 오후 3시 기준 조회
+        fetchPurchaseOrdersBy3PM(selectedDate)
+      } else if (activeTab === 'sample') {
+        // 샘플 주문도 오후 3시 기준 조회
+        fetchSampleOrdersBy3PM(sampleSelectedDate)
       }
     }
   }, [user?.id])
@@ -239,9 +406,9 @@ export function OrdersPage() {
   useEffect(() => {
     if (user?.id && activeTab) {
       if (activeTab === 'purchase') {
-        fetchOrders(1)
+        fetchPurchaseOrdersBy3PM(selectedDate)
       } else if (activeTab === 'sample') {
-        fetchSampleOrders(1)
+        fetchSampleOrdersBy3PM(sampleSelectedDate)
       }
     }
   }, [activeTab, user?.id])
@@ -249,7 +416,11 @@ export function OrdersPage() {
   // 샘플 주문 상태 필터 변경 시 데이터 다시 로드
   useEffect(() => {
     if (user?.id && activeTab === 'sample') {
-      fetchSampleOrders(1)
+      if (sampleDateRange === 'today') {
+        fetchSampleOrdersBy3PM(sampleSelectedDate)
+      } else {
+        fetchSampleOrders(1)
+      }
     }
   }, [sampleStatusFilter, user?.id, activeTab])
 
@@ -739,15 +910,8 @@ export function OrdersPage() {
             <div className="flex items-center gap-4">
               <input
                 type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-black"
-              />
-              <span className="text-gray-500">~</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                value={selectedDate}
+                onChange={(e) => handleDateChange(e.target.value)}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-black"
               />
               <Button
@@ -756,6 +920,9 @@ export function OrdersPage() {
               >
                 조회
               </Button>
+              <div className="text-xs text-gray-500">
+                * 오후 3시 기준 조회 (전날 15:00 ~ 당일 14:59)
+              </div>
             </div>
           </div>
 
@@ -1158,15 +1325,8 @@ export function OrdersPage() {
             <div className="flex items-center gap-4">
               <input
                 type="date"
-                value={sampleStartDate}
-                onChange={(e) => setSampleStartDate(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-black"
-              />
-              <span className="text-gray-500">~</span>
-              <input
-                type="date"
-                value={sampleEndDate}
-                onChange={(e) => setSampleEndDate(e.target.value)}
+                value={sampleSelectedDate}
+                onChange={(e) => handleSampleDateChange(e.target.value)}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-black"
               />
               <Button

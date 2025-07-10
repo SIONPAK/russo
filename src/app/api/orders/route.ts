@@ -447,12 +447,14 @@ export async function POST(request: NextRequest) {
             p_size: item.size
           })
 
+        console.log(`📦 가용 재고 확인 - 상품: ${item.productName}, 색상: ${item.color}, 사이즈: ${item.size}, 가용: ${availableStock}개`)
+
         if (!stockError && availableStock > 0) {
           allocatedQuantity = Math.min(requestedQuantity, availableStock)
           
           if (allocatedQuantity > 0) {
             // 재고 할당 - RPC 사용
-            const { error: allocationError } = await supabase
+            const { data: allocationResult, error: allocationError } = await supabase
               .rpc('allocate_stock', {
                 p_product_id: item.productId,
                 p_quantity: allocatedQuantity,
@@ -460,17 +462,22 @@ export async function POST(request: NextRequest) {
                 p_size: item.size
               })
 
-            if (allocationError) {
+            if (allocationError || !allocationResult) {
               console.error('재고 할당 실패:', allocationError)
+              allocatedQuantity = 0 // 할당 실패 시 0으로 리셋
               allItemsFullyAllocated = false
               continue
             }
+
+            console.log(`✅ 재고 할당 성공 - 상품: ${item.productName}, 할당량: ${allocatedQuantity}개`)
           }
+        } else {
+          console.log(`❌ 가용 재고 없음 - 상품: ${item.productName}, 오류: ${stockError?.message || '없음'}`)
         }
 
-        // 주문 아이템에 할당된 수량 업데이트
+        // 주문 아이템에 할당된 수량 업데이트 (할당 성공 시에만)
         if (allocatedQuantity > 0) {
-          await supabase
+          const { error: updateError } = await supabase
             .from('order_items')
             .update({
               shipped_quantity: allocatedQuantity
@@ -479,6 +486,21 @@ export async function POST(request: NextRequest) {
             .eq('product_id', item.productId)
             .eq('color', item.color || '기본')
             .eq('size', item.size || '기본')
+
+          if (updateError) {
+            console.error('주문 아이템 업데이트 실패:', updateError)
+            // 할당된 재고 롤백
+            await supabase
+              .rpc('deallocate_stock', {
+                p_product_id: item.productId,
+                p_quantity: allocatedQuantity,
+                p_color: item.color,
+                p_size: item.size
+              })
+            allocatedQuantity = 0
+            allItemsFullyAllocated = false
+            continue
+          }
 
           // 재고 변동 이력 기록
           await supabase

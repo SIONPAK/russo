@@ -77,28 +77,59 @@ export interface OrderFilters {
 export function get3PMBasedDateRange(targetDate: string) {
   // DB에 UTC로 저장되어 있으므로 한국 시간을 UTC로 변환
   const target = new Date(targetDate)
+  const dayOfWeek = target.getDay() // 0=일요일, 1=월요일, ..., 6=토요일
   
-  // 전날 15:00 (한국 시간) = UTC 06:00
-  const prevDay = new Date(target)
-  prevDay.setDate(target.getDate() - 1)
-  const startTimeUTC = new Date(Date.UTC(
-    prevDay.getFullYear(), 
-    prevDay.getMonth(), 
-    prevDay.getDate(), 
-    6, 0, 0  // 한국 15:00 = UTC 06:00
-  ))
+  let startDay = new Date(target)
+  let endDay = new Date(target)
   
-  // 당일 14:59 (한국 시간) = UTC 05:59
-  const endTimeUTC = new Date(Date.UTC(
-    target.getFullYear(), 
-    target.getMonth(), 
-    target.getDate(), 
-    5, 59, 59  // 한국 14:59 = UTC 05:59
-  ))
-  
-  return {
-    startDate: startTimeUTC.toISOString(),
-    endDate: endTimeUTC.toISOString()
+  // 월요일인 경우 주말 주문 포함 처리
+  if (dayOfWeek === 1) {
+    // 월요일이면 금요일 15:00부터 월요일 14:59까지 조회
+    // 금요일 15:00 (한국 시간) = UTC 06:00
+    startDay.setDate(target.getDate() - 3) // 월요일 - 3일 = 금요일
+    const startTimeUTC = new Date(Date.UTC(
+      startDay.getFullYear(), 
+      startDay.getMonth(), 
+      startDay.getDate(), 
+      6, 0, 0  // 한국 15:00 = UTC 06:00
+    ))
+    
+    // 월요일 14:59 (한국 시간) = UTC 05:59
+    const endTimeUTC = new Date(Date.UTC(
+      target.getFullYear(), 
+      target.getMonth(), 
+      target.getDate(), 
+      5, 59, 59  // 한국 14:59 = UTC 05:59
+    ))
+    
+    return {
+      startDate: startTimeUTC.toISOString(),
+      endDate: endTimeUTC.toISOString()
+    }
+  } else {
+    // 평일의 경우 기존 로직 적용
+    // 전날 15:00 (한국 시간) = UTC 06:00
+    const prevDay = new Date(target)
+    prevDay.setDate(target.getDate() - 1)
+    const startTimeUTC = new Date(Date.UTC(
+      prevDay.getFullYear(), 
+      prevDay.getMonth(), 
+      prevDay.getDate(), 
+      6, 0, 0  // 한국 15:00 = UTC 06:00
+    ))
+    
+    // 당일 14:59 (한국 시간) = UTC 05:59
+    const endTimeUTC = new Date(Date.UTC(
+      target.getFullYear(), 
+      target.getMonth(), 
+      target.getDate(), 
+      5, 59, 59  // 한국 14:59 = UTC 05:59
+    ))
+    
+    return {
+      startDate: startTimeUTC.toISOString(),
+      endDate: endTimeUTC.toISOString()
+    }
   }
 }
 
@@ -222,10 +253,40 @@ export function useOrderManagement() {
   }
 
   const fetchTodayOrders = () => {
-    // 한국 시간 기준으로 오늘 날짜 구하기
+    // 오후 3시 기준 날짜 계산 (주말 주문 월요일 처리 포함)
     const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
-    const today = koreaTime.toISOString().split('T')[0]
+    const koreaTimeString = now.toLocaleString("en-US", {timeZone: "Asia/Seoul"})
+    const koreaTime = new Date(koreaTimeString)
+    const hour = koreaTime.getHours()
+    const dayOfWeek = koreaTime.getDay() // 0=일요일, 1=월요일, ..., 6=토요일
+    
+    // 날짜 계산을 위한 기준 날짜 설정
+    const targetDate = new Date(koreaTime)
+    
+    // 주말 처리 로직
+    if (dayOfWeek === 1) { // 월요일인 경우
+      // 월요일에는 주말 주문들(토~일)을 모두 표시
+      // 특별한 처리 없이 월요일 그대로 사용
+    } else if (dayOfWeek === 6) { // 토요일인 경우
+      if (hour >= 15) {
+        // 토요일 오후 3시 이후는 월요일로 이동
+        targetDate.setDate(targetDate.getDate() + 2) // 토요일 + 2일 = 월요일
+      }
+    } else if (dayOfWeek === 0) { // 일요일인 경우
+      // 일요일은 항상 월요일로 이동
+      targetDate.setDate(targetDate.getDate() + 1) // 일요일 + 1일 = 월요일
+    } else {
+      // 평일 (화~금)의 경우 기존 로직 적용
+      if (hour >= 15) {
+        targetDate.setDate(targetDate.getDate() + 1)
+      }
+    }
+    
+    // YYYY-MM-DD 형식으로 변환
+    const year = targetDate.getFullYear()
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0')
+    const day = String(targetDate.getDate()).padStart(2, '0')
+    const today = `${year}-${month}-${day}`
     
     updateFilters({ 
       startDate: today,
@@ -326,6 +387,11 @@ export function useOrderManagement() {
 
   // 초기 로딩은 페이지 컴포넌트에서 처리
 
+  // 강제 새로고침 함수
+  const refreshOrders = async () => {
+    await fetchOrders()
+  }
+
   return {
     orders,
     stats,
@@ -344,6 +410,7 @@ export function useOrderManagement() {
     toggleAllSelection,
     updateFilters,
     changePage,
-    resetFilters
+    resetFilters,
+    refreshOrders
   }
 } 

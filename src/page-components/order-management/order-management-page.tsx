@@ -193,34 +193,56 @@ export function OrderManagementPage() {
         6, 0, 0
       ))
       
-      // 당일 15:00 (한국) = 당일 06:00 (UTC) - 마감 시간까지 포함
+      // 당일 14:59 (한국) = 당일 05:59 (UTC)
       const endTimeUTC = new Date(Date.UTC(
         dateObj.getFullYear(), 
         dateObj.getMonth(), 
         dateObj.getDate(), 
-        6, 0, 0
+        5, 59, 59
       ))
       
-      // API 엔드포인트를 사용하여 발주 내역 조회 (사용자 ID 포함)
+      // API 엔드포인트를 사용하여 발주 내역 조회 (반품 포함)
       const params = new URLSearchParams({
-        type: 'purchase',
         startDate: startTimeUTC.toISOString(),
         endDate: endTimeUTC.toISOString(),
         userId: user.id,
+        is_3pm_based: 'true',
         limit: '100'
+      })
+      
+      console.log('🔍 [발주관리] API 호출 파라미터:', {
+        startDate: startTimeUTC.toISOString(),
+        endDate: endTimeUTC.toISOString(),
+        userId: user.id,
+        selectedDate: selectedDate,
+        timeRange: '15:00~14:59 기준'
       })
       
       const response = await fetch(`/api/orders?${params}`)
       const result = await response.json()
       
+      console.log('📡 [발주관리] API 응답:', {
+        status: response.status,
+        ok: response.ok,
+        resultKeys: Object.keys(result),
+        ordersCount: result.orders?.length || 0
+      })
+      
       if (response.ok) {
-        setPurchaseOrders(result.orders || [])
+        // 발주 관련 주문만 필터링 (purchase, mixed, return_only)
+        const allOrders = result.orders || []
+        const purchaseOrders = allOrders.filter((order: any) => 
+          ['purchase', 'mixed', 'return_only'].includes(order.order_type)
+        )
+        
+        setPurchaseOrders(purchaseOrders)
+        console.log('✅ [발주관리] 발주 내역 조회 성공:', purchaseOrders.length + '건 (전체: ' + allOrders.length + '건)')
       } else {
-        console.error('주문 조회 실패:', result.error)
+        console.error('❌ [발주관리] 주문 조회 실패:', result.error)
         setPurchaseOrders([])
       }
     } catch (error) {
-      console.error('주문 조회 오류:', error)
+      console.error('❌ [발주관리] 주문 조회 오류:', error)
       setPurchaseOrders([])
     } finally {
       setIsLoadingOrders(false)

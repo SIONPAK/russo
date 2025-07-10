@@ -268,6 +268,14 @@ export async function PATCH(
     
     const { adjustment, color, size, reason } = body
     
+    console.log('🔄 재고 조정 API 호출됨:', {
+      productId,
+      adjustment,
+      color,
+      size,
+      reason
+    })
+    
     if (!adjustment || adjustment === 0) {
       return NextResponse.json({
         success: false,
@@ -283,16 +291,25 @@ export async function PATCH(
       .single()
 
     if (fetchError || !product) {
+      console.error('❌ 상품 조회 실패:', fetchError)
       return NextResponse.json({
         success: false,
         error: '상품을 찾을 수 없습니다.'
       }, { status: 404 })
     }
 
+    console.log('📦 상품 정보 조회 완료:', {
+      productId: product.id,
+      currentStock: product.stock_quantity,
+      hasOptions: !!product.inventory_options?.length
+    })
+
     let allocationResults = null
 
     // 옵션별 재고 조정 - 새로운 구조 사용
     if (color && size) {
+      console.log(`🔄 옵션별 재고 조정 시작 (${color}/${size})`)
+      
       // 🔄 물리적 재고 조정 RPC 사용
       const { data: adjustResult, error: adjustError } = await supabase
         .rpc('adjust_physical_stock', {
@@ -304,7 +321,7 @@ export async function PATCH(
         })
 
       if (adjustError || !adjustResult) {
-        console.error('물리적 재고 조정 실패:', adjustError)
+        console.error('❌ 물리적 재고 조정 실패:', adjustError)
         return NextResponse.json({
           success: false,
           error: '재고 조정에 실패했습니다.'
@@ -319,8 +336,17 @@ export async function PATCH(
         allocationResults = await autoAllocateToUnshippedOrders(supabase, productId, color, size)
         console.log(`🔄 자동 할당 결과:`, allocationResults)
       }
+      
+      // 🎯 재고 차감 시 시간순 재할당 처리
+      if (adjustment < 0) {
+        console.log(`🔄 재고 차감으로 시간순 재할당 시작 - 상품: ${productId}, 색상: ${color}, 사이즈: ${size}, 차감량: ${adjustment}`)
+        allocationResults = await reallocateAfterStockReduction(supabase, productId, color, size)
+        console.log(`🔄 재할당 결과:`, allocationResults)
+      }
 
     } else {
+      console.log(`🔄 전체 재고 조정 시작`)
+      
       // 일반 재고 조정 - 새로운 구조 사용
       const { data: adjustResult, error: adjustError } = await supabase
         .rpc('adjust_physical_stock', {
@@ -332,7 +358,7 @@ export async function PATCH(
         })
 
       if (adjustError || !adjustResult) {
-        console.error('물리적 재고 조정 실패:', adjustError)
+        console.error('❌ 물리적 재고 조정 실패:', adjustError)
         return NextResponse.json({
           success: false,
           error: '재고 조정에 실패했습니다.'
@@ -360,7 +386,21 @@ export async function PATCH(
           console.error(`❌ 전체 재할당 실패:`, error)
         }
       }
+      
+      // 🎯 재고 차감 시 시간순 재할당 처리
+      if (adjustment < 0) {
+        console.log(`🔄 재고 차감으로 시간순 재할당 시작 - 상품: ${productId}, 차감량: ${adjustment}`)
+        allocationResults = await reallocateAfterStockReduction(supabase, productId)
+        console.log(`🔄 재할당 결과:`, allocationResults)
+      }
     }
+
+    console.log('📦 최종 응답 데이터:', {
+      success: true,
+      productId,
+      adjustment,
+      allocationResults
+    })
 
     return NextResponse.json({
       success: true,
@@ -375,7 +415,7 @@ export async function PATCH(
     })
 
   } catch (error) {
-    console.error('Stock adjustment error:', error)
+    console.error('❌ 재고 조정 API 오류:', error)
     return NextResponse.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -384,6 +424,260 @@ export async function PATCH(
 }
 
 
+
+// 🎯 재고 차감 후 시간순 재할당 함수
+async function reallocateAfterStockReduction(supabase: any, productId: string, color?: string, size?: string) {
+  try {
+    console.log(`🔄 재고 차감 후 전체 재할당 시작 - 상품: ${productId}, 색상: ${color}, 사이즈: ${size}`)
+    
+    // 1. 현재 물리적 재고 확인
+    const { data: currentProduct, error: productError } = await supabase
+      .from('products')
+      .select('stock_quantity, inventory_options')
+      .eq('id', productId)
+      .single()
+
+    if (productError || !currentProduct) {
+      console.error('❌ 상품 재고 조회 실패:', productError)
+      return { success: false, error: '상품 재고 조회 실패' }
+    }
+
+    let currentPhysicalStock = 0
+    
+    if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options) && color && size) {
+      const targetOption = currentProduct.inventory_options.find((opt: any) => 
+        opt.color === color && opt.size === size
+      )
+      currentPhysicalStock = targetOption ? targetOption.physical_stock : 0
+      console.log(`📦 현재 물리적 재고 (${color}/${size}): ${currentPhysicalStock}`)
+    } else {
+      // 전체 재고의 경우 물리적 재고 총합 계산
+      currentPhysicalStock = currentProduct.inventory_options 
+        ? currentProduct.inventory_options.reduce((sum: number, opt: any) => sum + (opt.physical_stock || 0), 0)
+        : currentProduct.stock_quantity || 0
+      console.log(`📦 현재 물리적 재고 (전체): ${currentPhysicalStock}`)
+    }
+
+    // 2. 해당 상품의 모든 미출고 주문 아이템 조회 (시간 빠른 순)
+    let orderItemsQuery = supabase
+      .from('order_items')
+      .select(`
+        id,
+        order_id,
+        product_id,
+        product_name,
+        color,
+        size,
+        quantity,
+        shipped_quantity,
+        orders!inner (
+          id,
+          order_number,
+          status,
+          created_at,
+          users!inner (
+            company_name
+          )
+        )
+      `)
+      .eq('product_id', productId)
+      .not('orders.status', 'in', '(shipped,delivered,cancelled,returned,refunded)')
+      .order('created_at', { ascending: true, foreignTable: 'orders' }) // 시간 빠른 순 (정방향)
+
+    // 색상/사이즈 옵션이 있는 경우 필터링
+    if (color && size) {
+      orderItemsQuery = orderItemsQuery
+        .eq('color', color)
+        .eq('size', size)
+    }
+
+    console.log(`🔍 미출고 주문 조회 시작`)
+    const { data: unshippedItems, error: itemsError } = await orderItemsQuery
+
+    if (itemsError) {
+      console.error('❌ 미출고 주문 조회 실패:', itemsError)
+      return { success: false, error: '미출고 주문 조회 실패' }
+    }
+
+    console.log(`📊 미출고 주문 조회 결과: ${unshippedItems?.length || 0}건`)
+
+    if (!unshippedItems || unshippedItems.length === 0) {
+      console.log('📋 미출고 주문이 없습니다.')
+      return { success: true, message: '미출고 주문이 없습니다.', reallocations: [] }
+    }
+
+    // 3. 모든 주문의 할당량을 초기화 (0으로 설정)
+    console.log(`🔄 기존 할당량 초기화 시작`)
+    const resetResults = []
+    
+    for (const item of unshippedItems) {
+      const { error: resetError } = await supabase
+        .from('order_items')
+        .update({
+          shipped_quantity: 0
+        })
+        .eq('id', item.id)
+
+      if (resetError) {
+        console.error('❌ 할당량 초기화 실패:', resetError)
+        continue
+      }
+
+      resetResults.push({
+        orderId: item.order_id,
+        orderNumber: item.orders.order_number,
+        previousShipped: item.shipped_quantity || 0
+      })
+    }
+
+    console.log(`✅ 할당량 초기화 완료: ${resetResults.length}건`)
+
+    // 4. 물리적 재고를 기준으로 시간 빠른 순으로 재할당
+    const reallocations = []
+    let remainingStock = currentPhysicalStock
+    
+    console.log(`🔄 재할당 시작 - 가용 재고: ${remainingStock}개`)
+    
+    for (const item of unshippedItems) {
+      if (remainingStock <= 0) break
+
+      const requestedQuantity = item.quantity
+      const allocateQuantity = Math.min(requestedQuantity, remainingStock)
+      
+      if (allocateQuantity > 0) {
+        console.log(`📝 재할당: ${item.orders.order_number} - ${allocateQuantity}개 할당 (요청: ${requestedQuantity})`)
+        
+        // 출고 수량 업데이트
+        const { error: updateError } = await supabase
+          .from('order_items')
+          .update({
+            shipped_quantity: allocateQuantity
+          })
+          .eq('id', item.id)
+
+        if (updateError) {
+          console.error('❌ 주문 아이템 업데이트 실패:', updateError)
+          continue
+        }
+
+        // 재고 변동 이력 기록
+        await supabase
+          .from('stock_movements')
+          .insert({
+            product_id: productId,
+            movement_type: 'reallocation',
+            quantity: -allocateQuantity,
+            color: color || null,
+            size: size || null,
+            notes: `재고 차감 후 전체 재할당 (${item.orders.order_number})`,
+            reference_id: item.order_id,
+            reference_type: 'order',
+            created_at: getKoreaTime()
+          })
+
+        reallocations.push({
+          orderId: item.order_id,
+          orderNumber: item.orders.order_number,
+          companyName: item.orders.users.company_name,
+          allocatedQuantity: allocateQuantity,
+          requestedQuantity: requestedQuantity,
+          isFullyAllocated: allocateQuantity >= requestedQuantity
+        })
+
+        remainingStock -= allocateQuantity
+        
+        console.log(`✅ 재할당 완료: ${item.orders.order_number} - ${allocateQuantity}개, 남은 재고: ${remainingStock}개`)
+      }
+    }
+
+    // 5. 재고 정보 업데이트 (allocated_stock 및 stock_quantity 동기화)
+    const totalAllocated = reallocations.reduce((sum, realloc) => sum + realloc.allocatedQuantity, 0)
+    
+    console.log(`🔄 재고 정보 업데이트: 총 할당량 ${totalAllocated}개`)
+    
+    if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options) && color && size) {
+      const updatedOptions = currentProduct.inventory_options.map((option: any) => {
+        if (option.color === color && option.size === size) {
+          return {
+            ...option,
+            allocated_stock: totalAllocated,
+            stock_quantity: Math.max(0, (option.physical_stock || 0) - totalAllocated)
+          }
+        }
+        return option
+      })
+
+      const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+
+      await supabase
+        .from('products')
+        .update({
+          inventory_options: updatedOptions,
+          stock_quantity: totalStock,
+          updated_at: getKoreaTime()
+        })
+        .eq('id', productId)
+    } else {
+      // 전체 재고 업데이트
+      await supabase
+        .from('products')
+        .update({
+          stock_quantity: Math.max(0, currentPhysicalStock - totalAllocated),
+          updated_at: getKoreaTime()
+        })
+        .eq('id', productId)
+    }
+
+    // 6. 영향받은 주문들의 상태 업데이트
+    const affectedOrderIds = [...new Set(reallocations.map(realloc => realloc.orderId))]
+    
+    for (const orderId of affectedOrderIds) {
+      // 해당 주문의 모든 아이템 상태 확인
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('quantity, shipped_quantity')
+        .eq('order_id', orderId)
+
+      const allFullyShipped = orderItems?.every((item: any) => 
+        (item.shipped_quantity || 0) >= item.quantity
+      )
+
+      const hasPartialShipped = orderItems?.some((item: any) => 
+        (item.shipped_quantity || 0) > 0
+      )
+
+      let newStatus = 'pending'
+      if (allFullyShipped) {
+        newStatus = 'processing' // 전량 할당 완료
+      } else if (hasPartialShipped) {
+        newStatus = 'partial' // 부분 할당
+      }
+
+      await supabase
+        .from('orders')
+        .update({ 
+          status: newStatus,
+          updated_at: getKoreaTime()
+        })
+        .eq('id', orderId)
+    }
+
+    console.log(`🎯 전체 재할당 완료: ${totalAllocated}개 할당, ${reallocations.length}개 주문 처리`)
+
+    return { 
+      success: true, 
+      message: `재고 차감 후 전체 재할당 완료: ${totalAllocated}개 할당, ${reallocations.length}개 주문 처리`, 
+      reallocations,
+      totalAllocated,
+      remainingStock,
+      affectedOrders: affectedOrderIds.length
+    }
+
+  } catch (error) {
+    console.error('❌ 재고 차감 후 전체 재할당 중 오류 발생:', error)
+    return { success: false, error: '재고 차감 후 전체 재할당 중 오류가 발생했습니다.' }
+  }
+}
 
 async function autoAllocateToUnshippedOrders(supabase: any, productId: string, color?: string, size?: string) {
   try {
