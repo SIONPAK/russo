@@ -63,10 +63,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     let shippedQuantityDiff = 0
     let newAllocatedQuantity = (currentItem as any).allocated_quantity || 0
 
-    // 재고 할당 조정 (새로운 함수 사용)
+    // 재고 할당 조정 (간단한 가용재고 기반 할당)
     if (quantityDiff !== 0) {
       if (quantityDiff > 0) {
-        // 수량 증가 - 먼저 가용재고 확인 후 시간순 재할당 수행
+        // 수량 증가 - 가용재고 확인 후 가용재고 범위 내에서만 할당
         const { data: availableStock, error: stockError } = await supabase
           .rpc('calculate_available_stock', {
             p_product_id: currentItem.product_id,
@@ -85,42 +85,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           newQuantity: quantity
         })
 
-        // 현재 상품 정보도 함께 조회하여 로그 출력
-        const { data: productInfo, error: productError } = await supabase
-          .from('products')
-          .select('id, name, code, inventory_options, stock_quantity')
-          .eq('id', currentItem.product_id)
-          .single()
-
-        console.log('🔍 [수량 수정] 상품 정보:', {
-          product: productInfo,
-          productError: productError
-        })
-
         let additionalShippable = 0
 
-        if (!stockError && availableStock >= quantityDiff) {
-          // 가용재고가 충분한 경우 - 전체 미출고 수량 확인하여 모두 할당
-          const totalUnshipped = quantity - currentShippedQuantity
-          const maxAllocatable = Math.min(totalUnshipped, availableStock)
+        // 가용재고 범위 내에서만 할당 (다른 주문의 할당재고는 건드리지 않음)
+        if (!stockError && availableStock > 0) {
+          additionalShippable = Math.min(quantityDiff, availableStock)
           
-          console.log('✅ [가용재고 충분] 전체 미출고 수량 할당 시작:', {
+          console.log('📊 [가용재고 기반 할당] 처리:', {
             productId: currentItem.product_id,
             color: currentItem.color,
             size: currentItem.size,
-            totalQuantity: quantity,
-            currentShippedQuantity: currentShippedQuantity,
-            totalUnshipped: totalUnshipped,
+            requestedQuantity: quantityDiff,
             availableStock: availableStock,
-            maxAllocatable: maxAllocatable
+            willAllocate: additionalShippable
           })
 
-          if (maxAllocatable > 0) {
-            // 전체 미출고 수량에 대해 재고 할당 수행
+          if (additionalShippable > 0) {
+            // 가용재고 범위 내에서 재고 할당 수행
             const { data: allocationResult, error: allocationError } = await supabase
               .rpc('allocate_stock', {
                 p_product_id: currentItem.product_id,
-                p_quantity: maxAllocatable,
+                p_quantity: additionalShippable,
                 p_color: currentItem.color,
                 p_size: currentItem.size
               })
@@ -129,48 +114,32 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
               console.error('❌ [재고 할당 실패]:', allocationError)
               additionalShippable = 0
             } else {
-              additionalShippable = maxAllocatable
-              console.log('✅ [재고 할당 성공] 전체 미출고 수량 할당 완료:', {
+              console.log('✅ [재고 할당 성공] 가용재고 기반 할당 완료:', {
                 productId: currentItem.product_id,
                 color: currentItem.color,
                 size: currentItem.size,
-                allocatedQuantity: maxAllocatable,
-                newTotalShipped: currentShippedQuantity + maxAllocatable
+                allocatedQuantity: additionalShippable
               })
             }
           }
         } else {
-          // 가용재고가 부족한 경우 - 가용재고만큼만 할당 (다른 주문 할당재고 건드리지 않음)
-          console.log('⚠️ [가용재고 부족] 가용재고만큼만 할당:', {
+          console.log('⚠️ [가용재고 부족] 할당 불가:', {
             productId: currentItem.product_id,
             color: currentItem.color,
             size: currentItem.size,
             requestedQuantity: quantityDiff,
             availableStock: availableStock || 0
           })
-          
-          additionalShippable = Math.min(quantityDiff, availableStock || 0)
-          
-          console.log('📊 [가용재고만 할당] 결과:', {
-            productId: currentItem.product_id,
-            color: currentItem.color,
-            size: currentItem.size,
-            requestedQuantity: quantityDiff,
-            availableStock: availableStock || 0,
-            additionalShippable: additionalShippable
-          })
         }
 
-        // 🎯 할당 수량 및 출고 수량 증가 (시간순 재할당으로 재고 확보 완료)
+        // 할당 수량 및 출고 수량 업데이트
         if (additionalShippable > 0) {
-          // 할당 수량과 출고 수량 모두 증가
           const currentAllocatedQuantity = (currentItem as any).allocated_quantity || 0
           newAllocatedQuantity = currentAllocatedQuantity + additionalShippable
-          
           newShippedQuantity = currentShippedQuantity + additionalShippable
           shippedQuantityDiff = additionalShippable
 
-          console.log('🚀 [자동 할당 및 출고] 수량 증가로 인한 자동 처리:', {
+          console.log('✅ [수량 증가] 할당 및 출고 수량 업데이트:', {
             productId: currentItem.product_id,
             color: currentItem.color,
             size: currentItem.size,
@@ -181,26 +150,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             newAllocatedQuantity: newAllocatedQuantity,
             oldShippedQuantity: currentShippedQuantity,
             newShippedQuantity: newShippedQuantity,
-            additionalShippable: additionalShippable,
-            availableStock: availableStock || 0,
-            expectedIncrease: Math.abs(quantityDiff),
-            actualIncrease: additionalShippable,
-            reclaimedFromTimeBasedReallocation: true
-          })
-
-          console.log('✅ [자동 할당 및 출고] 시간순 재할당 후 할당 및 출고 수량 증가 완료:', {
-            productId: currentItem.product_id,
-            color: currentItem.color,
-            size: currentItem.size,
-            allocatedQuantity: additionalShippable,
-            newAllocatedQuantity: newAllocatedQuantity
+            additionalShippable: additionalShippable
           })
         } else {
-          // 할당 불가능한 경우 기존 출고 수량 유지
-          newShippedQuantity = currentShippedQuantity
-          shippedQuantityDiff = 0
-          
-          console.log('❌ [할당 불가] 재고 부족으로 출고 수량 유지:', {
+          console.log('ℹ️ [수량 증가] 가용재고 부족으로 할당 없이 수량만 증가:', {
             productId: currentItem.product_id,
             color: currentItem.color,
             size: currentItem.size,
@@ -242,7 +195,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // 📝 주의: allocate_stock 사용 시에는 이미 물리적 재고가 차감되므로 추가 차감하지 않음
     if (shippedQuantityDiff !== 0) {
       if (shippedQuantityDiff > 0) {
-        // 출고 수량 증가 - allocate_stock을 통해 이미 처리되었으므로 별도 차감 불필요
+        // 출고 수량 증가 - allocate_stock으로 이미 물리적 재고 차감 완료:
         console.log('ℹ️ [출고 수량 증가] allocate_stock으로 이미 물리적 재고 차감 완료:', {
           productId: currentItem.product_id,
           color: currentItem.color,
