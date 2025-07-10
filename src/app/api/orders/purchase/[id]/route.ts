@@ -527,27 +527,28 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           } else {
             console.log('✅ [수량 감소] 주문 아이템 업데이트 완료')
 
-            // 출고 수량 감소 시 물리적 재고 복원
-            if (shippedQuantityDiff < 0) {
-              const restoreQuantity = Math.abs(shippedQuantityDiff)
-              
+            // 할당 해제된 수량만큼 물리적 재고 복원
+            const allocatedQuantityReduction = currentAllocatedQuantity - newAllocatedQuantity
+            
+            if (allocatedQuantityReduction > 0) {
               const { data: restoreResult, error: restoreError } = await supabase
                 .rpc('adjust_physical_stock', {
                   p_product_id: item.product_id,
                   p_color: item.color,
                   p_size: item.size,
-                  p_quantity_change: restoreQuantity,
-                  p_reason: `출고 수량 조정으로 인한 재고 복원 - 주문ID: ${orderId}`
+                  p_quantity_change: allocatedQuantityReduction,
+                  p_reason: `수량 감소로 인한 할당 해제 및 재고 복원 - 주문ID: ${orderId}`
                 })
 
               if (restoreError || !restoreResult) {
                 console.error('재고 복원 실패:', restoreError)
               } else {
-                console.log('✅ [수량 감소] 출고 수량 조정으로 인한 재고 복원:', {
+                console.log('✅ [수량 감소] 할당 해제로 인한 재고 복원:', {
                   productId: item.product_id,
                   color: item.color,
                   size: item.size,
-                  restoredQuantity: restoreQuantity
+                  allocatedQuantityReduction: allocatedQuantityReduction,
+                  restoredQuantity: allocatedQuantityReduction
                 })
 
                 // 복원된 재고로 다른 주문에 자동 할당
@@ -563,7 +564,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                     productId: item.product_id,
                     color: item.color,
                     size: item.size,
-                    restoredQuantity: restoreQuantity,
+                    restoredQuantity: allocatedQuantityReduction,
                     allocations: autoAllocationResult.allocations
                   })
                   
@@ -575,6 +576,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                   console.log('📋 [자동 할당] 할당할 미출고 주문이 없거나 실패:', autoAllocationResult.message)
                 }
               }
+            } else {
+              console.log('ℹ️ [수량 감소] 할당 해제할 수량이 없어 재고 복원 불필요:', {
+                productId: item.product_id,
+                color: item.color,
+                size: item.size,
+                currentAllocatedQuantity: currentAllocatedQuantity,
+                newAllocatedQuantity: newAllocatedQuantity
+              })
             }
           }
         }

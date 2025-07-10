@@ -24,7 +24,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .select(`
         quantity, 
         unit_price, 
-        shipped_quantity, 
+        shipped_quantity,
+        allocated_quantity,
         product_id,
         color,
         size,
@@ -173,12 +174,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             productId: currentItem.product_id,
             color: currentItem.color,
             size: currentItem.size,
+            oldQuantity: oldQuantity,
+            newQuantity: quantity,
+            quantityDiff: quantityDiff,
             oldAllocatedQuantity: currentAllocatedQuantity,
             newAllocatedQuantity: newAllocatedQuantity,
             oldShippedQuantity: currentShippedQuantity,
             newShippedQuantity: newShippedQuantity,
             additionalShippable: additionalShippable,
             availableStock: availableStock || 0,
+            expectedIncrease: Math.abs(quantityDiff),
+            actualIncrease: additionalShippable,
             reclaimedFromTimeBasedReallocation: true
           })
 
@@ -204,84 +210,131 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       } else {
         // 수량 감소 - 할당 수량 및 출고 수량 직접 조정
+        const currentAllocatedQuantity = (currentItem as any).allocated_quantity || 0
+        
         // 새 수량이 기존 출고 수량보다 작으면 출고 수량을 새 수량으로 조정
         newShippedQuantity = Math.min(currentShippedQuantity, quantity)
         shippedQuantityDiff = newShippedQuantity - currentShippedQuantity
         
         // 할당 수량도 새 수량으로 조정
-        newAllocatedQuantity = Math.min(newAllocatedQuantity, quantity)
+        newAllocatedQuantity = Math.min(currentAllocatedQuantity, quantity)
 
         console.log('✅ [관리자 수정] 수량 감소로 인한 할당 및 출고 수량 조정:', {
           productId: currentItem.product_id,
           color: currentItem.color,
           size: currentItem.size,
-          oldAllocatedQuantity: (currentItem as any).allocated_quantity || 0,
+          oldQuantity: oldQuantity,
+          newQuantity: quantity,
+          quantityDiff: quantityDiff,
+          oldAllocatedQuantity: currentAllocatedQuantity,
           newAllocatedQuantity: newAllocatedQuantity,
           oldShippedQuantity: currentShippedQuantity,
           newShippedQuantity: newShippedQuantity,
           quantityReduction: Math.abs(quantityDiff),
-          shippedQuantityDiff: shippedQuantityDiff
+          shippedQuantityDiff: shippedQuantityDiff,
+          allocatedQuantityReduction: currentAllocatedQuantity - newAllocatedQuantity,
+          expectedReduction: Math.abs(quantityDiff)
         })
       }
     }
 
     // 출고 수량 조정으로 인한 물리적 재고 처리
+    // 📝 주의: allocate_stock 사용 시에는 이미 물리적 재고가 차감되므로 추가 차감하지 않음
     if (shippedQuantityDiff !== 0) {
       if (shippedQuantityDiff > 0) {
-                  // 출고 수량 증가 - 물리적 재고 차감
-          const { data: deductResult, error: deductError } = await supabase
+        // 출고 수량 증가 - allocate_stock을 통해 이미 처리되었으므로 별도 차감 불필요
+        console.log('ℹ️ [출고 수량 증가] allocate_stock으로 이미 물리적 재고 차감 완료:', {
+          productId: currentItem.product_id,
+          color: currentItem.color,
+          size: currentItem.size,
+          shippedQuantityDiff: shippedQuantityDiff
+        })
+      } else {
+        // 출고 수량 감소 - 할당 해제된 수량만큼 물리적 재고 복원
+        // DB에서 가져온 원본 할당량을 사용 (수정 전 상태)
+        const currentAllocatedQuantity = (currentItem as any).allocated_quantity || 0
+        const allocatedQuantityReduction = currentAllocatedQuantity - newAllocatedQuantity
+        
+        console.log('🔍 [재고 복원] 할당량 계산 상세:', {
+          productId: currentItem.product_id,
+          color: currentItem.color,
+          size: currentItem.size,
+          currentItemAllocatedQuantity: (currentItem as any).allocated_quantity,
+          currentAllocatedQuantity: currentAllocatedQuantity,
+          newAllocatedQuantity: newAllocatedQuantity,
+          allocatedQuantityReduction: allocatedQuantityReduction,
+          shippedQuantityDiff: shippedQuantityDiff,
+          quantityDiff: quantityDiff,
+          expectedReduction: Math.abs(quantityDiff)
+        })
+        
+        if (allocatedQuantityReduction > 0) {
+          // 재고 복원 전 실제 재고 값 확인
+          const { data: stockBefore, error: stockBeforeError } = await supabase
+            .rpc('calculate_available_stock', {
+              p_product_id: currentItem.product_id,
+              p_color: currentItem.color,
+              p_size: currentItem.size
+            })
+
+          console.log('📊 [재고 복원 전] 실제 가용재고:', {
+            productId: currentItem.product_id,
+            color: currentItem.color,
+            size: currentItem.size,
+            availableStockBefore: stockBefore,
+            willRestore: allocatedQuantityReduction
+          })
+
+          const { data: restoreResult, error: restoreError } = await supabase
             .rpc('adjust_physical_stock', {
               p_product_id: currentItem.product_id,
               p_color: currentItem.color,
               p_size: currentItem.size,
-              p_quantity_change: -(shippedQuantityDiff || 0), // 음수로 차감
-              p_reason: `주문 수량 증가로 인한 자동 출고 처리 - 주문ID: ${orderId}`
+              p_quantity_change: allocatedQuantityReduction,
+              p_reason: `수량 감소로 인한 할당 해제 및 재고 복원 - 주문ID: ${orderId}`
             })
 
-        if (deductError || !deductResult) {
-          console.error('물리적 재고 차감 실패:', deductError)
-          return NextResponse.json({ 
-            error: '물리적 재고 차감에 실패했습니다.' 
-          }, { status: 500 })
-        }
+          if (restoreError || !restoreResult) {
+            console.error('재고 복원 실패:', restoreError)
+            return NextResponse.json({ 
+              error: '재고 복원에 실패했습니다.' 
+            }, { status: 500 })
+          }
 
-        console.log('✅ [자동 출고] 물리적 재고 차감 완료:', {
-          productId: currentItem.product_id,
-          color: currentItem.color,
-          size: currentItem.size,
-                      deductedQuantity: shippedQuantityDiff || 0
-        })
-      } else {
-        // 출고 수량 감소 - 물리적 재고 복원
-        const restoreQuantity = Math.abs(shippedQuantityDiff || 0)
-        
-        const { data: restoreResult, error: restoreError } = await supabase
-          .rpc('adjust_physical_stock', {
-            p_product_id: currentItem.product_id,
-            p_color: currentItem.color,
-            p_size: currentItem.size,
-            p_quantity_change: restoreQuantity,
-            p_reason: `출고 수량 조정으로 인한 재고 복원 - 주문ID: ${orderId}`
+          // 재고 복원 후 실제 재고 값 확인
+          const { data: stockAfter, error: stockAfterError } = await supabase
+            .rpc('calculate_available_stock', {
+              p_product_id: currentItem.product_id,
+              p_color: currentItem.color,
+              p_size: currentItem.size
+            })
+
+          console.log('✅ [관리자 수정] 할당 해제로 인한 재고 복원:', {
+            productId: currentItem.product_id,
+            color: currentItem.color,
+            size: currentItem.size,
+            allocatedQuantityReduction: allocatedQuantityReduction,
+            restoredQuantity: allocatedQuantityReduction,
+            availableStockBefore: stockBefore,
+            availableStockAfter: stockAfter,
+            actualIncrease: (stockAfter || 0) - (stockBefore || 0),
+            expectedIncrease: allocatedQuantityReduction,
+            restoreResult: restoreResult
           })
-
-        if (restoreError || !restoreResult) {
-          console.error('재고 복원 실패:', restoreError)
-          return NextResponse.json({ 
-            error: '재고 복원에 실패했습니다.' 
-          }, { status: 500 })
+        } else {
+          console.log('ℹ️ [수량 감소] 할당 해제할 수량이 없어 재고 복원 불필요:', {
+            productId: currentItem.product_id,
+            color: currentItem.color,
+            size: currentItem.size,
+            currentAllocatedQuantity: currentAllocatedQuantity,
+            newAllocatedQuantity: newAllocatedQuantity
+          })
         }
-
-        console.log('✅ [관리자 수정] 출고 수량 조정으로 인한 재고 복원:', {
-          productId: currentItem.product_id,
-          color: currentItem.color,
-          size: currentItem.size,
-          restoredQuantity: restoreQuantity
-        })
 
         // 🎯 재고 복원 후 자동 할당 처리
-        if (restoreQuantity > 0) {
+        if (allocatedQuantityReduction > 0) {
           console.log(`🔄 재고 복원 후 자동 할당 시작 - 상품: ${currentItem.product_id}, 색상: ${currentItem.color}, 사이즈: ${currentItem.size}`)
-          console.log(`🔄 복원된 재고량: ${restoreQuantity}개`)
+          console.log(`🔄 복원된 재고량: ${allocatedQuantityReduction}개`)
           
           // 자동 할당 전 현재 가용 재고 확인
           const { data: currentAvailableStock, error: currentStockError } = await supabase
@@ -307,7 +360,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
               productId: currentItem.product_id,
               color: currentItem.color,
               size: currentItem.size,
-              restoredQuantity: restoreQuantity,
+              restoredQuantity: allocatedQuantityReduction,
               allocations: autoAllocationResult.allocations
             })
             
