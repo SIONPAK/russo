@@ -10,48 +10,133 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    console.log('🔍 개별 명세서 조회 시작:', { orderId: id, timestamp: new Date().toISOString() })
+    
     const supabase = await createClient()
 
-    // 주문 정보 조회
-    const { data: order, error: orderError } = await supabase
+    // 모든 주문 조회해서 디버깅
+    const { data: allOrders, error: allOrdersError } = await supabase
       .from('orders')
-      .select(`
-        *,
-        users!orders_user_id_fkey (
-          id,
-          company_name,
-          representative_name,
-          email,
-          phone,
-          address,
-          business_number,
-          customer_grade
-        ),
-        order_items!order_items_order_id_fkey (
-          id,
-          product_id,
-          product_name,
-          quantity,
-          shipped_quantity,
-          unit_price,
-          total_price,
-          color,
-          size,
-          products!order_items_product_id_fkey (
-            id,
-            name,
-            code
-          )
-        )
-      `)
+      .select('id, order_number, status')
+      .limit(10)
+
+    console.log('🔍 전체 주문 샘플 (최근 10개):', {
+      count: allOrders?.length || 0,
+      orders: allOrders?.map(o => ({ id: o.id, order_number: o.order_number, status: o.status })) || [],
+      error: allOrdersError?.message || null
+    })
+
+    // 특정 주문 조회
+    const { data: orderExists, error: existsError } = await supabase
+      .from('orders')
+      .select('id, order_number, status')
       .eq('id', id)
       .single()
 
-    if (orderError || !order) {
-      return NextResponse.json({
-        success: false,
-        error: '주문을 찾을 수 없습니다.'
+    console.log('🔍 주문 존재 여부 확인:', { 
+      orderId: id,
+      exists: !!orderExists,
+      error: existsError?.message || null,
+      errorCode: existsError?.code || null,
+      orderBasicInfo: orderExists ? { 
+        id: orderExists.id, 
+        order_number: orderExists.order_number,
+        status: orderExists.status
+      } : null
+    })
+
+    if (existsError || !orderExists) {
+      console.error('❌ 주문이 존재하지 않음:', { orderId: id, error: existsError })
+      return NextResponse.json({ 
+        error: '주문을 찾을 수 없습니다.',
+        details: `주문 ID: ${id}가 데이터베이스에 존재하지 않습니다.`,
+        errorCode: existsError?.code || 'NOT_FOUND',
+        errorMessage: existsError?.message || 'No matching record found'
       }, { status: 404 })
+    }
+
+    // 주문 정보 조회 (상세 정보 포함)
+    console.log('🔍 주문 상세 정보 조회 중...')
+    
+    let order: any = null
+    
+    try {
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          users!orders_user_id_fkey (
+            id,
+            company_name,
+            representative_name,
+            email,
+            phone,
+            address,
+            business_number,
+            customer_grade
+          ),
+          order_items!order_items_order_id_fkey (
+            *,
+            products!order_items_product_id_fkey (
+              id,
+              code,
+              name,
+              price
+            )
+          )
+        `)
+        .eq('id', id)
+        .single()
+
+      order = orderData
+
+      console.log('🔍 주문 상세 정보 조회 결과:', {
+        orderId: id,
+        success: !!order,
+        error: orderError?.message || null,
+        errorCode: orderError?.code || null,
+        orderInfo: order ? {
+          id: order.id,
+          order_number: order.order_number,
+          status: order.status,
+          user_id: order.user_id,
+          items_count: order.order_items?.length || 0,
+          has_user_info: !!order.users
+        } : null
+      })
+
+      if (orderError || !order) {
+        console.error('❌ 주문 상세 정보 조회 실패:', { orderId: id, error: orderError })
+        return NextResponse.json({ 
+          error: '주문 상세 정보를 가져올 수 없습니다.',
+          details: orderError?.message || 'Failed to fetch order details',
+          errorCode: orderError?.code || 'FETCH_ERROR'
+        }, { status: 500 })
+      }
+
+      // 개별 다운로드 시에도 주문 상태를 "작업중"으로 변경
+      console.log('🔄 개별 명세서 다운로드 - 주문 상태 업데이트 시작:', { orderId: id, status: 'confirmed' })
+      const { data: updateData, error: updateError } = await supabase
+        .from('orders')
+        .update({ 
+          status: 'confirmed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+      
+      if (updateError) {
+        console.error('❌ 주문 상태 업데이트 실패:', updateError)
+      } else {
+        console.log('✅ 주문 상태 업데이트 성공:', updateData)
+      }
+
+    } catch (error) {
+      console.error('❌ 주문 상세 정보 조회 중 예외 발생:', error)
+      return NextResponse.json({ 
+        error: '주문 정보 조회 중 오류가 발생했습니다.',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, { status: 500 })
     }
 
     // 모든 상품 포함 (미출고 상품도 품명과 규격 표시)

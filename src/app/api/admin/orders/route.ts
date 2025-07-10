@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
           query = query.lte('created_at', endDate)
         }
         
-        console.log(`오후 3시 기준 날짜 필터: ${startDate} ~ ${endDate}`)
+        
       } else {
         // 일반 날짜 필터 (00:00 ~ 23:59 한국 시간)
         const selectedDate = new Date(startDate)
@@ -132,8 +132,6 @@ export async function GET(request: NextRequest) {
         query = query.gte('created_at', startTimeUTC.toISOString())
         query = query.lte('created_at', endTimeUTC.toISOString())
         
-        console.log(`일반 날짜 필터: ${startDate}`)
-        console.log(`UTC 시간 범위: ${startTimeUTC.toISOString()} ~ ${endTimeUTC.toISOString()}`)
       }
     }
 
@@ -372,8 +370,6 @@ async function getAvailableStock(supabase: any, product: any, color?: string, si
   
   let availableStock = 0
   
-  console.log(`🔍 [재고 계산 시작] 상품 ID: ${product.id}, 색상: ${color || 'N/A'}, 사이즈: ${size || 'N/A'}`)
-  console.log(`🔍 [재고 데이터] inventory_options:`, JSON.stringify(product.inventory_options, null, 2))
   
   // 옵션별 재고가 있는 경우
   if (product.inventory_options && Array.isArray(product.inventory_options) && product.inventory_options.length > 0) {
@@ -383,7 +379,6 @@ async function getAvailableStock(supabase: any, product: any, color?: string, si
         option.color === color && option.size === size
       )
       
-      console.log(`🔍 [매칭 옵션] 찾은 옵션:`, matchingOption)
       
       if (matchingOption) {
         // 🔧 새로운 구조 우선 확인
@@ -391,17 +386,17 @@ async function getAvailableStock(supabase: any, product: any, color?: string, si
           const physicalStock = matchingOption.physical_stock || 0
           const allocatedStock = matchingOption.allocated_stock || 0
           availableStock = Math.max(0, physicalStock - allocatedStock)
-          console.log(`🔍 [새로운 구조] 물리적재고: ${physicalStock}, 할당재고: ${allocatedStock}, 가용재고: ${availableStock}`)
+        
         } else if (matchingOption.stock_quantity !== undefined) {
           // 기존 구조: stock_quantity 사용
           availableStock = matchingOption.stock_quantity || 0
-          console.log(`🔍 [기존 구조] stock_quantity: ${availableStock}`)
+         
         } else {
-          console.log(`🔍 [오류] 재고 필드를 찾을 수 없음`)
+         
           availableStock = 0
         }
       } else {
-        console.log(`🔍 [오류] 매칭되는 옵션을 찾을 수 없음`)
+        
         availableStock = 0
       }
     } else {
@@ -415,15 +410,15 @@ async function getAvailableStock(supabase: any, product: any, color?: string, si
           return total + (option.stock_quantity || 0)
         }
       }, 0)
-      console.log(`🔍 [전체 재고] 합계: ${availableStock}`)
+     
     }
   } else {
     // 기본 재고
     availableStock = product.stock_quantity || 0
-    console.log(`🔍 [기본 재고] stock_quantity: ${availableStock}`)
+    
   }
   
-  console.log(`📦 [최종 결과] 가용 재고: ${availableStock}개`)
+  
   
   return availableStock
 }
@@ -462,7 +457,7 @@ export async function PUT(request: NextRequest) {
     const supabase = await createClient()
     const { orderIds, status } = await request.json()
 
-    console.log('주문 상태 업데이트 요청:', { orderIds, status })
+    
 
     // 배송중으로 상태 변경 시 출고 수량 자동 설정
     if (status === 'shipped') {
@@ -482,7 +477,7 @@ export async function PUT(request: NextRequest) {
         const itemsToUpdate = orderItems.filter(item => !item.shipped_quantity || item.shipped_quantity === 0)
         
         if (itemsToUpdate.length > 0) {
-          console.log(`주문 ${orderId}: ${itemsToUpdate.length}개 아이템의 출고 수량을 자동 설정`)
+          
           
           const updatePromises = itemsToUpdate.map(item => 
             supabase
@@ -514,7 +509,7 @@ export async function PUT(request: NextRequest) {
       }, { status: 500 })
     }
 
-    console.log('주문 상태 업데이트 완료:', data)
+    
 
     return NextResponse.json({ 
       success: true, 

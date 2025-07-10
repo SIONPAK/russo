@@ -113,10 +113,13 @@ export async function POST(request: NextRequest) {
       .select()
     
     if (updateError) {
-      console.error('❌ 주문 상태 업데이트 오류:', updateError)
+      console.error('❌ 주문 상태 업데이트 실패:', updateError)
       // 상태 업데이트 실패해도 다운로드는 계속 진행
     } else {
-      console.log('✅ 주문 상태 업데이트 성공:', updateData)
+      console.log('✅ 주문 상태 업데이트 성공:', { 
+        updatedCount: updateData?.length || 0,
+        updatedOrders: updateData?.map(order => ({ id: order.id, status: order.status })) || []
+      })
     }
     
     // 포맷에 따라 다른 파일 생성
@@ -238,10 +241,12 @@ export async function GET(request: NextRequest) {
       .select()
     
     if (updateError) {
-      console.error('❌ 개별 다운로드 - 주문 상태 업데이트 오류:', updateError)
+      console.error('❌ 개별 다운로드 - 주문 상태 업데이트 실패:', updateError)
       // 상태 업데이트 실패해도 다운로드는 계속 진행
     } else {
-      console.log('✅ 개별 다운로드 - 주문 상태 업데이트 성공:', updateData)
+      console.log('✅ 개별 다운로드 - 주문 상태 업데이트 성공:', { 
+        updatedOrder: updateData?.[0] ? { id: updateData[0].id, status: updateData[0].status } : null
+      })
     }
     
     // 포맷에 따라 다른 파일 생성
