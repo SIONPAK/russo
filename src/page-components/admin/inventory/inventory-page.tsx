@@ -999,7 +999,17 @@ export function InventoryPage() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setCurrentTab(tab.id)}
+                onClick={() => {
+                  setCurrentTab(tab.id)
+                  // 탭 변경 시 해당 데이터 로드
+                  if (tab.id === 'inbound') {
+                    fetchInboundData()
+                  } else if (tab.id === 'outbound') {
+                    fetchOutboundData()
+                  } else if (tab.id === 'history') {
+                    fetchStockHistory()
+                  }
+                }}
                 className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
                   currentTab === tab.id
                     ? 'border-blue-500 text-blue-600'

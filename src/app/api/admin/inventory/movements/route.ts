@@ -73,6 +73,23 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // 해당 입고/출고 이후에 발생한 모든 재고 변동량 계산
+        let totalChangesAfter = 0
+        const { data: laterMovements } = await supabase
+          .from('stock_movements')
+          .select('quantity')
+          .eq('product_id', movement.product_id)
+          .eq('color', movement.color || null)
+          .eq('size', movement.size || null)
+          .gt('created_at', movement.created_at)
+
+        if (laterMovements) {
+          totalChangesAfter = laterMovements.reduce((sum, mv) => sum + (mv.quantity || 0), 0)
+        }
+
+        // 해당 입고/출고 시점의 재고 = 현재 재고 - 이후 변동량 + 해당 변동량
+        const stockAfterThisMovement = currentStock - totalChangesAfter
+        
         const enrichedMovement = {
           ...movement,
           product_name: movement.products?.name || '알 수 없음',
@@ -80,7 +97,7 @@ export async function GET(request: NextRequest) {
           color: movement.color || '-',
           size: movement.size || '-',
           quantity: Math.abs(movement.quantity), // 절댓값으로 표시
-          stock_quantity: currentStock, // 현재 재고 수량 (입고/출고 후 수량)
+          stock_quantity: Math.max(0, stockAfterThisMovement), // 해당 입고/출고 후의 재고 수량
         }
 
         // 참조 타입에 따른 추가 정보 조회

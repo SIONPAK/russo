@@ -1525,7 +1525,11 @@ export function OrderManagementPage() {
                   <div className="space-y-2 text-sm">
                     <div><span className="font-medium">발주번호:</span> {selectedOrder.order_number}</div>
                     <div><span className="font-medium">발주일시:</span> {new Date(selectedOrder.created_at).toLocaleString('ko-KR')}</div>
-                    <div><span className="font-medium">총 금액:</span> {formatCurrency(selectedOrder.total_amount)}</div>
+                    <div><span className="font-medium">총 금액:</span> {formatCurrency(
+                      selectedOrder.order_items?.reduce((sum: number, item: any) => {
+                        return sum + ((item.unit_price || 0) * (item.shipped_quantity || 0))
+                      }, 0) || 0
+                    )}</div>
                     <div>
                       <span className="font-medium">상태:</span>
                       <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
