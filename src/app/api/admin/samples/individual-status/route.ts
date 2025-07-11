@@ -62,47 +62,21 @@ export async function PATCH(request: NextRequest) {
       case 'returned':
         updateData.return_date = now
         
-        // 재고 복구
-        const { data: product, error: productError } = await supabase
-          .from('products')
-          .select('stock_quantity, inventory_options')
-          .eq('id', sampleItem.product_id)
-          .single()
+        // 새로운 재고 관리 시스템으로 재고 복원
+        const { data: restoreResult, error: restoreError } = await supabase
+          .rpc('adjust_physical_stock', {
+            p_product_id: sampleItem.product_id,
+            p_color: sampleItem.color || null,
+            p_size: sampleItem.size || null,
+            p_quantity_change: sampleItem.quantity, // 양수로 복원
+            p_reason: `샘플 개별 반납 - ${sampleItem.product_name} (${sampleItem.color}/${sampleItem.size})`
+          })
 
-        if (!productError && product) {
-          if (product.inventory_options && sampleItem.color && sampleItem.size) {
-            // 옵션별 재고 복구
-            const updatedOptions = product.inventory_options.map((option: any) => {
-              if (option.color === sampleItem.color && option.size === sampleItem.size) {
-                return {
-                  ...option,
-                  stock_quantity: (option.stock_quantity || 0) + sampleItem.quantity
-                }
-              }
-              return option
-            })
-
-            const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-
-            await supabase
-              .from('products')
-              .update({
-                inventory_options: updatedOptions,
-                stock_quantity: totalStock,
-                updated_at: now
-              })
-              .eq('id', sampleItem.product_id)
-          } else {
-            // 일반 재고 복구
-            await supabase
-              .from('products')
-              .update({
-                stock_quantity: (product.stock_quantity || 0) + sampleItem.quantity,
-                updated_at: now
-              })
-              .eq('id', sampleItem.product_id)
-          }
-
+        if (restoreError || !restoreResult) {
+          console.error('❌ 샘플 재고 복원 실패:', restoreError)
+        } else {
+          console.log('✅ 샘플 재고 복원 완료:', sampleItem.product_name)
+          
           // 재고 변동 이력 기록
           await supabase
             .from('stock_movements')

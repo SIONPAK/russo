@@ -125,58 +125,46 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 재고 차감
-    if (product.inventory_options && Array.isArray(product.inventory_options)) {
-      // 옵션별 재고 관리인 경우 - 첫 번째 옵션에서 차감
-      const updatedOptions = product.inventory_options.map((option: any, index: number) => {
-        if (index === 0) { // 첫 번째 옵션에서 차감
-          return {
-            ...option,
-            stock_quantity: option.stock_quantity - quantity
-          }
-        }
-        return option
+    // 새로운 재고 관리 시스템으로 재고 차감
+    // 색상/사이즈 정보 파싱
+    const parseOptions = (options: string) => {
+      const colorMatch = options.match(/색상:\s*([^,]+)/);
+      const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+      return {
+        color: colorMatch ? colorMatch[1].trim() : null,
+        size: sizeMatch ? sizeMatch[1].trim() : null
+      };
+    };
+
+    const { color, size } = parseOptions(product_options || '');
+
+    const { data: stockResult, error: stockError } = await supabase
+      .rpc('adjust_physical_stock', {
+        p_product_id: product_id,
+        p_color: color,
+        p_size: size,
+        p_quantity_change: -quantity, // 음수로 차감
+        p_reason: `사용자 샘플 주문 - ${sampleNumber}`
       })
 
-      const totalStock = updatedOptions.reduce((sum: number, option: any) => sum + option.stock_quantity, 0)
+    if (stockError || !stockResult) {
+      console.error('❌ 사용자 샘플 재고 차감 실패:', stockError)
+      // 샘플 주문 롤백
+      await supabase.from('samples').delete().eq('id', sample.id)
+      return NextResponse.json({
+        success: false,
+        error: '재고 차감에 실패했습니다.'
+      }, { status: 500 })
+    }
 
-      const { error: stockError } = await supabase
-        .from('products')
-        .update({ 
-          inventory_options: updatedOptions,
-          stock_quantity: totalStock,
-          updated_at: getKoreaTime()
-        })
-        .eq('id', product_id)
-
-      if (stockError) {
-        console.error('Stock update error:', stockError)
-        // 샘플 주문 롤백
-        await supabase.from('samples').delete().eq('id', sample.id)
-        return NextResponse.json({
-          success: false,
-          error: '재고 업데이트에 실패했습니다.'
-        }, { status: 500 })
-      }
-    } else {
-      // 일반 재고 관리인 경우
-      const { error: stockError } = await supabase
-        .from('products')
-        .update({ 
-          stock_quantity: product.stock_quantity - quantity,
-          updated_at: getKoreaTime()
-        })
-        .eq('id', product_id)
-
-      if (stockError) {
-        console.error('Stock update error:', stockError)
-        // 샘플 주문 롤백
-        await supabase.from('samples').delete().eq('id', sample.id)
-        return NextResponse.json({
-          success: false,
-          error: '재고 업데이트에 실패했습니다.'
-        }, { status: 500 })
-      }
+    // 재고 부족 확인 (adjust_physical_stock 함수에서 false 반환)
+    if (stockResult === false) {
+      // 샘플 주문 롤백
+      await supabase.from('samples').delete().eq('id', sample.id)
+      return NextResponse.json({
+        success: false,
+        error: '재고가 부족합니다.'
+      }, { status: 400 })
     }
 
     // 재고 변동 이력 기록

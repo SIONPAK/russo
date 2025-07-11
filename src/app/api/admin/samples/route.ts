@@ -793,13 +793,21 @@ export async function PUT(request: NextRequest) {
 
             const { color: recoverColor, size: recoverSize } = parseOptionsRecover(sample.product_options || '');
 
-            // 재고 복구
-            await supabase
-              .from('products')
-              .update({
-                stock_quantity: sample.products.stock_quantity + sample.quantity
+            // 새로운 재고 관리 시스템으로 재고 복구
+            const { data: restoreResult, error: restoreError } = await supabase
+              .rpc('adjust_physical_stock', {
+                p_product_id: sample.product_id,
+                p_color: recoverColor,
+                p_size: recoverSize,
+                p_quantity_change: sample.quantity, // 양수로 복원
+                p_reason: `샘플 회수 - ${sample.sample_number}`
               })
-              .eq('id', sample.product_id)
+
+            if (restoreError || !restoreResult) {
+              console.error('❌ 샘플 재고 복원 실패:', restoreError)
+            } else {
+              console.log('✅ 샘플 재고 복원 완료:', sample.sample_number)
+            }
 
             // 재고 변동 이력 기록
             await supabase

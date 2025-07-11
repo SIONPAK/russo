@@ -27,6 +27,7 @@ export async function PATCH(request: NextRequest) {
         status,
         refunded,
         company_name,
+        items,
         orders!return_statements_order_id_fkey (
           id,
           user_id,
@@ -106,17 +107,58 @@ export async function PATCH(request: NextRequest) {
               continue
             }
 
-            // 관련 주문 상태 업데이트 (선택사항)
-            await supabase
-              .from('orders')
-              .update({
-                updated_at: getKoreaTime()
-              })
-              .eq('id', statement.order_id)
+                      // 관리자 생성 반품 명세서도 재고 복원 처리
+          if (statement.items && Array.isArray(statement.items)) {
+            for (const item of statement.items) {
+              if (item.product_id && item.return_quantity && item.return_quantity > 0) {
+                try {
+                  const { data: restoreResult, error: restoreError } = await supabase
+                    .rpc('adjust_physical_stock', {
+                      p_product_id: item.product_id,
+                      p_color: item.color || null,
+                      p_size: item.size || null,
+                      p_quantity_change: item.return_quantity, // 양수로 복원
+                      p_reason: `관리자 생성 반품 완료 - ${statement.statement_number} (${item.product_name})`
+                    })
 
-            processedCount++
-            console.log(`✅ 관리자 생성 반품 명세서 처리 완료 (사용자 없음): ${statement.statement_number}`)
-            continue
+                  if (restoreError || !restoreResult) {
+                    console.error('❌ 관리자 생성 반품 재고 복원 실패:', restoreError)
+                  } else {
+                    console.log('✅ 관리자 생성 반품 재고 복원 완료:', item.product_name)
+                    
+                    // 재고 변동 이력 기록
+                    await supabase
+                      .from('stock_movements')
+                      .insert({
+                        product_id: item.product_id,
+                        movement_type: 'return_in',
+                        quantity: item.return_quantity,
+                        color: item.color || null,
+                        size: item.size || null,
+                        notes: `관리자 생성 반품 완료 - ${statement.statement_number} (${item.product_name})`,
+                        reference_id: statement.id,
+                        reference_type: 'return_statement',
+                        created_at: getKoreaTime()
+                      })
+                  }
+                } catch (restoreError) {
+                  console.error('❌ 관리자 생성 반품 재고 복원 처리 오류:', restoreError)
+                }
+              }
+            }
+          }
+
+          // 관련 주문 상태 업데이트 (선택사항)
+          await supabase
+            .from('orders')
+            .update({
+              updated_at: getKoreaTime()
+            })
+            .eq('id', statement.order_id)
+
+          processedCount++
+          console.log(`✅ 관리자 생성 반품 명세서 처리 완료 (사용자 없음): ${statement.statement_number}`)
+          continue
           }
 
           // 관리자 생성 반품명세서도 마일리지 적립 진행
@@ -211,6 +253,47 @@ export async function PATCH(request: NextRequest) {
             continue
           }
 
+          // 발주서 기반 반품이 아닌 경우에도 재고 복원 처리
+          if (statement.items && Array.isArray(statement.items)) {
+            for (const item of statement.items) {
+              if (item.product_id && item.return_quantity && item.return_quantity > 0) {
+                try {
+                  const { data: restoreResult, error: restoreError } = await supabase
+                    .rpc('adjust_physical_stock', {
+                      p_product_id: item.product_id,
+                      p_color: item.color || null,
+                      p_size: item.size || null,
+                      p_quantity_change: item.return_quantity, // 양수로 복원
+                      p_reason: `반품 완료 (마일리지 적립 없음) - ${statement.statement_number} (${item.product_name})`
+                    })
+
+                  if (restoreError || !restoreResult) {
+                    console.error('❌ 반품 재고 복원 실패:', restoreError)
+                  } else {
+                    console.log('✅ 반품 재고 복원 완료:', item.product_name)
+                    
+                    // 재고 변동 이력 기록
+                    await supabase
+                      .from('stock_movements')
+                      .insert({
+                        product_id: item.product_id,
+                        movement_type: 'return_in',
+                        quantity: item.return_quantity,
+                        color: item.color || null,
+                        size: item.size || null,
+                        notes: `반품 완료 (마일리지 적립 없음) - ${statement.statement_number} (${item.product_name})`,
+                        reference_id: statement.id,
+                        reference_type: 'return_statement',
+                        created_at: getKoreaTime()
+                      })
+                  }
+                } catch (restoreError) {
+                  console.error('❌ 반품 재고 복원 처리 오류:', restoreError)
+                }
+              }
+            }
+          }
+
           // 관련 주문 상태 업데이트 (선택사항)
           await supabase
             .from('orders')
@@ -280,7 +363,48 @@ export async function PATCH(request: NextRequest) {
           continue
         }
 
-        // 4. 관련 주문 상태 업데이트 (선택사항)
+        // 4. 반품 완료 시 재고 복원 (새로운 재고 관리 시스템 사용)
+        if (statement.items && Array.isArray(statement.items)) {
+          for (const item of statement.items) {
+            if (item.product_id && item.return_quantity && item.return_quantity > 0) {
+              try {
+                const { data: restoreResult, error: restoreError } = await supabase
+                  .rpc('adjust_physical_stock', {
+                    p_product_id: item.product_id,
+                    p_color: item.color || null,
+                    p_size: item.size || null,
+                    p_quantity_change: item.return_quantity, // 양수로 복원
+                    p_reason: `반품 완료 - ${statement.statement_number} (${item.product_name})`
+                  })
+
+                if (restoreError || !restoreResult) {
+                  console.error('❌ 반품 재고 복원 실패:', restoreError)
+                } else {
+                  console.log('✅ 반품 재고 복원 완료:', item.product_name)
+                  
+                  // 재고 변동 이력 기록
+                  await supabase
+                    .from('stock_movements')
+                    .insert({
+                      product_id: item.product_id,
+                      movement_type: 'return_in',
+                      quantity: item.return_quantity,
+                      color: item.color || null,
+                      size: item.size || null,
+                      notes: `반품 완료 - ${statement.statement_number} (${item.product_name})`,
+                      reference_id: statement.id,
+                      reference_type: 'return_statement',
+                      created_at: getKoreaTime()
+                    })
+                }
+              } catch (restoreError) {
+                console.error('❌ 반품 재고 복원 처리 오류:', restoreError)
+              }
+            }
+          }
+        }
+
+        // 5. 관련 주문 상태 업데이트 (선택사항)
         await supabase
           .from('orders')
           .update({

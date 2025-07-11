@@ -34,40 +34,34 @@ export async function PATCH(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 회수완료 시 재고 이력 기록 및 재고 수량 업데이트
+    // 회수완료 시 새로운 재고 관리 시스템으로 재고 복원
     if (status === 'returned') {
-      const { data: inventory, error: inventoryError } = await supabase
-        .from('inventory')
-        .select('quantity')
-        .eq('product_id', sample.product_id)
-        .eq('color', sample.color)
-        .eq('size', sample.size)
-        .single()
+      const { data: restoreResult, error: restoreError } = await supabase
+        .rpc('adjust_physical_stock', {
+          p_product_id: sample.product_id,
+          p_color: sample.color || null,
+          p_size: sample.size || null,
+          p_quantity_change: sample.quantity, // 양수로 복원
+          p_reason: `샘플 회수완료 - 샘플ID: ${sample.id}`
+        })
 
-      if (!inventoryError && inventory) {
-        // 재고 수량 업데이트
+      if (restoreError || !restoreResult) {
+        console.error('❌ 샘플 재고 복원 실패:', restoreError)
+      } else {
+        console.log('✅ 샘플 재고 복원 완료:', sample.id)
+        
+        // 재고 변동 이력 기록
         await supabase
-          .from('inventory')
-          .update({
-            quantity: inventory.quantity + sample.quantity,
-            updated_at: getKoreaTime()
-          })
-          .eq('product_id', sample.product_id)
-          .eq('color', sample.color)
-          .eq('size', sample.size)
-
-        // 재고 이력 기록
-        await supabase
-          .from('inventory_audit')
+          .from('stock_movements')
           .insert({
             product_id: sample.product_id,
-            color: sample.color,
-            size: sample.size,
-            quantity_change: sample.quantity,
-            previous_quantity: inventory.quantity,
-            new_quantity: inventory.quantity + sample.quantity,
-            change_type: 'sample_return',
+            movement_type: 'sample_return',
+            quantity: sample.quantity,
+            color: sample.color || null,
+            size: sample.size || null,
+            notes: `샘플 회수완료 - 샘플ID: ${sample.id}`,
             reference_id: sample.id,
+            reference_type: 'sample',
             created_at: getKoreaTime()
           })
       }
