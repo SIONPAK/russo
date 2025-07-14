@@ -168,47 +168,75 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
-  // 이미지 압축 함수 (최소 압축)
+  // 🎯 성능 최적화: 빠른 이미지 압축 함수
   const compressImage = async (file: File): Promise<File> => {
     return new Promise((resolve) => {
+      // 5MB 이하면 압축하지 않음 (속도 최우선)
+      if (file.size <= 5 * 1024 * 1024) {
+        resolve(file)
+        return
+      }
+
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
       const img = new Image()
       
+      // 타임아웃 설정 (3초 이상 걸리면 원본 반환)
+      const timeout = setTimeout(() => {
+        console.warn('이미지 압축 타임아웃, 원본 반환')
+        resolve(file)
+      }, 3000)
+      
       img.onload = () => {
-        // 최소 압축 설정 (속도 최우선)
-        let maxWidth = 1200
-        let quality = 0.9
+        clearTimeout(timeout)
         
-        // 매우 큰 파일만 압축
-        if (file.size > 5 * 1024 * 1024) { // 5MB 이상만
-          maxWidth = 1000
-          quality = 0.8
-        }
-        
-        // 비율 유지하면서 리사이즈
-        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height)
-        canvas.width = img.width * ratio
-        canvas.height = img.height * ratio
-        
-        // 이미지 그리기
-        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
-        
-        // 압축된 이미지를 Blob으로 변환
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const compressedFile = new File([blob], file.name, {
-              type: 'image/jpeg',
-              lastModified: Date.now()
-            })
-            resolve(compressedFile)
-          } else {
-            resolve(file) // 압축 실패시 원본 반환
+        try {
+          // 🎯 적극적인 압축 설정 (큰 파일만 처리하므로)
+          const maxWidth = 800 // 더 작게
+          const quality = 0.6   // 품질 낮춤
+          
+          // 비율 유지하면서 리사이즈
+          const ratio = Math.min(maxWidth / img.width, maxWidth / img.height, 1) // 확대는 안함
+          const newWidth = Math.floor(img.width * ratio)
+          const newHeight = Math.floor(img.height * ratio)
+          
+          canvas.width = newWidth
+          canvas.height = newHeight
+          
+          // 성능 최적화: 이미지 스무딩 비활성화
+          if (ctx) {
+            ctx.imageSmoothingEnabled = false
+            ctx.drawImage(img, 0, 0, newWidth, newHeight)
           }
-        }, 'image/jpeg', quality)
+          
+          // Blob 변환 (WebP 지원 시 WebP 사용)
+          const outputFormat = 'image/jpeg' // 호환성을 위해 JPEG 유지
+          
+          canvas.toBlob((blob) => {
+            if (blob && blob.size < file.size) { // 압축이 효과적인 경우만
+              const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
+                type: outputFormat,
+                lastModified: Date.now()
+              })
+              console.log(`압축 완료: ${(file.size / 1024 / 1024).toFixed(1)}MB → ${(compressedFile.size / 1024 / 1024).toFixed(1)}MB`)
+              resolve(compressedFile)
+            } else {
+              console.log('압축 효과 없음, 원본 반환')
+              resolve(file)
+            }
+          }, outputFormat, quality)
+        } catch (error) {
+          console.error('압축 중 오류:', error)
+          resolve(file)
+        }
       }
       
-      img.onerror = () => resolve(file) // 에러시 원본 반환
+      img.onerror = () => {
+        clearTimeout(timeout)
+        console.error('이미지 로딩 실패, 원본 반환')
+        resolve(file)
+      }
+      
       img.src = URL.createObjectURL(file)
     })
   }
@@ -222,94 +250,95 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
       return
     }
 
-    console.log(`이미지 업로드 시작: ${files.length}개 파일`)
+    console.log(`🚀 병렬 이미지 업로드 시작: ${files.length}개 파일`)
 
     try {
       setUploadingImages(true)
       setUploadProgress({ current: 0, total: files.length })
-      
+
+      // 🎯 최적화: 배치로 나누어서 병렬 처리 (너무 많은 동시 요청 방지)
+      const BATCH_SIZE = 3 // 한 번에 3개씩 병렬 처리
+      const batches = []
+      for (let i = 0; i < files.length; i += BATCH_SIZE) {
+        batches.push(files.slice(i, i + BATCH_SIZE))
+      }
+
       const allUploadedImages: ProductImage[] = []
       let processedFiles = 0
 
-      // 순차 업로드 (안정성 우선)
-      for (let i = 0; i < files.length; i++) {
-        const originalFile = files[i]
-        
-        console.log(`파일 ${i + 1}/${files.length}: ${originalFile.name} (${(originalFile.size / 1024 / 1024).toFixed(2)}MB)`)
-        
-        try {
-          // 2MB 이상인 경우만 압축
+      // 배치별로 순차 처리, 배치 내에서는 병렬 처리
+      for (const batch of batches) {
+        console.log(`📦 배치 처리 시작: ${batch.length}개 파일`)
+
+                 // 배치 내 파일들을 FormData로 묶어서 한 번에 업로드
+         const formData = new FormData()
+         const fileInfos: Array<{
+           originalName: string
+           size: number
+           isMain: boolean
+           sortOrder: number
+         }> = []
+
+        for (let i = 0; i < batch.length; i++) {
+          const originalFile = batch[i]
+          
+          // 🎯 압축 최적화: 3MB 이상만 압축하고, 품질 낮춰서 속도 향상
           let file = originalFile
-          if (originalFile.size > 2 * 1024 * 1024) {
+          if (originalFile.size > 3 * 1024 * 1024) {
+            console.log(`압축 중: ${originalFile.name}`)
             file = await compressImage(originalFile)
-            console.log(`압축 완료: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
           }
           
-          // FormData 생성
-          const formData = new FormData()
           formData.append('files', file)
+          fileInfos.push({
+            originalName: originalFile.name,
+            size: file.size,
+            isMain: images.length === 0 && allUploadedImages.length === 0 && i === 0,
+            sortOrder: images.length + allUploadedImages.length + i + 1
+          })
+        }
 
-          // API 호출
+        try {
+          // 배치 단위로 API 호출
           const response = await fetch('/api/upload/product-images', {
             method: 'POST',
             body: formData
           })
-          
-          // 응답 상태 확인
+
           if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 100)}`)
+            throw new Error(`HTTP ${response.status}`)
           }
 
-          // 응답 처리
-          const responseText = await response.text()
-          
-          if (!responseText.trim()) {
-            throw new Error('서버에서 빈 응답을 받았습니다.')
-          }
-          
-          let result
-          try {
-            result = JSON.parse(responseText)
-          } catch (parseError) {
-            // HTML 응답인지 확인
-            if (responseText.includes('<html>') || responseText.includes('<!DOCTYPE')) {
-              throw new Error('서버에서 HTML 오류 페이지를 반환했습니다.')
-            }
-            throw new Error(`서버 응답을 파싱할 수 없습니다: ${parseError}`)
-          }
+          const result = await response.json()
 
-          if (result.success && result.data && result.data.urls && result.data.urls.length > 0) {
-            const newImage: ProductImage = {
-              url: result.data.urls[0],
+          if (result.success && result.data?.urls) {
+            // 업로드된 이미지들을 상태에 추가
+            const newImages = result.data.urls.map((url: string, index: number) => ({
+              url,
               altText: '',
-              isMain: images.length === 0 && allUploadedImages.length === 0,
-              sortOrder: images.length + i + 1
-            }
+              isMain: fileInfos[index].isMain,
+              sortOrder: fileInfos[index].sortOrder
+            }))
 
-            allUploadedImages.push(newImage)
-            processedFiles += 1
+            allUploadedImages.push(...newImages)
             
-            console.log(`✅ ${originalFile.name} 업로드 완료`)
+            // 🎯 성능 최적화: 배치 단위로 한 번에 UI 업데이트
+            setImages(prev => [...prev, ...newImages])
             
-            // 진행 상황 업데이트
-            setUploadProgress({ current: processedFiles, total: files.length })
-            
-            // 즉시 UI에 반영
-            setImages(prev => [...prev, newImage])
+            console.log(`✅ 배치 업로드 완료: ${newImages.length}개`)
           } else {
             throw new Error(result.error || '업로드 실패')
           }
-        } catch (fileError) {
-          console.error(`❌ ${originalFile.name} 업로드 실패:`, fileError)
-          const errorMessage = fileError instanceof Error ? fileError.message : String(fileError)
-          showError(`파일 ${originalFile.name} 업로드 실패: ${errorMessage}`)
-          processedFiles += 1
-          setUploadProgress({ current: processedFiles, total: files.length })
+        } catch (batchError) {
+          console.error('❌ 배치 업로드 실패:', batchError)
+          showError(`배치 업로드 실패: ${batchError instanceof Error ? batchError.message : String(batchError)}`)
         }
+
+        processedFiles += batch.length
+        setUploadProgress({ current: processedFiles, total: files.length })
       }
 
-      console.log(`업로드 완료: 성공 ${allUploadedImages.length}개, 실패 ${files.length - allUploadedImages.length}개`)
+      console.log(`🎉 전체 업로드 완료: 성공 ${allUploadedImages.length}개, 실패 ${files.length - allUploadedImages.length}개`)
 
       if (allUploadedImages.length > 0) {
         showSuccess(`${allUploadedImages.length}개의 이미지가 성공적으로 업로드되었습니다.`)
@@ -896,22 +925,23 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
             {images.length < 10 && (
               <div className="mb-4">
                 {uploadingImages ? (
-                  // 업로드 진행 중 UI
-                  <div className="border-2 border-blue-300 rounded-lg p-8 text-center bg-blue-50">
-                    <Upload className="w-12 h-12 text-blue-500 mx-auto mb-4 animate-pulse" />
-                    <p className="text-blue-700 mb-2 font-medium">이미지 업로드 중...</p>
-                    <p className="text-sm text-blue-600 mb-4">
-                      {uploadProgress.current}/{uploadProgress.total} 파일 처리 완료
+                  // 업로드 진행 중 UI (최적화됨)
+                  <div className="border-2 border-green-300 rounded-lg p-8 text-center bg-green-50">
+                    <Upload className="w-12 h-12 text-green-500 mx-auto mb-4 animate-pulse" />
+                    <p className="text-green-700 mb-2 font-medium">🚀 고속 병렬 업로드 중...</p>
+                    <p className="text-sm text-green-600 mb-4">
+                      {uploadProgress.current}/{uploadProgress.total} 배치 처리 완료
                     </p>
                     {/* 진행 바 */}
-                    <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div className="w-full bg-green-200 rounded-full h-2">
                       <div 
-                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                        className="bg-green-500 h-2 rounded-full transition-all duration-300"
                         style={{ 
                           width: `${uploadProgress.total > 0 ? (uploadProgress.current / uploadProgress.total) * 100 : 0}%` 
                         }}
                       ></div>
                     </div>
+                    <p className="text-xs text-green-500 mt-2">압축 및 최적화가 자동으로 진행됩니다</p>
                   </div>
                 ) : (
                   // 일반 업로드 UI
@@ -921,7 +951,7 @@ export function ProductModal({ isOpen, onClose, onSave, product, categories }: P
                   >
                     <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600 mb-2">이미지를 드래그하거나 클릭하여 업로드</p>
-                    <p className="text-sm text-gray-500">JPG, PNG, WebP (최대 5MB, {10 - images.length}개 추가 가능)</p>
+                    <p className="text-sm text-gray-500">🚀 JPG, PNG, WebP (최대 5MB, 병렬 업로드 지원, {10 - images.length}개 추가 가능)</p>
                     <input
                       id="image-upload"
                       type="file"

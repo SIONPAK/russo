@@ -267,34 +267,35 @@ export async function POST(request: NextRequest) {
       productImages = images || []
     }
 
-    // 상품 등록 시 초기 재고 기록 (stock_movements)
+    // 🎯 성능 최적화: 재고 변동 이력 배치 INSERT
     if (totalStockQuantity > 0) {
-      // 옵션별로 재고 변동 이력 기록
-      for (const option of convertedInventoryOptions) {
-        if (option.physical_stock > 0) {
-          const movementData = {
-            product_id: product.id,
-            movement_type: 'initial_stock',
-            quantity: option.physical_stock,
-            color: option.color || null,
-            size: option.size || null,
-            notes: `상품 등록 시 초기 재고 (${option.color}/${option.size})`,
-            created_at: getKoreaTime()
-          }
-          
-          console.log(`상품 등록 재고 변동 이력 기록:`, movementData)
-          
-          const { data: movementResult, error: movementError } = await supabase
-            .from('stock_movements')
-            .insert(movementData)
-            .select()
-          
-          if (movementError) {
-            console.error(`재고 변동 이력 기록 실패:`, movementError)
-            // 재고 이력 기록 실패는 경고만 하고 계속 진행
-          } else {
-            console.log(`재고 변동 이력 기록 성공:`, movementResult)
-          }
+      // 재고가 있는 옵션들의 변동 이력 데이터를 배열로 준비
+      const movementDataArray = convertedInventoryOptions
+        .filter(option => option.physical_stock > 0)
+        .map(option => ({
+          product_id: product.id,
+          movement_type: 'initial_stock',
+          quantity: option.physical_stock,
+          color: option.color || null,
+          size: option.size || null,
+          notes: `상품 등록 시 초기 재고 (${option.color}/${option.size})`,
+          created_at: getKoreaTime()
+        }))
+
+      if (movementDataArray.length > 0) {
+        console.log(`📦 배치 재고 변동 이력 기록: ${movementDataArray.length}개`)
+        
+        // 배치로 한 번에 INSERT
+        const { data: movementResults, error: movementError } = await supabase
+          .from('stock_movements')
+          .insert(movementDataArray)
+          .select()
+        
+        if (movementError) {
+          console.error(`배치 재고 변동 이력 기록 실패:`, movementError)
+          // 재고 이력 기록 실패는 경고만 하고 계속 진행
+        } else {
+          console.log(`✅ 배치 재고 변동 이력 기록 성공: ${movementResults?.length || 0}개`)
         }
       }
     }

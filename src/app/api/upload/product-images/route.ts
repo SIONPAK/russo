@@ -13,39 +13,35 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 단일 파일 업로드로 제한
-    if (files.length > 1) {
+    // 최대 10개 파일까지 허용
+    if (files.length > 10) {
       return NextResponse.json({
         success: false,
-        error: '한 번에 하나의 파일만 업로드할 수 있습니다.'
+        error: '한 번에 최대 10개 파일까지 업로드할 수 있습니다.'
       }, { status: 400 })
     }
 
-    const file = files[0]
-    console.log(`📁 업로드: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`)
+    console.log(`📁 병렬 업로드 시작: ${files.length}개 파일`)
     
-    // 파일 확장자 검증
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({
-        success: false,
-        error: '지원하지 않는 파일 형식입니다. (JPEG, PNG, WebP만 지원)'
-      }, { status: 400 })
-    }
+    // 병렬로 파일 검증 및 업로드 처리
+    const uploadPromises = files.map(async (file, index) => {
+      // 파일 확장자 검증
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error(`파일 ${index + 1}: 지원하지 않는 파일 형식입니다. (JPEG, PNG, WebP만 지원)`)
+      }
 
-    // 파일 크기 검증
-    if (file.size > 3 * 1024 * 1024) {
-      return NextResponse.json({
-        success: false,
-        error: '파일 크기가 3MB를 초과합니다.'
-      }, { status: 400 })
-    }
+      // 파일 크기 검증
+      if (file.size > 5 * 1024 * 1024) { // 5MB로 증가
+        throw new Error(`파일 ${index + 1}: 파일 크기가 5MB를 초과합니다.`)
+      }
 
-    try {
       // 고유한 파일명 생성
       const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const fileName = `${Date.now()}-${index}-${Math.random().toString(36).substring(2)}.${fileExt}`
       const filePath = `products/${fileName}`
+
+      console.log(`📤 업로드 중: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`)
 
       // Supabase Storage에 업로드
       const { data, error } = await supabase.storage
@@ -56,11 +52,8 @@ export async function POST(request: NextRequest) {
         })
 
       if (error) {
-        console.error('❌ Supabase 업로드 실패:', error.message)
-        return NextResponse.json({
-          success: false,
-          error: `업로드 실패: ${error.message}`
-        }, { status: 500 })
+        console.error(`❌ 업로드 실패 ${file.name}:`, error.message)
+        throw new Error(`파일 ${index + 1} 업로드 실패: ${error.message}`)
       }
 
       // 공개 URL 생성
@@ -69,20 +62,34 @@ export async function POST(request: NextRequest) {
         .getPublicUrl(filePath)
 
       console.log(`✅ 업로드 성공: ${file.name}`)
+      return publicUrl
+    })
+
+    try {
+      // 모든 파일을 병렬로 업로드
+      const uploadedUrls = await Promise.all(uploadPromises)
+      
+      console.log(`🎉 전체 업로드 완료: ${uploadedUrls.length}개 파일`)
 
       return NextResponse.json({
         success: true,
         data: {
-          urls: [publicUrl]
+          urls: uploadedUrls
         },
-        message: '파일 업로드 완료'
+        message: `${uploadedUrls.length}개 파일 업로드 완료`
       })
       
     } catch (uploadError) {
-      console.error('❌ 업로드 오류:', uploadError instanceof Error ? uploadError.message : String(uploadError))
+      console.error('❌ 병렬 업로드 오류:', uploadError)
+      
+      // 부분 실패를 허용하려면 Promise.allSettled 사용 가능
+      // const results = await Promise.allSettled(uploadPromises)
+      // const successful = results.filter(r => r.status === 'fulfilled').map(r => r.value)
+      // const failed = results.filter(r => r.status === 'rejected').map(r => r.reason)
+      
       return NextResponse.json({
         success: false,
-        error: '파일 업로드 중 오류가 발생했습니다.'
+        error: uploadError instanceof Error ? uploadError.message : '업로드 중 오류가 발생했습니다.'
       }, { status: 500 })
     }
 

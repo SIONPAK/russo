@@ -289,6 +289,26 @@ export default function RegisterPage() {
     setValue('userId', e.target.value)
   }
 
+  // 사업자등록번호 포맷팅 (하이픈 자동 추가)
+  const handleBusinessNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    // 숫자만 추출
+    const numbersOnly = value.replace(/[^0-9]/g, '')
+    // 최대 10자리까지만 허용
+    const limitedNumbers = numbersOnly.slice(0, 10)
+    
+    // 하이픈 추가 (3-2-5 형태)
+    let formattedValue = limitedNumbers
+    if (limitedNumbers.length > 3) {
+      formattedValue = limitedNumbers.slice(0, 3) + '-' + limitedNumbers.slice(3)
+    }
+    if (limitedNumbers.length > 5) {
+      formattedValue = limitedNumbers.slice(0, 3) + '-' + limitedNumbers.slice(3, 5) + '-' + limitedNumbers.slice(5)
+    }
+    
+    setValue('businessNumber', formattedValue)
+  }
+
   return (
     <>
       {/* 다음 우편번호 서비스 스크립트 */}
@@ -593,11 +613,13 @@ export default function RegisterPage() {
                           <Input
                             {...register('businessNumber', {
                               required: '사업자등록번호를 입력해주세요',
-                              validate: validateBusinessNumber
+                              validate: validateBusinessNumber,
+                              onChange: handleBusinessNumberChange
                             })}
                             type="text"
-                            placeholder="사업자등록번호 (예: 123-45-67890)"
+                            placeholder="사업자등록번호 (10자리 숫자만 입력)"
                             className="pl-10 h-12"
+                            maxLength={12}
                           />
                         </div>
                         {errors.businessNumber && (
