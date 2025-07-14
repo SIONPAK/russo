@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
         const now = new Date()
         const diffTime = now.getTime() - outgoingDate.getTime()
         daysPassed = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        daysRemaining = 30 - daysPassed
+        daysRemaining = 21 - daysPassed
         isOverdue = daysRemaining < 0 && sample.status === 'pending'
       }
 
@@ -350,7 +350,7 @@ export async function POST(request: NextRequest) {
         sample_type,
         charge_amount: finalChargeAmount,
         notes,
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30일 후
+        due_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString(), // 21일 후
         created_at: getKoreaTime()
       })
       .select(`
@@ -832,12 +832,12 @@ export async function PUT(request: NextRequest) {
           }
 
         } else if (action === 'charge_auto') {
-          // 30일 초과 시 자동 마일리지 차감
+          // 21일 초과 시 자동 마일리지 차감
           const outgoingDate = new Date(sample.outgoing_date)
           const now = new Date()
           const diffDays = Math.ceil((now.getTime() - outgoingDate.getTime()) / (1000 * 60 * 60 * 24))
 
-          if (diffDays > 30) {
+                      if (diffDays > 21) {
             const chargeAmount = sample.charge_amount || (sample.products.price * sample.quantity)
             const currentMileage = sample.users.mileage_balance || 0
 
@@ -896,8 +896,8 @@ export async function PUT(request: NextRequest) {
               sample_id: sample.id,
               action: 'not_overdue',
               success: false,
-              error: '아직 30일이 지나지 않았습니다.',
-              days_remaining: 30 - diffDays
+              error: '아직 21일이 지나지 않았습니다.',
+              days_remaining: 21 - diffDays
             })
           }
         }

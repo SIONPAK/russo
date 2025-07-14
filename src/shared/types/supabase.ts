@@ -277,13 +277,24 @@ export interface Database {
           product_name: string
           product_options: string
           quantity: number
-          outgoing_date: string
-          status: 'pending' | 'recovered' | 'overdue' | 'charged'
+          outgoing_date: string | null
+          status: 'pending' | 'approved' | 'shipped' | 'delivered' | 'returned' | 'charged' | 'rejected' | 'recovered' | 'overdue'
           charge_amount: number
-          charge_method: 'manual' | 'auto_mileage' | null
+          charge_method: 'manual' | 'auto_mileage' | 'mileage' | null
           notes: string | null
           created_at: string
           updated_at: string
+          sample_type: 'photography' | 'sales' | null
+          due_date: string | null
+          return_date: string | null
+          charge_date: string | null
+          delivery_address: string | null
+          tracking_number: string | null
+          admin_notes: string | null
+          approved_at: string | null
+          shipped_at: string | null
+          delivered_at: string | null
+          rejected_at: string | null
         }
         Insert: {
           id?: string
@@ -294,13 +305,24 @@ export interface Database {
           product_name: string
           product_options: string
           quantity: number
-          outgoing_date: string
-          status?: 'pending' | 'recovered' | 'overdue' | 'charged'
+          outgoing_date?: string | null
+          status?: 'pending' | 'approved' | 'shipped' | 'delivered' | 'returned' | 'charged' | 'rejected' | 'recovered' | 'overdue'
           charge_amount?: number
-          charge_method?: 'manual' | 'auto_mileage' | null
+          charge_method?: 'manual' | 'auto_mileage' | 'mileage' | null
           notes?: string | null
           created_at?: string
           updated_at?: string
+          sample_type?: 'photography' | 'sales' | null
+          due_date?: string | null
+          return_date?: string | null
+          charge_date?: string | null
+          delivery_address?: string | null
+          tracking_number?: string | null
+          admin_notes?: string | null
+          approved_at?: string | null
+          shipped_at?: string | null
+          delivered_at?: string | null
+          rejected_at?: string | null
         }
         Update: {
           id?: string
@@ -311,13 +333,24 @@ export interface Database {
           product_name?: string
           product_options?: string
           quantity?: number
-          outgoing_date?: string
-          status?: 'pending' | 'recovered' | 'overdue' | 'charged'
+          outgoing_date?: string | null
+          status?: 'pending' | 'approved' | 'shipped' | 'delivered' | 'returned' | 'charged' | 'rejected' | 'recovered' | 'overdue'
           charge_amount?: number
-          charge_method?: 'manual' | 'auto_mileage' | null
+          charge_method?: 'manual' | 'auto_mileage' | 'mileage' | null
           notes?: string | null
           created_at?: string
           updated_at?: string
+          sample_type?: 'photography' | 'sales' | null
+          due_date?: string | null
+          return_date?: string | null
+          charge_date?: string | null
+          delivery_address?: string | null
+          tracking_number?: string | null
+          admin_notes?: string | null
+          approved_at?: string | null
+          shipped_at?: string | null
+          delivered_at?: string | null
+          rejected_at?: string | null
         }
       }
       featured_products: {

@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     const processedSamples = samplesData.map(sample => {
       // 만료일 계산
       const outgoingDate = sample.outgoing_date ? new Date(sample.outgoing_date) : null
-      const dueDate = outgoingDate ? new Date(outgoingDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null
+      const dueDate = outgoingDate ? new Date(outgoingDate.getTime() + 21 * 24 * 60 * 60 * 1000) : null
       const now = new Date()
       
       let daysRemaining = null
@@ -294,6 +294,62 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 })
     }
 
+    console.log(`🔄 샘플 일괄 업데이트 시작: ${action}, 대상 ${sample_ids.length}개`)
+    console.log('📥 받은 sample_ids:', sample_ids)
+
+    // 🎯 sample_number로 조회 (그룹 번호 또는 개별 번호 처리)
+    let samples: any[] = []
+    
+    // 각 sample_id에 대해 그룹 번호인지 개별 번호인지 확인
+    for (const sampleId of sample_ids) {
+      if (sampleId.endsWith('-01') || sampleId.endsWith('-02') || sampleId.match(/-\d{2}$/)) {
+        // 개별 번호인 경우 (SP-20250714-906413ZTHM-01)
+        const { data: individualSamples, error: individualError } = await supabase
+          .from('samples')
+          .select('*')
+          .eq('sample_number', sampleId)
+        
+        if (individualError) {
+          console.error('개별 샘플 조회 오류:', individualError)
+          continue
+        }
+        
+        if (individualSamples) {
+          samples.push(...individualSamples)
+        }
+      } else {
+        // 그룹 번호인 경우 (SP-20250714-906413ZTHM) - 해당 그룹의 모든 샘플 찾기
+        const { data: groupSamples, error: groupError } = await supabase
+          .from('samples')
+          .select('*')
+          .like('sample_number', `${sampleId}%`)
+        
+        if (groupError) {
+          console.error('그룹 샘플 조회 오류:', groupError)
+          continue
+        }
+        
+        if (groupSamples) {
+          samples.push(...groupSamples)
+        }
+      }
+    }
+    
+    console.log(`🔍 조회된 샘플 수: ${samples.length}개`)
+    
+    if (samples.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: '해당 샘플을 찾을 수 없습니다.'
+      }, { status: 404 })
+    }
+    
+    // 실제 sample_number 목록 추출
+    const actualSampleNumbers = samples.map(sample => sample.sample_number)
+    console.log('🎯 실제 업데이트할 sample_numbers:', actualSampleNumbers)
+    
+    // 이미 조회 완료했으므로 바로 진행
+
     let updateData: any = {
       updated_at: getKoreaTime()
     }
@@ -304,10 +360,13 @@ export async function PATCH(request: NextRequest) {
         updateData.status = 'shipped'
         updateData.shipped_at = getKoreaTime()
         updateData.outgoing_date = getKoreaTime()
-        updateData.due_date = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString() // 21일 후
+        // 🎯 D-21 디데이 설정 (21일 후)
+        updateData.due_date = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
         if (data?.tracking_number) {
           updateData.tracking_number = data.tracking_number
         }
+        
+        console.log(`📦 출고 처리: D-21 디데이 = ${updateData.due_date}`)
         break
 
       case 'mark_returned':
@@ -335,11 +394,11 @@ export async function PATCH(request: NextRequest) {
         }, { status: 400 })
     }
 
-    // 일괄 업데이트 실행
+    // 일괄 업데이트 실행 (실제 sample_number 목록 사용)
     const { data: updatedSamples, error: updateError } = await supabase
       .from('samples')
       .update(updateData)
-      .in('id', sample_ids)
+      .in('sample_number', actualSampleNumbers)
       .select()
 
     if (updateError) {
@@ -350,58 +409,88 @@ export async function PATCH(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 재고 변동 이력 기록 (회수완료 시)
-    if (action === 'mark_returned' && updatedSamples.length > 0) {
-      try {
-        const stockMovements = updatedSamples.map(sample => ({
-          product_id: sample.product_id,
-          movement_type: 'sample_in',
-          quantity: sample.quantity, // 양수 (입고)
-          reference_id: sample.id,
-          reference_type: 'sample',
-          notes: `샘플 회수: ${sample.sample_number} (촬영용 샘플 반납)`,
-          created_at: getKoreaTime()
-        }))
+    console.log(`✅ 샘플 상태 업데이트 완료: ${updatedSamples.length}개`)
 
-        const { error: stockError } = await supabase
-          .from('stock_movements')
-          .insert(stockMovements)
+    // 🎯 액션별 재고 처리 (새로운 재고 관리 시스템 사용)
+    if (action === 'mark_shipped') {
+      // 출고 시 재고 차감
+      console.log('📉 출고 시 재고 차감 처리...')
+      
+      for (const sample of updatedSamples) {
+        try {
+          // 색상/사이즈 정보 파싱
+          const parseOptions = (options: string) => {
+            const colorMatch = options.match(/색상:\s*([^,]+)/);
+            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+            return {
+              color: colorMatch ? colorMatch[1].trim() : null,
+              size: sizeMatch ? sizeMatch[1].trim() : null
+            };
+          };
 
-        if (stockError) {
-          console.error('Stock movements insert error:', stockError)
-          // 재고 이력 실패는 경고만 하고 계속 진행
-        }
+          const { color, size } = parseOptions(sample.product_options || '');
 
-        // 상품 재고 수량도 업데이트
-        for (const sample of updatedSamples) {
-          // 현재 재고 조회
-          const { data: product, error: productError } = await supabase
-            .from('products')
-            .select('stock_quantity')
-            .eq('id', sample.product_id)
-            .single()
+          // 🎯 새로운 재고 관리 시스템으로 재고 차감
+          const { data: stockResult, error: stockError } = await supabase
+            .rpc('adjust_physical_stock', {
+              p_product_id: sample.product_id,
+              p_color: color,
+              p_size: size,
+              p_quantity_change: -sample.quantity, // 음수로 차감
+              p_reason: `샘플 출고 - ${sample.sample_number}`
+            })
 
-          if (productError) {
-            console.error(`Product fetch error for ${sample.product_id}:`, productError)
-            continue
+          if (stockError || !stockResult) {
+            console.error('❌ 샘플 출고 재고 차감 실패:', stockError)
+          } else {
+            console.log(`✅ 샘플 출고 재고 차감 완료: ${sample.sample_number}`)
           }
-
-          // 재고 증가
-          const newStockQuantity = (product.stock_quantity || 0) + sample.quantity
-          const { error: stockUpdateError } = await supabase
-            .from('products')
-            .update({ stock_quantity: newStockQuantity })
-            .eq('id', sample.product_id)
-
-          if (stockUpdateError) {
-            console.error(`Product stock update error for ${sample.product_id}:`, stockUpdateError)
-          }
+        } catch (stockError) {
+          console.error(`샘플 ${sample.sample_number} 재고 차감 실패:`, stockError)
         }
-      } catch (error) {
-        console.error('Stock movement recording error:', error)
-        // 재고 이력 실패는 경고만 하고 계속 진행
       }
     }
+
+    if (action === 'mark_returned') {
+      // 회수 시 재고 복원
+      console.log('📈 회수 시 재고 복원 처리...')
+      
+      for (const sample of updatedSamples) {
+        try {
+          // 색상/사이즈 정보 파싱
+          const parseOptions = (options: string) => {
+            const colorMatch = options.match(/색상:\s*([^,]+)/);
+            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+            return {
+              color: colorMatch ? colorMatch[1].trim() : null,
+              size: sizeMatch ? sizeMatch[1].trim() : null
+            };
+          };
+
+          const { color, size } = parseOptions(sample.product_options || '');
+
+          // 🎯 새로운 재고 관리 시스템으로 재고 복원
+          const { data: stockResult, error: stockError } = await supabase
+            .rpc('adjust_physical_stock', {
+              p_product_id: sample.product_id,
+              p_color: color,
+              p_size: size,
+              p_quantity_change: sample.quantity, // 양수로 복원
+              p_reason: `샘플 회수 - ${sample.sample_number}`
+            })
+
+          if (stockError || !stockResult) {
+            console.error('❌ 샘플 회수 재고 복원 실패:', stockError)
+          } else {
+            console.log(`✅ 샘플 회수 재고 복원 완료: ${sample.sample_number}`)
+          }
+        } catch (stockError) {
+          console.error(`샘플 ${sample.sample_number} 재고 복원 실패:`, stockError)
+        }
+      }
+    }
+
+    console.log(`🎉 샘플 일괄 업데이트 완료: ${updatedSamples.length}개`)
 
     return NextResponse.json({
       success: true,

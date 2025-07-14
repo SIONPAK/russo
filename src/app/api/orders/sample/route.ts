@@ -316,7 +316,7 @@ export async function GET(request: NextRequest) {
 
       // 만료일 계산
       const outgoingDate = sample.outgoing_date ? new Date(sample.outgoing_date) : null
-      const dueDate = outgoingDate ? new Date(outgoingDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null
+              const dueDate = outgoingDate ? new Date(outgoingDate.getTime() + 21 * 24 * 60 * 60 * 1000) : null
 
       return {
         ...sample,
