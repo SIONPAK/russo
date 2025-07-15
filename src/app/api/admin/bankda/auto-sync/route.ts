@@ -232,7 +232,7 @@ async function performBankdaSync() {
           .from('mileage')
           .select('id, description, created_at')
           .ilike('description', `%${bankdaTransactionId}%`)
-          .in('source', ['bankda_auto', 'bankda_manual'])
+          .in('source', ['auto', 'manual']) // 'bankda_auto'와 'bankda_manual'을 'auto'와 'manual'로 변경
           .single();
         
         if (existingByUniqueId) {
@@ -247,7 +247,7 @@ async function performBankdaSync() {
           .select('id, description, created_at')
           .ilike('description', `%[${transaction.bkcode}]%`)
           .eq('amount', parseInt(transaction.bkinput))
-          .in('source', ['bankda_auto', 'bankda_manual'])
+          .in('source', ['auto', 'manual']) // 'bankda_auto'와 'bankda_manual'을 'auto'와 'manual'로 변경
           .single();
         
         if (existingByCodeAmount) {
@@ -279,7 +279,7 @@ async function performBankdaSync() {
           user_id: userRecord.id,
           amount: parseInt(transaction.bkinput),
           type: 'earn', // 적립
-          source: 'bankda_auto',
+          source: 'auto', // 'bankda_auto'에서 'auto'로 변경
           description: `자동적립: ${transaction.bkjukyo} (${transaction.bkdate} ${transaction.bktime}) [${transaction.bkcode}] | ${bankdaTransactionId}`,
           status: 'completed',
           created_at: currentTime,
@@ -861,7 +861,7 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
           .from('mileage')
           .select('id, description, created_at')
           .ilike('description', `%${bankdaTransactionId}%`)
-          .in('source', ['bankda_auto', 'bankda_manual'])
+          .in('source', ['auto', 'manual']) // 'bankda_auto'와 'bankda_manual'을 'auto'와 'manual'로 변경
           .single();
         
         if (existingByUniqueId) {
@@ -878,7 +878,7 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
           .select('id, description, created_at')
           .ilike('description', `%[${transaction.bkcode}]%`)
           .eq('amount', parseInt(transaction.bkinput))
-          .in('source', ['bankda_auto', 'bankda_manual'])
+          .in('source', ['auto', 'manual']) // 'bankda_auto'와 'bankda_manual'을 'auto'와 'manual'로 변경
           .single();
         
         if (existingByCodeAmount) {
@@ -913,7 +913,7 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
           user_id: userRecord.id,
           amount: parseInt(transaction.bkinput),
           type: 'earn', // 적립
-          source: 'bankda_manual',
+          source: 'manual', // 'bankda_manual'에서 'manual'로 변경
           description: `수동동기화: ${transaction.bkjukyo} (${transaction.bkdate} ${transaction.bktime}) [${transaction.bkcode}] | ${bankdaTransactionId}`,
           status: 'completed',
           created_at: currentTime,
