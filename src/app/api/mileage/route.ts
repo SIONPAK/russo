@@ -226,6 +226,7 @@ export async function POST(request: NextRequest) {
           description,
           source,
           status: 'completed',
+          created_at: getKoreaTime(),
           updated_at: getKoreaTime()
         }
       ])

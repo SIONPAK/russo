@@ -552,6 +552,36 @@ export function SamplesPage() {
     }
   }
 
+  // 샘플 배송정보 다운로드 함수
+  const handleDownloadShippingInfo = async () => {
+    try {
+      // 출고된 샘플들만 가져오기 (shipped 상태)
+      const response = await fetch('/api/admin/samples?status=shipped&limit=1000')
+      const result = await response.json()
+
+      if (result.success && result.data && result.data.length > 0) {
+        // 샘플 데이터를 배송정보 다운로드 형식으로 변환
+        const samplesWithUserInfo = result.data.map((sample: any) => ({
+          ...sample,
+          users: sample.users || {
+            representative_name: sample.customer_name,
+            company_name: sample.customer_name,
+            phone: sample.users?.phone || ''
+          }
+        }))
+
+        // 배송정보 다운로드 함수 호출
+        downloadSampleShippingExcel(samplesWithUserInfo, `샘플배송정보_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`)
+        showSuccess('샘플 배송정보가 다운로드되었습니다.')
+      } else {
+        showInfo('다운로드할 출고된 샘플이 없습니다.')
+      }
+    } catch (error) {
+      console.error('샘플 배송정보 다운로드 오류:', error)
+      showError('샘플 배송정보 다운로드에 실패했습니다.')
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -569,7 +599,7 @@ export function SamplesPage() {
             <FileText className="h-4 w-4 mr-2" />
             샘플 명세서 생성
           </Button>
-          <Button variant="outline" onClick={() => showInfo('배송정보 다운로드 기능은 현재 구현되지 않았습니다.')}>
+          <Button variant="outline" onClick={handleDownloadShippingInfo}>
             <Download className="h-4 w-4 mr-2" />
             배송정보 다운로드
           </Button>

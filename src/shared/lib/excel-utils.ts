@@ -934,7 +934,7 @@ export function downloadSampleShippingExcel(samples: any[], filename?: string) {
       '품목명': '의류',
       '내품명': itemName,
       '내품수량': sample.quantity || 1,
-      '배송 메세지': sample.notes || '',
+      '배송 메세지': '',
       '상호명': sample.users?.company_name || sample.customer_name || ''
     }
   })
@@ -957,7 +957,13 @@ export function downloadSampleShippingExcel(samples: any[], filename?: string) {
   
   // 파일 다운로드
   const fileName = filename || `샘플배송정보_${formatDate(new Date()).replace(/\./g, '')}.xlsx`
-  XLSX.writeFile(wb, fileName)
+  
+  // 엑셀 파일 생성
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  
+  // 파일 다운로드
+  saveAs(blob, fileName)
 } 
 
 // 운송장 템플릿 다운로드 (발주번호|상호명|운송장번호 형식)

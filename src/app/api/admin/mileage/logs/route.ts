@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/shared/lib/supabase/server';
-import { getKoreaDate } from '@/shared/lib/utils';
+import { getKoreaDate, getKoreaTime } from '@/shared/lib/utils';
 
 // GET - 마일리지 실패 로그 조회
 export async function GET(request: NextRequest) {
@@ -110,7 +110,8 @@ export async function POST(request: NextRequest) {
         reason,
         reference_id,
         reference_type,
-        description
+        description,
+        created_at: getKoreaTime()
       })
       .select(`
         *,

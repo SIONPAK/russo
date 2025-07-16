@@ -188,7 +188,9 @@ export async function POST(request: NextRequest) {
         source,
         description,
         status: 'completed', // 수동 처리는 즉시 완료
-        order_id
+        order_id,
+        created_at: getKoreaTime(),
+        updated_at: getKoreaTime()
       })
       .select(`
         *,
@@ -219,7 +221,8 @@ export async function POST(request: NextRequest) {
         reason: `수동 ${type === 'earn' ? '적립' : '차감'}`,
         reference_id: mileage.id,
         reference_type: 'mileage',
-        description: `관리자 수동 처리: ${description}`
+        description: `관리자 수동 처리: ${description}`,
+        created_at: getKoreaTime()
       })
 
     return NextResponse.json({

@@ -301,7 +301,9 @@ export async function PATCH(request: NextRequest) {
               description: `차감명세서 처리 - ${statement.statement_number}`,
               status: 'completed',
               order_id: statement.order_id,
-              processed_by: null // 관리자 ID가 있다면 추가
+              processed_by: null, // 관리자 ID가 있다면 추가
+              created_at: getKoreaTime(),
+              updated_at: getKoreaTime()
             })
 
           if (mileageError) {

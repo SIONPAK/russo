@@ -81,7 +81,8 @@ export async function PATCH(request: NextRequest) {
             source: 'manual',
             description: `차감 명세서 처리 - ${statement.statement_number}`,
             status: 'completed',
-            created_at: getKoreaTime()
+            created_at: getKoreaTime(),
+            updated_at: getKoreaTime()
           })
 
         if (mileageRecordError) {

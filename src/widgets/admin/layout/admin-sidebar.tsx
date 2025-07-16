@@ -20,7 +20,8 @@ import {
   Archive,
   Settings,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  TrendingUp
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -47,6 +48,13 @@ const menuItems = [
     shortTitle: '마일리지',
     icon: Coins,
     href: '/admin/mileage',
+    children: []
+  },
+  {
+    title: '전체 회원 포인트 보기',
+    shortTitle: '전체포인트',
+    icon: TrendingUp,
+    href: '/admin/mileage/total-points',
     children: []
   },
   {
@@ -142,6 +150,15 @@ export function AdminSidebar({ className = '', collapsed = false }: AdminSidebar
   const isActive = (href: string) => {
     if (!pathname) return false;
     if (href === '/admin') return pathname === '/admin';
+    
+    // 정확한 경로 매칭을 위해 더 구체적인 경로부터 확인
+    if (href === '/admin/mileage/total-points') {
+      return pathname === '/admin/mileage/total-points';
+    }
+    if (href === '/admin/mileage') {
+      return pathname === '/admin/mileage';
+    }
+    
     return pathname.startsWith(href);
   };
 
