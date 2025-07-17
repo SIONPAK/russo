@@ -38,6 +38,7 @@ export function UsersPage() {
     selectUser,
     closeUserDetail,
     refreshUsers,
+    updateCompanyName,
   } = useUserManagement({
     page,
     limit: 10,
@@ -359,6 +360,7 @@ export function UsersPage() {
         onDelete={deleteUser}
         onUpdateGrade={updateCustomerGrade}
         onDormantToggle={toggleDormant}
+        onUpdateCompanyName={updateCompanyName}
       />
     </div>
   )

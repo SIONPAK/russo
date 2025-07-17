@@ -14,6 +14,7 @@ interface UserDetailModalProps {
   onDelete?: (userId: string) => void
   onUpdateGrade?: (userId: string, grade: 'premium' | 'general') => void
   onDormantToggle?: (userId: string, isDormant: boolean, reason?: string) => void
+  onUpdateCompanyName?: (userId: string, companyName: string) => void
 }
 
 export function UserDetailModal({ 
@@ -26,9 +27,12 @@ export function UserDetailModal({
   onActivate,
   onDelete,
   onUpdateGrade,
-  onDormantToggle
+  onDormantToggle,
+  onUpdateCompanyName
 }: UserDetailModalProps) {
   const [showGradeChange, setShowGradeChange] = useState(false)
+  const [editingCompanyName, setEditingCompanyName] = useState(false)
+  const [companyNameInput, setCompanyNameInput] = useState('')
   
   if (!isOpen || !user) return null
 
@@ -67,6 +71,23 @@ export function UserDetailModal({
     }
   }
 
+  const handleCompanyNameEdit = () => {
+    setCompanyNameInput(user.company_name)
+    setEditingCompanyName(true)
+  }
+
+  const handleCompanyNameSave = () => {
+    if (onUpdateCompanyName && companyNameInput.trim() && companyNameInput.trim() !== user.company_name) {
+      onUpdateCompanyName(user.id, companyNameInput.trim())
+    }
+    setEditingCompanyName(false)
+  }
+
+  const handleCompanyNameCancel = () => {
+    setCompanyNameInput('')
+    setEditingCompanyName(false)
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl border border-gray-100">
@@ -82,8 +103,42 @@ export function UserDetailModal({
             <h4 className="text-md font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">기본 정보</h4>
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">회사명</label>
-                <p className="text-sm text-gray-900 font-medium">{user.company_name}</p>
+                <label className="block text-sm font-medium text-gray-500 mb-1">
+                  회사명
+                  {!editingCompanyName && (
+                    <button
+                      onClick={handleCompanyNameEdit}
+                      className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                    >
+                      편집
+                    </button>
+                  )}
+                </label>
+                {editingCompanyName ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={companyNameInput}
+                      onChange={(e) => setCompanyNameInput(e.target.value)}
+                      className="flex-1 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleCompanyNameSave}
+                      className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                    >
+                      저장
+                    </button>
+                    <button
+                      onClick={handleCompanyNameCancel}
+                      className="px-2 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                    >
+                      취소
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-900 font-medium">{user.company_name}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">사업자등록번호</label>

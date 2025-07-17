@@ -469,6 +469,10 @@ export function useUserManagement(options: UseUserManagementOptions = {}) {
     fetchUsers()
   }
 
+  const updateCompanyName = async (userId: string, companyName: string) => {
+    return updateUser(userId, { company_name: companyName })
+  }
+
   return {
     users,
     loading,
@@ -495,6 +499,7 @@ export function useUserManagement(options: UseUserManagementOptions = {}) {
     setCurrentPage,
     selectUser,
     closeUserDetail,
-    refreshUsers
+    refreshUsers,
+    updateCompanyName
   }
 } 
