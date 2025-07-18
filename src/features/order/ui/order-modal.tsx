@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, ChevronDown, ChevronUp } from 'lucide-react'
 import { useOrder, OrderItem, ShippingInfo } from '../model/use-order'
+import { formatPhoneNumber } from '@/shared/lib/utils'
 
 interface OrderModalProps {
   isOpen: boolean
@@ -43,6 +44,8 @@ export const OrderModal = ({ isOpen, onClose, cartItems, userId }: OrderModalPro
     payment: true,
     paymentMethod: true
   })
+
+
 
   // 주문 상품 정보 계산
   const orderItems: OrderItem[] = cartItems.map(item => ({
@@ -149,13 +152,14 @@ export const OrderModal = ({ isOpen, onClose, cartItems, userId }: OrderModalPro
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">휴대폰 *</label>
+                    <label className="block text-sm font-medium mb-1">전화번호 *</label>
                     <input
                       type="tel"
                       value={orderInfo.phone}
-                      onChange={(e) => setOrderInfo(prev => ({ ...prev, phone: e.target.value }))}
+                      onChange={(e) => setOrderInfo(prev => ({ ...prev, phone: formatPhoneNumber(e.target.value) }))}
                       className="w-full border border-gray-300 rounded px-3 py-2"
-                      placeholder="010-0000-0000"
+                      placeholder="전화번호 (숫자만 입력)"
+                      maxLength={13}
                     />
                   </div>
                 </div>
@@ -219,14 +223,15 @@ export const OrderModal = ({ isOpen, onClose, cartItems, userId }: OrderModalPro
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">휴대폰 *</label>
+                    <label className="block text-sm font-medium mb-1">전화번호 *</label>
                     <input
                       type="tel"
                       value={shippingInfo.phone}
-                      onChange={(e) => setShippingInfo(prev => ({ ...prev, phone: e.target.value }))}
+                      onChange={(e) => setShippingInfo(prev => ({ ...prev, phone: formatPhoneNumber(e.target.value) }))}
                       disabled={useSameAddress}
                       className="w-full border border-gray-300 rounded px-3 py-2 disabled:bg-gray-100"
-                      placeholder="010-0000-0000"
+                      placeholder="전화번호 (숫자만 입력)"
+                      maxLength={13}
                     />
                   </div>
                 </div>

@@ -66,12 +66,35 @@ export async function POST(request: NextRequest) {
     
     for (const order of orders) {
       try {
+        console.log('확정 명세서 처리 시작:', order.order_number)
+
+        // 이미 처리 중인 주문인지 확인 (중복 처리 방지)
+        const { data: existingStatement, error: statementCheckError } = await supabase
+          .from('statements')
+          .select('id, statement_number')
+          .eq('order_id', order.id)
+          .eq('statement_type', 'confirmed')
+          .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString()) // 5분 이내 생성된 것
+          .single()
+
+        if (existingStatement && !statementCheckError) {
+          console.log('최근 5분 이내 이미 처리된 주문:', order.order_number)
+          results.push({
+            orderId: order.id,
+            orderNumber: order.order_number,
+            success: false,
+            error: '최근에 이미 처리된 주문입니다. 중복 처리를 방지합니다.'
+          })
+          continue
+        }
+
         // 실제 출고된 상품만 필터링
         const shippedItems = order.order_items.filter((item: any) => 
           item.shipped_quantity && item.shipped_quantity > 0
         )
 
         if (shippedItems.length === 0) {
+          console.log('출고된 상품이 없어 건너뜀:', order.order_number)
           results.push({
             orderId: order.id,
             orderNumber: order.order_number,

@@ -67,11 +67,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 휴대폰 번호 형식 검증
-    const phonePattern = /^01[0-9]-\d{4}-\d{4}$/
+    // 전화번호 형식 검증
+    const phonePattern = /^(01[0-9]-\d{3,4}-\d{4}|02-\d{3,4}-\d{4}|0[3-9][0-9]-\d{3}-\d{4})$/
     if (!phonePattern.test(phone) || !phonePattern.test(recipientPhone)) {
       return NextResponse.json(
-        { success: false, message: '올바른 휴대폰 번호 형식을 입력해주세요. (예: 010-1234-5678)' },
+        { success: false, message: '올바른 전화번호 형식을 입력해주세요. (예: 010-1234-5678, 02-123-4567, 031-123-4567)' },
         { status: 400 }
       )
     }

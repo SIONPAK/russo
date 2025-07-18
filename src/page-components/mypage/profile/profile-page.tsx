@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { AddressSearch } from '@/shared/ui/address-search'
 import { showSuccess, showError } from '@/shared/lib/toast'
+import { formatPhoneNumber } from '@/shared/lib/utils'
 import { User, Lock, Eye, EyeOff } from 'lucide-react'
 
 export function ProfilePage() {
@@ -39,6 +40,12 @@ export function ProfilePage() {
       })
     }
   }, [user])
+
+  // 휴대폰 번호 포맷팅 (하이픈 자동 추가)
+  const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formattedValue = formatPhoneNumber(e.target.value)
+    setFormData({ ...formData, phone: formattedValue })
+  }
 
   const handleSave = async () => {
     try {
@@ -276,12 +283,14 @@ export function ProfilePage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  휴대폰 번호 <span className="text-red-500">*</span>
+                  전화번호 <span className="text-red-500">*</span>
                 </label>
                 <Input
+                  type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="휴대폰 번호를 입력해주세요"
+                  onChange={handlePhoneNumberChange}
+                  placeholder="전화번호 (숫자만 입력하시면 자동으로 하이픈이 추가됩니다)"
+                  maxLength={13}
                 />
               </div>
 

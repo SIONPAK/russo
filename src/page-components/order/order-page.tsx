@@ -10,7 +10,7 @@ import { useOrderForm } from '@/features/order/model/use-order-form'
 import { useOrder } from '@/features/order/model/use-order'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
 import { OrderFormData } from '@/features/order/model/use-order-form'
-import { formatCurrency } from '@/shared/lib/utils'
+import { formatCurrency, formatPhoneNumber } from '@/shared/lib/utils'
 import { showInfo, showSuccess, showError } from '@/shared/lib/toast'
 import { generateReceipt, formatDate, ReceiptData } from '@/shared/lib/receipt-utils'
 
@@ -97,6 +97,8 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
       router.push('/cart')
     }
   }, [mounted, cartItems, router])
+
+
 
   // 배송 메모 변경 처리
   useEffect(() => {
@@ -396,13 +398,14 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2">휴대폰 *</label>
+                        <label className="block text-sm font-medium mb-2">전화번호 *</label>
                         <input
                           type="tel"
                           value={formData.orderInfo.phone}
-                          onChange={(e) => handleOrderInfoUpdate('phone', e.target.value)}
+                          onChange={(e) => handleOrderInfoUpdate('phone', formatPhoneNumber(e.target.value))}
                           className="w-full border border-gray-300 rounded-lg px-4 py-3"
-                          placeholder="010-0000-0000"
+                          placeholder="전화번호 (숫자만 입력)"
+                          maxLength={13}
                         />
                       </div>
                     </div>
@@ -502,14 +505,15 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2">휴대폰 *</label>
+                        <label className="block text-sm font-medium mb-2">전화번호 *</label>
                         <input
                           type="tel"
                           value={formData.shippingInfo.phone}
-                          onChange={(e) => updateShippingInfo('phone', e.target.value)}
+                          onChange={(e) => updateShippingInfo('phone', formatPhoneNumber(e.target.value))}
                           disabled={formData.useSameAddress}
                           className="w-full border border-gray-300 rounded-lg px-4 py-3 disabled:bg-gray-100"
-                          placeholder="010-0000-0000"
+                          placeholder="전화번호 (숫자만 입력)"
+                          maxLength={13}
                         />
                       </div>
                     </div>

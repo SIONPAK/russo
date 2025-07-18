@@ -72,30 +72,43 @@ export default function ShippingStatementsPage() {
       const result = await response.json()
 
       if (result.success) {
+        // 이메일 발송 로그 조회
+        const emailLogResponse = await fetch('/api/admin/orders/email-logs')
+        const emailLogResult = await emailLogResponse.json()
+        const emailLogs = emailLogResult.success ? emailLogResult.data : []
+
         // 주문 데이터를 출고 명세서 형태로 변환
-        const transformedStatements = result.data.orders.map((order: any) => ({
-          id: order.id,
-          order_id: order.id,
-          order_number: order.order_number,
-          company_name: order.users?.company_name || '',
-          customer_grade: order.users?.customer_grade || 'general',
-          created_at: order.created_at,
-          shipped_at: order.shipped_at,
-          status: order.status,
-          email_sent: false, // 임시로 false로 설정
-          email_sent_at: null,
-          total_amount: order.order_items?.reduce((sum: number, item: any) => 
-            sum + (item.shipped_quantity * item.unit_price), 0) || 0,
-          items: order.order_items?.filter((item: any) => item.shipped_quantity > 0).map((item: any) => ({
-            product_name: item.product_name,
-            color: item.color,
-            size: item.size,
-            quantity: item.quantity,
-            shipped_quantity: item.shipped_quantity,
-            unit_price: item.unit_price,
-            total_price: item.unit_price * item.shipped_quantity
-          })) || []
-        }))
+        const transformedStatements = result.data.orders.map((order: any) => {
+          // 해당 주문의 이메일 발송 로그 찾기
+          const emailLog = emailLogs.find((log: any) => 
+            log.order_id === order.id && 
+            (log.email_type === 'shipping_statement' || log.email_type === 'confirmed_statement')
+          )
+          
+          return {
+            id: order.id,
+            order_id: order.id,
+            order_number: order.order_number,
+            company_name: order.users?.company_name || '',
+            customer_grade: order.users?.customer_grade || 'general',
+            created_at: order.created_at,
+            shipped_at: order.shipped_at,
+            status: order.status,
+            email_sent: !!emailLog, // 이메일 로그가 있으면 발송됨
+            email_sent_at: emailLog?.sent_at || null,
+            total_amount: order.order_items?.reduce((sum: number, item: any) => 
+              sum + (item.shipped_quantity * item.unit_price), 0) || 0,
+            items: order.order_items?.filter((item: any) => item.shipped_quantity > 0).map((item: any) => ({
+              product_name: item.product_name,
+              color: item.color,
+              size: item.size,
+              quantity: item.quantity,
+              shipped_quantity: item.shipped_quantity,
+              unit_price: item.unit_price,
+              total_price: item.unit_price * item.shipped_quantity
+            })) || []
+          }
+        })
 
         // 이메일 발송 여부와 회사명 필터링
         let filteredStatements = transformedStatements

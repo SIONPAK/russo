@@ -157,3 +157,55 @@ export function getKoreaDateFormatted(): string {
   const koreaTime = new Date(Date.now() + (9 * 60 * 60 * 1000)) // UTC + 9시간
   return koreaTime.toISOString().split('T')[0].replace(/-/g, '')
 } 
+
+/**
+ * 한국 전화번호를 적절한 형식으로 포맷팅합니다.
+ * 지원 형식:
+ * - 휴대폰: 010-1234-5678, 011-123-4567 등
+ * - 서울: 02-1234-5678, 02-123-4567
+ * - 지역번호: 031-123-4567, 070-1234-5678 등
+ * 
+ * @param value 입력된 전화번호 (숫자와 하이픈 포함 가능)
+ * @returns 포맷팅된 전화번호
+ */
+export function formatPhoneNumber(value: string): string {
+  // 숫자만 추출
+  const numbersOnly = value.replace(/[^0-9]/g, '')
+  
+  // 빈 값 처리
+  if (!numbersOnly) return ''
+  
+  // 최대 11자리까지만 허용
+  const limitedNumbers = numbersOnly.slice(0, 11)
+  const length = limitedNumbers.length
+  
+  // 길이에 따른 포맷팅
+  if (length <= 2) {
+    return limitedNumbers
+  }
+  
+  // 서울 지역번호 (02)
+  if (limitedNumbers.startsWith('02')) {
+    if (length <= 2) return limitedNumbers
+    if (length <= 5) return `02-${limitedNumbers.slice(2)}`
+    if (length <= 9) return `02-${limitedNumbers.slice(2, 5)}-${limitedNumbers.slice(5)}`
+    return `02-${limitedNumbers.slice(2, 6)}-${limitedNumbers.slice(6)}`
+  }
+  
+  // 휴대폰 번호 (01X)
+  if (limitedNumbers.startsWith('01')) {
+    if (length <= 3) return limitedNumbers
+    if (length <= 7) return `${limitedNumbers.slice(0, 3)}-${limitedNumbers.slice(3)}`
+    return `${limitedNumbers.slice(0, 3)}-${limitedNumbers.slice(3, 7)}-${limitedNumbers.slice(7)}`
+  }
+  
+  // 3자리 지역번호 (031, 032, 070 등)
+  if (length >= 3) {
+    const areaCode = limitedNumbers.slice(0, 3)
+    if (length <= 3) return areaCode
+    if (length <= 6) return `${areaCode}-${limitedNumbers.slice(3)}`
+    return `${areaCode}-${limitedNumbers.slice(3, 6)}-${limitedNumbers.slice(6)}`
+  }
+  
+  return limitedNumbers
+} 

@@ -8,6 +8,7 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { ArrowLeft, Home, Search, Building2, User, Phone, Mail, Lock, FileText, Shield, Check, X } from 'lucide-react'
 import { showSuccess, showError, showWarning, showInfo } from '@/shared/lib/toast'
+import { formatPhoneNumber } from '@/shared/lib/utils'
 
 interface RegisterFormData {
   // 약관 동의
@@ -210,7 +211,7 @@ export default function RegisterPage() {
         email: '이메일',
         password: '비밀번호',
         passwordConfirm: '비밀번호 확인',
-        phone: '휴대폰 번호',
+        phone: '전화번호',
         businessNumber: '사업자등록번호',
         companyName: '상호명',
         representativeName: '대표자명',
@@ -259,11 +260,11 @@ export default function RegisterPage() {
         return
       }
       
-      // 휴대폰 번호 형식 검사
+      // 전화번호 형식 검사
       const phone = getValues('phone')
-      const phonePattern = /^01[0-9]-\d{4}-\d{4}$/
+      const phonePattern = /^(01[0-9]-\d{3,4}-\d{4}|02-\d{3,4}-\d{4}|0[3-9][0-9]-\d{3}-\d{4})$/
       if (!phonePattern.test(phone)) {
-        showError('올바른 휴대폰 번호 형식을 입력해주세요. (예: 010-1234-5678)')
+        showError('올바른 전화번호 형식을 입력해주세요. (예: 010-1234-5678, 02-123-4567, 031-123-4567)')
         return
       }
       
@@ -307,6 +308,12 @@ export default function RegisterPage() {
     }
     
     setValue('businessNumber', formattedValue)
+  }
+
+  // 휴대폰 번호 포맷팅 (하이픈 자동 추가)
+  const handlePhoneNumberChange = (fieldName: 'phone' | 'recipientPhone') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formattedValue = formatPhoneNumber(e.target.value)
+    setValue(fieldName, formattedValue)
   }
 
   return (
@@ -579,21 +586,23 @@ export default function RegisterPage() {
                         )}
                       </div>
 
-                      {/* 휴대폰 번호 */}
+                      {/* 전화번호 */}
                       <div>
                         <div className="relative">
                           <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                           <Input
                             {...register('phone', {
-                              required: '휴대폰 번호를 입력해주세요',
+                              required: '전화번호를 입력해주세요',
                               pattern: {
-                                value: /^01[0-9]-\d{4}-\d{4}$/,
-                                message: '올바른 휴대폰 번호 형식이 아닙니다 (예: 010-1234-5678)'
-                              }
+                                value: /^(01[0-9]-\d{3,4}-\d{4}|02-\d{3,4}-\d{4}|0[3-9][0-9]-\d{3}-\d{4})$/,
+                                message: '올바른 전화번호 형식이 아닙니다 (예: 010-1234-5678, 02-123-4567, 031-123-4567)'
+                              },
+                              onChange: handlePhoneNumberChange('phone')
                             })}
                             type="tel"
-                            placeholder="휴대폰 번호 (예: 010-1234-5678)"
+                            placeholder="전화번호 (숫자만 입력하시면 자동으로 하이픈이 추가됩니다)"
                             className="pl-10 h-12"
+                            maxLength={13}
                           />
                         </div>
                         {errors.phone && (
@@ -796,13 +805,15 @@ export default function RegisterPage() {
                             {...register('recipientPhone', {
                               required: '연락처를 입력해주세요',
                               pattern: {
-                                value: /^01[0-9]-\d{4}-\d{4}$/,
-                                message: '올바른 형식이 아닙니다'
-                              }
+                                value: /^(01[0-9]-\d{3,4}-\d{4}|02-\d{3,4}-\d{4}|0[3-9][0-9]-\d{3}-\d{4})$/,
+                                message: '올바른 전화번호 형식이 아닙니다'
+                              },
+                              onChange: handlePhoneNumberChange('recipientPhone')
                             })}
                             type="tel"
-                            placeholder="연락처"
+                            placeholder="전화번호 (숫자만 입력)"
                             className="pl-9 h-11"
+                            maxLength={13}
                           />
                         </div>
                         {errors.recipientPhone && (

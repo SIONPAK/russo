@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/entities/auth/model/auth-store'
 import { useCategoryMenu } from '@/features/category-menu/model/use-category-menu'
+import { useUserMileage } from '@/features/user/model/use-user-mileage'
 import { Button } from '@/shared/ui/button'
 import { 
   User, 
@@ -27,6 +28,7 @@ import {
 export default function Header() {
   const { user, isAuthenticated, logout, userType } = useAuthStore()
   const { categories } = useCategoryMenu()
+  const { mileageBalance } = useUserMileage()
   const router = useRouter()
   const pathname = usePathname()
   const [mounted, setMounted] = useState(false)
@@ -156,10 +158,15 @@ export default function Header() {
             
             <div className="flex items-center space-x-4">
               {isAuthenticated ? (
-                <div className="flex items-center space-x-3 text-gray-300">
+                <div className="flex items-center space-x-3 text-gray-300 align-baseline">
                   <span className="font-medium text-white">
                     {getUserDisplayName()}
                   </span>
+                  {userType === 'customer' && (
+                    <span className="text-sm text-blue-300">
+                      {new Intl.NumberFormat('ko-KR').format(mileageBalance)}원
+                    </span>
+                  )}
                   <button
                     onClick={handleLogout}
                     className="text-gray-400 hover:text-white transition-colors"

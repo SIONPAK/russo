@@ -508,18 +508,28 @@ export function OrdersPage() {
 
 
 
+  // 중복 클릭 방지 상태
+  const [isConfirmingStatement, setIsConfirmingStatement] = useState(false)
+
   // 4. 확정 명세서 생성 및 이메일 발송
   const handleConfirmStatement = async () => {
+    // 중복 클릭 방지
+    if (isConfirmingStatement) {
+      showInfo('확정 명세서 생성이 진행 중입니다. 잠시만 기다려주세요.')
+      return
+    }
+
     if (selectedOrders.length === 0) {
       showInfo('확정 명세서를 생성할 주문을 선택해주세요.')
       return
     }
 
-    if (!confirm(`선택된 ${selectedOrders.length}건의 주문에 대해 확정 명세서를 생성하고 이메일을 발송하시겠습니까?\n\n⚠️ 처리 시 다음 작업이 수행됩니다:\n• 거래명세서 자동 생성\n• 마일리지 차감 처리\n• 고객에게 이메일 발송\n• 주문 상태 '명세서 확정'으로 변경\n\n이미 확정된 주문도 재처리됩니다.`)) {
+    if (!confirm(`선택된 ${selectedOrders.length}건의 주문에 대해 확정 명세서를 생성하고 이메일을 발송하시겠습니까?\n\n⚠️ 처리 시 다음 작업이 수행됩니다:\n• 거래명세서 자동 생성\n• 마일리지 차감 처리\n• 고객에게 이메일 발송\n• 주문 상태 '명세서 확정'으로 변경\n\n이미 확정된 주문도 재처리됩니다.\n\n⚠️ 주의: 마일리지 중복 차감을 방지하기 위해 처리 중에는 다시 클릭하지 마세요.`)) {
       return
     }
 
     try {
+      setIsConfirmingStatement(true)
       const response = await fetch('/api/admin/orders/confirm-statement', {
         method: 'POST',
         headers: {
@@ -550,6 +560,8 @@ export function OrdersPage() {
     } catch (error) {
       console.error('확정 명세서 생성 오류:', error)
       showError('확정 명세서 생성 중 오류가 발생했습니다.')
+    } finally {
+      setIsConfirmingStatement(false)
     }
   }
 
@@ -1041,12 +1053,24 @@ export function OrdersPage() {
                 selectedOrders.length === 0 || 
                 updating || 
                 downloadingPDF || 
-                downloadingExcel
+                downloadingExcel ||
+                isConfirmingStatement
               }
-              className="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-2 disabled:opacity-50"
+              className={`text-xs px-3 py-2 disabled:opacity-50 ${
+                isConfirmingStatement 
+                  ? 'bg-yellow-500 hover:bg-yellow-600' 
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
             >
-              <FileText className="w-3 h-3 mr-1" />
-              4. 확정 명세서 생성 ({selectedOrders.length})
+              {isConfirmingStatement ? (
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+              ) : (
+                <FileText className="w-3 h-3 mr-1" />
+              )}
+              {isConfirmingStatement 
+                ? '확정 명세서 생성 중...' 
+                : `4. 확정 명세서 생성 (${selectedOrders.length})`
+              }
             </Button>
             
             {/* 5. 운송장 등록 및 출고처리 */}
