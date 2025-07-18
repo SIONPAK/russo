@@ -146,12 +146,25 @@ export async function GET(request: NextRequest) {
         }
       }
       
+      // product_options에서 색상과 사이즈 파싱
+      const parseOptions = (options: string) => {
+        if (!options) return { color: '', size: '' }
+        const colorMatch = options.match(/색상:\s*([^,]+)/);
+        const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+        return {
+          color: colorMatch ? colorMatch[1].trim() : '',
+          size: sizeMatch ? sizeMatch[1].trim() : ''
+        };
+      };
+
+      const parsedOptions = parseOptions(sample.product_options || '')
+
       acc[groupNumber].items.push({
         product_id: sample.product_id,
         product_name: sample.product_name,
         product_options: sample.product_options,
-        color: sample.product_options?.color || '',
-        size: sample.product_options?.size || '',
+        color: parsedOptions.color,
+        size: parsedOptions.size,
         quantity: sample.quantity,
         unit_price: sample.charge_amount || 0,
         total_price: (sample.charge_amount || 0) * sample.quantity

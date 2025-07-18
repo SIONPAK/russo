@@ -112,7 +112,8 @@ export async function GET(request: NextRequest) {
     
     if (allMileageData) {
       currentBalance = allMileageData.reduce((sum: number, item: any) => {
-        return sum + (item.type === 'earn' ? item.amount : -item.amount)
+        // amount 필드에 이미 정확한 부호가 들어있음 (earn: +, spend: -)
+        return sum + item.amount
       }, 0)
     }
 
@@ -134,7 +135,7 @@ export async function GET(request: NextRequest) {
 
     const thisMonthSpent = thisMonthData
       .filter((item: any) => item.type === 'spend')
-      .reduce((sum: number, item: any) => sum + item.amount, 0)
+      .reduce((sum: number, item: any) => sum + Math.abs(item.amount), 0)
 
     const summary = {
       currentBalance,

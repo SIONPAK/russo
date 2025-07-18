@@ -110,7 +110,7 @@ export function MileagePage() {
       
 
       if (result.success) {
-        
+        console.log('🔍 마일리지 API 응답:', result.data.summary)
         setTransactions(result.data.mileages || [])
         setSummary(result.data.summary || {
           currentBalance: 0,
@@ -149,6 +149,17 @@ export function MileagePage() {
 
   const getMileageColor = (balance: number) => {
     return balance < 0 ? 'text-red-600' : 'text-white'
+  }
+
+  const formatMileageAmount = (amount: number, showSign: boolean = false) => {
+    const isNegative = amount < 0
+    const absoluteAmount = Math.abs(amount)
+    const formattedAmount = formatPrice(absoluteAmount)
+    
+    if (showSign) {
+      return isNegative ? `-${formattedAmount}` : `${formattedAmount}`
+    }
+    return `${formattedAmount}`
   }
 
   const formatDate = (dateString: string) => {
@@ -212,15 +223,17 @@ export function MileagePage() {
         {/* 요약 카드 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           {/* 보유 마일리지 */}
-          <div className="bg-black text-white rounded-lg p-4">
+          <div className={`rounded-lg p-4 ${summary.currentBalance < 0 ? 'bg-red-600' : 'bg-black'} text-white`}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium">보유 마일리지</h3>
               <CreditCard className="w-5 h-5 opacity-80" />
             </div>
-            <p className={`text-2xl font-bold ${getMileageColor(summary.currentBalance)}`}>
-              {formatPrice(summary.currentBalance)}원
+            <p className="text-2xl font-bold text-white">
+              {summary.currentBalance < 0 ? '-' : ''}{formatPrice(Math.abs(summary.currentBalance))}원
             </p>
-            <p className="text-gray-300 text-xs mt-1">사용 가능한 마일리지</p>
+            <p className="text-gray-200 text-xs mt-1">
+              {summary.currentBalance < 0 ? '마이너스 잔액' : '사용 가능한 마일리지'}
+            </p>
           </div>
 
           {/* 이번 달 적립 */}
@@ -344,7 +357,7 @@ export function MileagePage() {
                         <p className={`text-lg font-bold ${
                           transaction.type === 'earn' ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {transaction.type === 'earn' ? '+' : '-'}{formatPrice(transaction.amount)}원
+                          {transaction.type === 'earn' ? '+' : '-'}{formatPrice(Math.abs(transaction.amount))}원
                         </p>
                         <p className="text-xs text-gray-500">
                           {transaction.type === 'earn' ? '적립' : '차감'}

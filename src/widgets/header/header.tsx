@@ -163,8 +163,8 @@ export default function Header() {
                     {getUserDisplayName()}
                   </span>
                   {userType === 'customer' && (
-                    <span className="text-sm text-blue-300">
-                      {new Intl.NumberFormat('ko-KR').format(mileageBalance)}원
+                    <span className={`text-sm ${mileageBalance < 0 ? 'text-red-400' : 'text-blue-300'}`}>
+                      {mileageBalance < 0 ? '-' : ''}{new Intl.NumberFormat('ko-KR').format(Math.abs(mileageBalance))}원
                     </span>
                   )}
                   <button

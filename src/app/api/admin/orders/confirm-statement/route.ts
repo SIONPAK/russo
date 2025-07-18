@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
 
         // 3. 마일리지 차감 처리
         const currentMileage = order.users.mileage_balance || 0
-        const mileageDeductionAmount = shippedAmount + taxAmount // 공급가액 + 세액만 차감 (배송비 제외)
+        const mileageDeductionAmount = totalAmount // 공급가액 + 세액 + 배송비 모두 포함
         const newMileage = Math.max(0, currentMileage - mileageDeductionAmount)
 
         // 3-1. mileage 테이블에 차감 기록 생성

@@ -67,6 +67,7 @@ interface GroupedSampleStatement {
   items: {
     product_id: string
     product_name: string
+    product_options: string
     color: string
     size: string
     quantity: number
@@ -122,6 +123,8 @@ export function SamplesPage() {
   // 명세서 수정 관련 상태
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingStatement, setEditingStatement] = useState<SampleStatement | null>(null)
+  const [editingItems, setEditingItems] = useState<any[]>([])
+  const [isGroupEdit, setIsGroupEdit] = useState(false)
   const [showProductSearch, setShowProductSearch] = useState(false)
   const [productSearchKeyword, setProductSearchKeyword] = useState('')
   const [productSearchResults, setProductSearchResults] = useState<any[]>([])
@@ -179,6 +182,16 @@ export function SamplesPage() {
     return `₩${amount.toLocaleString()}`
   }
 
+  // product_options 문자열에서 색상과 사이즈 정보 파싱
+  const parseOptions = (options: string) => {
+    const colorMatch = options.match(/색상:\s*([^,]+)/);
+    const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
+    return {
+      color: colorMatch ? colorMatch[1].trim() : '',
+      size: sizeMatch ? sizeMatch[1].trim() : ''
+    };
+  };
+
   // 명세서 목록 조회
   const fetchStatements = useCallback(async (filterParams = filters) => {
     try {
@@ -201,29 +214,34 @@ export function SamplesPage() {
         
         // 개별 뷰를 위해 그룹화된 데이터를 평면화
         const flattenedStatements = groupedStatements.flatMap((group: any) => 
-          group.items.map((item: any) => ({
-            id: item.id,
-            sample_number: group.sample_number,
-            customer_id: group.customer_id,
-            customer_name: group.customer_name,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            product_options: item.product_options,
-            color: item.color,
-            size: item.size,
-            quantity: item.quantity,
-            unit_price: item.unit_price || 0,
-            total_price: item.total_price || 0,
-            status: group.status,
-            outgoing_date: group.outgoing_date,
-            due_date: group.due_date,
-            days_remaining: group.days_remaining,
-            is_overdue: group.is_overdue,
-            tracking_number: group.tracking_number,
-            admin_notes: group.admin_notes,
-            created_at: group.created_at,
-            updated_at: group.updated_at
-          }))
+          group.items.map((item: any) => {
+            // product_options에서 색상과 사이즈 정보 파싱
+            const parsedOptions = parseOptions(item.product_options || '')
+            
+            return {
+              id: item.id,
+              sample_number: group.sample_number,
+              customer_id: group.customer_id,
+              customer_name: group.customer_name,
+              product_id: item.product_id,
+              product_name: item.product_name,
+              product_options: item.product_options,
+              color: item.color || parsedOptions.color,
+              size: item.size || parsedOptions.size,
+              quantity: item.quantity,
+              unit_price: item.unit_price || 0,
+              total_price: item.total_price || 0,
+              status: group.status,
+              outgoing_date: group.outgoing_date,
+              due_date: group.due_date,
+              days_remaining: group.days_remaining,
+              is_overdue: group.is_overdue,
+              tracking_number: group.tracking_number,
+              admin_notes: group.admin_notes,
+              created_at: group.created_at,
+              updated_at: group.updated_at
+            }
+          })
         )
         setStatements(flattenedStatements)
         
@@ -248,32 +266,224 @@ export function SamplesPage() {
   }, [fetchStatements, viewMode])
 
   // 개별 명세서 수정 함수
-  const handleEditStatement = (statement: SampleStatement) => {
-    setEditingStatement(statement)
-    setShowEditModal(true)
-  }
-
-  // 개별 명세서 업데이트 함수
-  const handleUpdateStatement = async (statementId: string, updates: Partial<SampleStatement>) => {
+  const handleEditStatement = async (statement: SampleStatement) => {
     try {
-      const response = await fetch(`/api/admin/sample-statements/${statementId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates)
-      })
-      
+      // API에서 실제 데이터를 가져와서 정확한 색상/사이즈 정보 확보
+      const response = await fetch(`/api/admin/sample-statements/${statement.sample_number}`)
       const result = await response.json()
       
-      if (result.success) {
-        showSuccess('명세서가 수정되었습니다.')
-        setShowEditModal(false)
-        setEditingStatement(null)
-        fetchStatements()
+      if (result.success && result.data && result.data.length > 0) {
+        // API에서 가져온 실제 데이터 사용
+        const actualData = result.data[0] // 개별 아이템이므로 첫 번째 항목
+        const parsedOptions = parseOptions(actualData.product_options || '')
+        
+        setEditingItems([{
+          id: actualData.id,
+          sample_number: actualData.sample_number,
+          product_id: actualData.product_id,
+          product_name: actualData.products?.name || actualData.product_name,
+          color: actualData.color || parsedOptions.color,
+          size: actualData.size || parsedOptions.size,
+          quantity: actualData.quantity || statement.quantity,
+          unit_price: actualData.unit_price || statement.unit_price,
+          total_price: actualData.total_price || statement.total_price
+        }])
       } else {
-        showError(result.error || '명세서 수정에 실패했습니다.')
+        // API 실패 시 기존 데이터 사용
+        const parsedOptions = parseOptions(statement.product_options || '')
+        
+        setEditingItems([{
+          id: statement.id,
+          sample_number: statement.sample_number,
+          product_id: statement.product_id,
+          product_name: statement.product_name,
+          color: statement.color || parsedOptions.color,
+          size: statement.size || parsedOptions.size,
+          quantity: statement.quantity,
+          unit_price: statement.unit_price,
+          total_price: statement.total_price
+        }])
       }
+      
+      setEditingStatement(statement)
+      setIsGroupEdit(false)
+      setShowEditModal(true)
+    } catch (error) {
+      console.error('개별 명세서 정보 조회 오류:', error)
+      // 오류 시 기존 데이터로 진행
+      const parsedOptions = parseOptions(statement.product_options || '')
+      
+      setEditingItems([{
+        id: statement.id,
+        sample_number: statement.sample_number,
+        product_id: statement.product_id,
+        product_name: statement.product_name,
+        color: statement.color || parsedOptions.color,
+        size: statement.size || parsedOptions.size,
+        quantity: statement.quantity,
+        unit_price: statement.unit_price,
+        total_price: statement.total_price
+      }])
+      setEditingStatement(statement)
+      setIsGroupEdit(false)
+      setShowEditModal(true)
+    }
+  }
+
+  // 그룹 명세서 수정 함수 (그룹 내 모든 상품들을 수정 가능하게)
+  const handleEditGroup = async (group: GroupedSampleStatement) => {
+    try {
+      console.log('그룹 수정 시작:', group)
+      
+      // 먼저 그룹 데이터의 items 배열을 직접 사용
+      if (group.items && group.items.length > 0) {
+        const items = group.items.map((item: any, index: number) => {
+          const parsedOptions = parseOptions(item.product_options || '')
+          
+          return {
+            id: `${group.sample_number}-${index + 1}`, // 임시 ID
+            sample_number: `${group.sample_number}-${String(index + 1).padStart(2, '0')}`, // 개별 샘플 번호 생성
+            product_id: item.product_id,
+            product_name: item.product_name,
+            color: item.color || parsedOptions.color,
+            size: item.size || parsedOptions.size,
+            quantity: item.quantity || 1,
+            unit_price: item.unit_price || 0,
+            total_price: item.total_price || 0
+          }
+        })
+        
+        console.log('그룹 아이템들:', items)
+        setEditingItems(items)
+      } else {
+        // 그룹 데이터에 items가 없으면 API로 가져오기
+        console.log('API로 그룹 상세 정보 조회 시도')
+        const response = await fetch(`/api/admin/sample-statements/${group.sample_number}`)
+        const result = await response.json()
+        
+        console.log('API 응답:', result)
+        
+        if (result.success && result.data && result.data.length > 0) {
+          const items = result.data.map((sample: any) => {
+            const parsedOptions = parseOptions(sample.product_options || '')
+            
+            return {
+              id: sample.id,
+              sample_number: sample.sample_number,
+              product_id: sample.product_id,
+              product_name: sample.products?.name || sample.product_name,
+              color: sample.color || parsedOptions.color,
+              size: sample.size || parsedOptions.size,
+              quantity: sample.quantity || 1,
+              unit_price: sample.unit_price || 0,
+              total_price: sample.total_price || 0
+            }
+          })
+          
+          console.log('API에서 가져온 아이템들:', items)
+          setEditingItems(items)
+        } else {
+          showError('그룹 상세 정보를 가져올 수 없습니다.')
+          return
+        }
+      }
+      
+      // 그룹 정보를 기본 명세서로 설정
+      const mockStatement: SampleStatement = {
+        id: group.id,
+        sample_number: group.sample_number,
+        customer_id: group.customer_id,
+        customer_name: group.customer_name,
+        product_id: '',
+        product_name: `${group.items?.length || 0}개 상품 그룹`,
+        product_options: '',
+        color: '',
+        size: '',
+        quantity: group.total_quantity,
+        unit_price: 0,
+        total_price: group.total_amount,
+        status: group.status,
+        outgoing_date: group.outgoing_date,
+        due_date: group.due_date,
+        days_remaining: group.days_remaining,
+        is_overdue: group.is_overdue,
+        tracking_number: group.tracking_number,
+        admin_notes: group.admin_notes,
+        created_at: group.created_at,
+        updated_at: group.updated_at
+      }
+      
+      setEditingStatement(mockStatement)
+      setIsGroupEdit(true)
+      setShowEditModal(true)
+    } catch (error) {
+      console.error('그룹 정보 조회 오류:', error)
+      showError('그룹 정보 조회 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 명세서 업데이트 함수 (개별 및 그룹 모두 처리)
+  const handleUpdateStatement = async (statementId: string, updates: any) => {
+    try {
+      if (isGroupEdit) {
+        // 그룹 수정의 경우 - 각 아이템별로 개별 업데이트
+        const promises = editingItems.map(item => 
+          fetch(`/api/admin/sample-statements/${item.sample_number}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...updates,
+              // 개별 아이템의 정보도 함께 업데이트
+              color: item.color,
+              size: item.size,
+              quantity: item.quantity,
+              product_options: `색상: ${item.color || '기본'}, 사이즈: ${item.size || 'FREE'}`
+            })
+          }).then(res => res.json())
+        )
+        
+        const results = await Promise.all(promises)
+        const successCount = results.filter(result => result.success).length
+        
+        if (successCount === editingItems.length) {
+          showSuccess(`${successCount}개 상품이 수정되었습니다.`)
+        } else {
+          showError(`${successCount}/${editingItems.length}개 상품이 수정되었습니다.`)
+        }
+      } else {
+        // 개별 수정의 경우
+        const firstItem = editingItems[0]
+        const response = await fetch(`/api/admin/sample-statements/${statementId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...updates,
+            // 개별 아이템 정보도 포함
+            color: firstItem?.color,
+            size: firstItem?.size,
+            quantity: firstItem?.quantity,
+            product_options: firstItem ? `색상: ${firstItem.color || '기본'}, 사이즈: ${firstItem.size || 'FREE'}` : undefined
+          })
+        })
+        
+        const result = await response.json()
+        
+        if (result.success) {
+          showSuccess('명세서가 수정되었습니다.')
+        } else {
+          showError(result.error || '명세서 수정에 실패했습니다.')
+        }
+      }
+      
+      setShowEditModal(false)
+      setEditingStatement(null)
+      setEditingItems([])
+      setIsGroupEdit(false)
+      fetchStatements()
     } catch (error) {
       console.error('명세서 수정 오류:', error)
       showError('명세서 수정 중 오류가 발생했습니다.')
@@ -472,17 +682,24 @@ export function SamplesPage() {
         shippingPhone: '',
         shippingPostalCode: '',
         shippingAddress: '',
-        items: group.items.map(item => ({
-          productName: item.product_name,
-          productCode: `${item.color}/${item.size}`,
-          quantity: item.quantity,
-          unitPrice: 0, // 샘플은 무료
-          totalPrice: 0, // 샘플은 무료
-          options: {
-            color: item.color,
-            size: item.size
+        items: group.items.map(item => {
+          // product_options에서 색상과 사이즈 정보 파싱
+          const parsedOptions = parseOptions(item.product_options || '')
+          const displayColor = item.color || parsedOptions.color || '기본'
+          const displaySize = item.size || parsedOptions.size || 'FREE'
+          
+          return {
+            productName: item.product_name,
+            productCode: `${displayColor}/${displaySize}`,
+            quantity: item.quantity,
+            unitPrice: 0, // 샘플은 무료
+            totalPrice: 0, // 샘플은 무료
+            options: {
+              color: displayColor,
+              size: displaySize
+            }
           }
-        })),
+        }),
         subtotal: 0, // 샘플은 무료
         shippingFee: 0,
         totalAmount: 0, // 샘플은 무료
@@ -856,8 +1073,8 @@ export function SamplesPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {groupedStatements.map((group) => (
-                  <tr key={group.id} className="hover:bg-gray-50">
+                {groupedStatements.map((group, index) => (
+                  <tr key={`${group.sample_number}-${group.id}-${index}`} className="hover:bg-gray-50">
                     <td className="px-4 py-4">
                       <input
                         type="checkbox"
@@ -915,6 +1132,15 @@ export function SamplesPage() {
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditGroup(group)}
+                          className="text-xs"
+                        >
+                          <Edit className="h-3 w-3 mr-1" />
+                          수정
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -1000,8 +1226,8 @@ export function SamplesPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedStatements.map((statement) => (
-                  <tr key={statement.id} className="hover:bg-gray-50">
+                {paginatedStatements.map((statement, index) => (
+                  <tr key={`${statement.sample_number}-${statement.id}-${index}`} className="hover:bg-gray-50">
                     <td className="px-4 py-4">
                       <input
                         type="checkbox"
@@ -1331,7 +1557,7 @@ export function SamplesPage() {
                           </tr>
                         ) : (
                           sampleItems.map((item, index) => (
-                            <tr key={item.id} className="hover:bg-gray-50">
+                            <tr key={`${item.id || 'item'}-${index}`} className="hover:bg-gray-50">
                               <td className="px-4 py-3 text-sm text-gray-900">{index + 1}</td>
                               <td className="px-4 py-3">
                                 <div
@@ -1676,7 +1902,7 @@ export function SamplesPage() {
       {/* 명세서 수정 모달 */}
       {showEditModal && editingStatement && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900">샘플 명세서 수정</h3>
@@ -1686,6 +1912,8 @@ export function SamplesPage() {
                   onClick={() => {
                     setShowEditModal(false)
                     setEditingStatement(null)
+                    setEditingItems([])
+                    setIsGroupEdit(false)
                   }}
                 >
                   <X className="h-4 w-4" />
@@ -1740,37 +1968,71 @@ export function SamplesPage() {
                   </div>
 
                   {/* 상품 정보 */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        상품명
-                      </label>
-                      <Input
-                        value={editingStatement.product_name}
-                        disabled
-                        className="bg-gray-50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        색상
-                      </label>
-                      <Input
-                        value={editingStatement.color}
-                        disabled
-                        className="bg-gray-50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        사이즈
-                      </label>
-                      <Input
-                        value={editingStatement.size}
-                        disabled
-                        className="bg-gray-50"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      {isGroupEdit ? `포함 상품 (${editingItems.length}개)` : '상품 정보'}
+                    </label>
+                    
+                    {editingItems.length > 0 && (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">상품명</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">색상</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">사이즈</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">수량</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {editingItems.map((item, index) => (
+                              <tr key={`${item.sample_number}-${index}`}>
+                                <td className="px-3 py-2 text-gray-900">{item.product_name}</td>
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="text"
+                                    value={item.color}
+                                    onChange={(e) => {
+                                      const newItems = [...editingItems]
+                                      newItems[index].color = e.target.value
+                                      setEditingItems(newItems)
+                                    }}
+                                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="색상"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="text"
+                                    value={item.size}
+                                    onChange={(e) => {
+                                      const newItems = [...editingItems]
+                                      newItems[index].size = e.target.value
+                                      setEditingItems(newItems)
+                                    }}
+                                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="사이즈"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) => {
+                                      const newItems = [...editingItems]
+                                      newItems[index].quantity = parseInt(e.target.value) || 0
+                                      setEditingItems(newItems)
+                                    }}
+                                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                    min="0"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
 
                   {/* 수정 가능한 필드들 */}
@@ -1848,6 +2110,8 @@ export function SamplesPage() {
                     onClick={() => {
                       setShowEditModal(false)
                       setEditingStatement(null)
+                      setEditingItems([])
+                      setIsGroupEdit(false)
                     }}
                   >
                     취소
@@ -1957,15 +2221,22 @@ export function SamplesPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {selectedGroup.items.map((item, index) => (
-                        <tr key={index}>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.product_name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.color}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.size}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}개</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.unit_price)}</td>
-                        </tr>
-                      ))}
+                      {selectedGroup.items.map((item, index) => {
+                        // product_options에서 색상과 사이즈 정보 파싱
+                        const parsedOptions = parseOptions(item.product_options || '')
+                        const displayColor = item.color || parsedOptions.color || '-'
+                        const displaySize = item.size || parsedOptions.size || '-'
+                        
+                        return (
+                          <tr key={index}>
+                            <td className="px-4 py-3 text-sm text-gray-900">{item.product_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{displayColor}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{displaySize}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}개</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.unit_price)}</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                     <tfoot className="bg-gray-50">
                       <tr>

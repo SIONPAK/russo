@@ -800,7 +800,11 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     
     const originalTotal = orderItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.quantity), 0)
     const shippedTotal = shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
-    const shippingFee = order.shipping_fee || 0
+    
+    // 🔧 배송비 계산 (20장 미만일 때 3,000원)
+    const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => sum + item.shipped_quantity, 0)
+    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+    
     const finalTotal = shippedTotal + shippingFee
     
     const statementData = {
@@ -922,10 +926,10 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
             <td class="col1 row-11 empty-cell"></td>
             <td colspan="2" class="row-11 korean-text">합계금액</td>
             <td colspan="4" rowspan="2" class="row-24 amount-text korean-text-bold">
-              ${order.tracking_number === '미출고' ? '영원 정' : convertToKoreanNumber(statementData.amounts.finalTotal) + ' 정'}
+              ${order.tracking_number === '미출고' ? '영원 정' : convertToKoreanNumber(statementData.amounts.shippedTotal + Math.floor(statementData.amounts.shippedTotal * 0.1) + shippingFee) + ' 정'}
             </td>
             <td colspan="2" rowspan="2" class="row-24 text-center">
-              ${order.tracking_number === '미출고' ? '0' : statementData.amounts.finalTotal.toLocaleString()}
+              ${order.tracking_number === '미출고' ? '0' : (statementData.amounts.shippedTotal + Math.floor(statementData.amounts.shippedTotal * 0.1) + shippingFee).toLocaleString()}
             </td>
           </tr>
           
@@ -947,51 +951,74 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           </tr>
     `
     
-    // 출고 상품 목록 (최대 10개까지)
-    for (let idx = 0; idx < 10; idx++) {
+    // 출고 상품 목록
+    let itemRowCount = 0
+    for (let idx = 0; idx < shippedItems.length && idx < 9; idx++) {
       const item = shippedItems[idx]
-      if (item) {
-        // "미출고" 건은 금액 0원 처리
-        const isUnshipped = order.tracking_number === '미출고'
-        const unitPrice = isUnshipped ? 0 : item.unit_price
-        const quantity = isUnshipped ? 0 : item.shipped_quantity
-        const supplyAmount = isUnshipped ? 0 : item.unit_price * item.shipped_quantity
-        const taxAmount = isUnshipped ? 0 : Math.floor(supplyAmount * 0.1)
-        
-        htmlContent += `
-          <tr>
-            <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10 text-center">${idx + 1}</td>
-            <td class="col3 row-10 korean-text">${item.products?.name || item.product_name}</td>
-            <td class="col4 row-10 text-center korean-text">${item.color || ''}</td>
-            <td class="col5 row-10 text-center">${quantity}</td>
-            <td class="col6 row-10 text-center">${unitPrice.toLocaleString()}</td>
-            <td class="col6 row-10 text-center">${supplyAmount.toLocaleString()}</td>
-            <td class="col6 row-10 text-center">${taxAmount.toLocaleString()}</td>
-            <td class="col4 row-10 empty-cell"></td>
-          </tr>
-        `
-      } else {
-        htmlContent += `
-          <tr>
-            <td class="col1 row-10 empty-cell"></td>
-            <td class="col2 row-10 text-center">${idx + 1}</td>
-            <td class="col3 row-10 empty-cell"></td>
-            <td class="col4 row-10 empty-cell"></td>
-            <td class="col5 row-10 empty-cell"></td>
-            <td class="col6 row-10 empty-cell"></td>
-            <td class="col6 row-10 empty-cell"></td>
-            <td class="col6 row-10 empty-cell"></td>
-            <td class="col4 row-10 empty-cell"></td>
-          </tr>
-        `
-      }
+      // "미출고" 건은 금액 0원 처리
+      const isUnshipped = order.tracking_number === '미출고'
+      const unitPrice = isUnshipped ? 0 : item.unit_price
+      const quantity = isUnshipped ? 0 : item.shipped_quantity
+      const supplyAmount = isUnshipped ? 0 : item.unit_price * item.shipped_quantity
+      const taxAmount = isUnshipped ? 0 : Math.floor(supplyAmount * 0.1)
+      
+      htmlContent += `
+        <tr>
+          <td class="col1 row-10 empty-cell"></td>
+          <td class="col2 row-10 text-center">${idx + 1}</td>
+          <td class="col3 row-10 korean-text">${item.products?.name || item.product_name}</td>
+          <td class="col4 row-10 text-center korean-text">${item.color || ''}</td>
+          <td class="col5 row-10 text-center">${quantity}</td>
+          <td class="col6 row-10 text-center">${unitPrice.toLocaleString()}</td>
+          <td class="col6 row-10 text-center">${supplyAmount.toLocaleString()}</td>
+          <td class="col6 row-10 text-center">${taxAmount.toLocaleString()}</td>
+          <td class="col4 row-10 empty-cell"></td>
+        </tr>
+      `
+      itemRowCount++
+    }
+    
+    // 배송비 행 추가 (배송비가 있을 때만)
+    const isOrderUnshipped = order.tracking_number === '미출고'
+    if (shippingFee > 0 && !isOrderUnshipped) {
+      htmlContent += `
+        <tr>
+          <td class="col1 row-10 empty-cell"></td>
+          <td class="col2 row-10 text-center">${itemRowCount + 1}</td>
+          <td class="col3 row-10 korean-text">배송비</td>
+          <td class="col4 row-10 text-center korean-text">-</td>
+          <td class="col5 row-10 text-center">1</td>
+          <td class="col6 row-10 text-center">${shippingFee.toLocaleString()}</td>
+          <td class="col6 row-10 text-center">${shippingFee.toLocaleString()}</td>
+          <td class="col6 row-10 text-center">0</td>
+          <td class="col4 row-10 empty-cell"></td>
+        </tr>
+      `
+      itemRowCount++
+    }
+    
+    // 나머지 빈 행들 채우기 (총 10행까지)
+    for (let idx = itemRowCount; idx < 10; idx++) {
+      htmlContent += `
+        <tr>
+          <td class="col1 row-10 empty-cell"></td>
+          <td class="col2 row-10 text-center">${idx + 1}</td>
+          <td class="col3 row-10 empty-cell"></td>
+          <td class="col4 row-10 empty-cell"></td>
+          <td class="col5 row-10 empty-cell"></td>
+          <td class="col6 row-10 empty-cell"></td>
+          <td class="col6 row-10 empty-cell"></td>
+          <td class="col6 row-10 empty-cell"></td>
+          <td class="col4 row-10 empty-cell"></td>
+        </tr>
+      `
     }
     
     // "미출고" 건은 합계 금액도 0원 처리
     const isUnshipped = order.tracking_number === '미출고'
-    const totalSupplyAmount = isUnshipped ? 0 : statementData.amounts.shippedTotal
-    const totalTaxAmount = isUnshipped ? 0 : Math.floor(totalSupplyAmount * 0.1)
+    // 하단 합계: 공급가액은 상품만, 세액은 상품의 세액만 (배송비는 부가세 없음)
+    const totalSupplyAmount = isUnshipped ? 0 : statementData.amounts.shippedTotal + shippingFee
+    const totalTaxAmount = isUnshipped ? 0 : Math.floor(statementData.amounts.shippedTotal * 0.1)
     
     htmlContent += `
           <tr class="total-row">

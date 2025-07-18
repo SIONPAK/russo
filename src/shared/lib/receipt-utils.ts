@@ -123,31 +123,35 @@ const numberToKorean = (num: number): string => {
   return result + '원정'
 }
 
-// options에서 색상 추출하는 함수 (사이즈는 무시)
-const extractColor = (item: ReceiptData['items'][0]) => {
+// options에서 색상과 사이즈 추출하는 함수
+const extractOptions = (item: ReceiptData['items'][0]) => {
   let color = item.color || '기본'
+  let size = item.size || 'FREE'
   
   if (item.options) {
     try {
       if (typeof item.options === 'string') {
         const parsed = JSON.parse(item.options)
         color = parsed.color || color
+        size = parsed.size || size
       } else if (typeof item.options === 'object') {
         color = item.options.color || color
+        size = item.options.size || size
       }
     } catch (e) {
       // JSON 파싱 실패 시 기본값 사용
     }
   }
   
-  return color
+  return { color, size }
 }
 
-// 색상별로만 상품 그룹화 (사이즈 무시, 수량 합치기)
+// 색상과 사이즈별로 상품 그룹화
 const groupItemsByColorAndProduct = (items: ReceiptData['items']) => {
   const grouped: { [key: string]: { 
     productName: string
     color: string
+    size: string
     totalQuantity: number
     unitPrice: number
     totalPrice: number
@@ -156,8 +160,8 @@ const groupItemsByColorAndProduct = (items: ReceiptData['items']) => {
   }} = {}
   
   items.forEach(item => {
-    const color = extractColor(item)
-    const key = `${item.productName}_${color}`
+    const { color, size } = extractOptions(item)
+    const key = `${item.productName}_${color}_${size}`
     
     if (grouped[key]) {
       grouped[key].totalQuantity += item.quantity
@@ -169,6 +173,7 @@ const groupItemsByColorAndProduct = (items: ReceiptData['items']) => {
       grouped[key] = {
         productName: item.productName,
         color,
+        size,
         totalQuantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
@@ -334,10 +339,10 @@ export const generateReceipt = async (receiptData: ReceiptData) => {
           }
         }
         
-        // 규격/색상만 (D열) - 중앙정렬
+        // 규격/색상/사이즈 (D열) - 중앙정렬
         worksheet[`D${row}`] = {
           t: 's',
-          v: item.color,
+          v: `${item.color}/${item.size}`,
           s: {
             alignment: { horizontal: 'center' }
           }
