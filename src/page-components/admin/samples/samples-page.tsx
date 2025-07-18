@@ -118,6 +118,10 @@ export function SamplesPage() {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false)
   const [customerSearchKeyword, setCustomerSearchKeyword] = useState('')
   const [customerSearchResults, setCustomerSearchResults] = useState<any[]>([])
+
+  // 명세서 수정 관련 상태
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingStatement, setEditingStatement] = useState<SampleStatement | null>(null)
   const [showProductSearch, setShowProductSearch] = useState(false)
   const [productSearchKeyword, setProductSearchKeyword] = useState('')
   const [productSearchResults, setProductSearchResults] = useState<any[]>([])
@@ -242,6 +246,39 @@ export function SamplesPage() {
   useEffect(() => {
     fetchStatements()
   }, [fetchStatements, viewMode])
+
+  // 개별 명세서 수정 함수
+  const handleEditStatement = (statement: SampleStatement) => {
+    setEditingStatement(statement)
+    setShowEditModal(true)
+  }
+
+  // 개별 명세서 업데이트 함수
+  const handleUpdateStatement = async (statementId: string, updates: Partial<SampleStatement>) => {
+    try {
+      const response = await fetch(`/api/admin/sample-statements/${statementId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates)
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        showSuccess('명세서가 수정되었습니다.')
+        setShowEditModal(false)
+        setEditingStatement(null)
+        fetchStatements()
+      } else {
+        showError(result.error || '명세서 수정에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('명세서 수정 오류:', error)
+      showError('명세서 수정 중 오류가 발생했습니다.')
+    }
+  }
 
   // 일괄 상태 업데이트 함수
   const handleBulkAction = async (status: string) => {
@@ -1047,6 +1084,17 @@ export function SamplesPage() {
                     </td>
                     <td className="px-4 py-4 text-sm font-medium">
                       <div className="flex items-center space-x-2">
+                        {/* 수정 버튼 */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditStatement(statement)}
+                          className="text-xs"
+                        >
+                          <Edit className="h-3 w-3 mr-1" />
+                          수정
+                        </Button>
+                        
                         {/* 상태 변경 드롭다운 */}
                         <select
                           value={statement.status}
@@ -1620,6 +1668,198 @@ export function SamplesPage() {
                   샘플 명세서 생성 ({selectedOrders.length}개)
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 명세서 수정 모달 */}
+      {showEditModal && editingStatement && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium text-gray-900">샘플 명세서 수정</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowEditModal(false)
+                    setEditingStatement(null)
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            
+            <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto">
+              <form onSubmit={(e) => {
+                e.preventDefault()
+                const formData = new FormData(e.target as HTMLFormElement)
+                const updates = {
+                  status: formData.get('status') as 'shipped' | 'returned' | 'charged',
+                  tracking_number: formData.get('tracking_number') as string,
+                  admin_notes: formData.get('admin_notes') as string,
+                  outgoing_date: formData.get('outgoing_date') as string,
+                  charge_amount: formData.get('charge_amount') ? Number(formData.get('charge_amount')) : undefined
+                }
+                
+                // 빈 값 제거
+                Object.keys(updates).forEach(key => {
+                  if (updates[key as keyof typeof updates] === '' || updates[key as keyof typeof updates] === null) {
+                    delete updates[key as keyof typeof updates]
+                  }
+                })
+                
+                handleUpdateStatement(editingStatement.sample_number, updates)
+              }}>
+                <div className="space-y-6">
+                  {/* 기본 정보 */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        샘플번호
+                      </label>
+                      <Input
+                        value={editingStatement.sample_number}
+                        disabled
+                        className="bg-gray-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        고객명
+                      </label>
+                      <Input
+                        value={editingStatement.customer_name}
+                        disabled
+                        className="bg-gray-50"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 상품 정보 */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        상품명
+                      </label>
+                      <Input
+                        value={editingStatement.product_name}
+                        disabled
+                        className="bg-gray-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        색상
+                      </label>
+                      <Input
+                        value={editingStatement.color}
+                        disabled
+                        className="bg-gray-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        사이즈
+                      </label>
+                      <Input
+                        value={editingStatement.size}
+                        disabled
+                        className="bg-gray-50"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 수정 가능한 필드들 */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        상태
+                      </label>
+                      <select
+                        name="status"
+                        defaultValue={editingStatement.status}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="shipped">출고완료</option>
+                        <option value="returned">회수완료</option>
+                        <option value="charged">샘플결제</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        운송장번호
+                      </label>
+                      <Input
+                        name="tracking_number"
+                        defaultValue={editingStatement.tracking_number || ''}
+                        placeholder="운송장번호 입력"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        출고일
+                      </label>
+                      <Input
+                        type="datetime-local"
+                        name="outgoing_date"
+                        defaultValue={editingStatement.outgoing_date ? 
+                          new Date(editingStatement.outgoing_date).toISOString().slice(0, 16) : ''}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        결제 금액 (원)
+                      </label>
+                      <Input
+                        type="number"
+                        name="charge_amount"
+                        defaultValue={editingStatement.total_price || 30000}
+                        placeholder="30000"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      관리자 메모
+                    </label>
+                    <textarea
+                      name="admin_notes"
+                      defaultValue={editingStatement.admin_notes || ''}
+                      rows={3}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="관리자 메모를 입력하세요"
+                    />
+                  </div>
+                </div>
+
+                {/* 액션 버튼 */}
+                <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={() => {
+                      setShowEditModal(false)
+                      setEditingStatement(null)
+                    }}
+                  >
+                    취소
+                  </Button>
+                  <Button 
+                    type="submit"
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    수정 완료
+                  </Button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

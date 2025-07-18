@@ -185,7 +185,7 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0)
   const totalQuantity = orderItems.reduce((sum, item) => sum + item.quantity, 0)
-  const shippingFee = totalQuantity >= 20 ? 0 : 3000 // 20장 이상 무료배송
+  const shippingFee = totalQuantity >= 20 ? 0 : 3000 // 20장 이상 무료배송, 당일 2번째 주문부터는 무료
   const mileageDiscount = Math.min(useMileage, subtotal) // 마일리지는 상품금액까지만 사용 가능
   const finalAmount = subtotal + shippingFee - mileageDiscount
 

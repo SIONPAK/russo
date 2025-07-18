@@ -248,8 +248,10 @@ export async function POST(request: NextRequest) {
     // 총 수량 계산 (20장 이상 무료배송 확인용)
     const totalQuantity = items.reduce((sum: number, item: any) => sum + item.quantity, 0)
     
-    // 일반 주문: 20장 이상 무료배송
-    let finalShippingFee = totalQuantity >= 20 ? 0 : 3000
+    // 🔧 배송비 계산 (당일 중복 주문 고려)
+    const { calculateShippingFee } = await import('@/shared/lib/shipping-utils')
+    const finalShippingFee = await calculateShippingFee(userId, totalQuantity)
+    
     let finalTotalAmount = totalAmount + finalShippingFee
 
     // 재고 확인 (주문 생성 전 재고 부족 체크)

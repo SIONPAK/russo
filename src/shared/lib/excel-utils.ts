@@ -180,8 +180,12 @@ export function generateOrderExcel(orderData: OrderData) {
   // 합계 행
   const totalRow = headerRow + 11
   ws[`A${totalRow}`] = { v: '합', t: 's' }
-  ws[`F${totalRow}`] = { v: orderData.totalAmount, t: 'n' }
-  ws[`G${totalRow}`] = { v: orderData.totalTax, t: 'n' }
+  
+  // 🔧 합계는 수식으로 계산 (F13:F23 범위의 합)
+  const supplyStartRow = headerRow + 1 // 첫 번째 상품 행
+  const supplyEndRow = headerRow + 10  // 마지막 상품 행 (10개 상품 지원)
+  ws[`F${totalRow}`] = { f: `SUM(F${supplyStartRow}:F${supplyEndRow})`, t: 'n' }
+  ws[`G${totalRow}`] = { f: `SUM(G${supplyStartRow}:G${supplyEndRow})`, t: 'n' }
   
   // 하단 정보
   ws['A25'] = { v: '국민은행 573701-04-214209 주식회사 루소', t: 's' }

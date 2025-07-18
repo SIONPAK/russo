@@ -118,8 +118,13 @@ export async function POST(request: NextRequest) {
           sum + (item.unit_price * item.shipped_quantity), 0
         )
 
-        // 배송비 계산 (20장 미만일 때 3,000원)
-        const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+        // 🔧 배송비 계산 (당일 중복 주문 고려)
+        const { calculateShippingFeeForStatement } = await import('@/shared/lib/shipping-utils')
+        const shippingFee = await calculateShippingFeeForStatement(
+          order.user_id,
+          totalShippedQuantity,
+          order.id
+        )
         const totalAmount = shippedAmount + shippingFee
 
         // 1. 거래명세서 생성
