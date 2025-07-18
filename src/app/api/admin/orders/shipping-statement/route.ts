@@ -369,13 +369,8 @@ export async function GET(request: NextRequest) {
       // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
       const taxAmount = Math.floor(supplyAmount * 0.1)
 
-      // 🔧 배송비 계산 (당일 중복 주문 고려)
-      const { calculateShippingFeeForStatement } = await import('@/shared/lib/shipping-utils')
-      const shippingFee = await calculateShippingFeeForStatement(
-        order.user_id,
-        totalShippedQuantity,
-        order.id
-      )
+      // 🔧 배송비 계산 (20장 미만일 때 3,000원)
+      const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
 
       // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
       const calculatedTotalAmount = supplyAmount + taxAmount + shippingFee
@@ -483,13 +478,8 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
     // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
     const taxAmount = Math.floor(supplyAmount * 0.1)
 
-    // 🔧 배송비 계산 (당일 중복 주문 고려)
-    const { calculateShippingFeeForStatement } = await import('@/shared/lib/shipping-utils')
-    const shippingFee = await calculateShippingFeeForStatement(
-      order.user_id,
-      totalShippedQuantity,
-      order.id
-    )
+    // 🔧 배송비 계산 (20장 미만일 때 3,000원)
+    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
 
     // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
     const calculatedTotalAmount = supplyAmount + taxAmount + shippingFee

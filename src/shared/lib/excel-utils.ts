@@ -165,7 +165,20 @@ export function generateOrderExcel(orderData: OrderData) {
     currentRow++
   })
   
-  // 빈 행들 추가 (최대 10개 상품까지)
+  // 배송비 행 추가 (배송비가 0이 아닐 때만)
+  if (orderData.shippingFee > 0) {
+    ws[`A${currentRow}`] = { v: orderData.items.length + 1, t: 'n' }
+    ws[`B${currentRow}`] = { v: '배송비', t: 's' }
+    ws[`C${currentRow}`] = { v: '', t: 's' }
+    ws[`D${currentRow}`] = { v: 1, t: 'n' }
+    ws[`E${currentRow}`] = { v: orderData.shippingFee, t: 'n' }
+    ws[`F${currentRow}`] = { v: orderData.shippingFee, t: 'n' }
+    ws[`G${currentRow}`] = { v: 0, t: 'n' }
+    ws[`H${currentRow}`] = { v: '', t: 's' }
+    currentRow++
+  }
+  
+  // 빈 행들 추가 (최대 10개 상품 + 배송비까지)
   for (let i = currentRow; i < headerRow + 11; i++) {
     ws[`A${i}`] = { v: '', t: 's' }
     ws[`B${i}`] = { v: '', t: 's' }
@@ -255,7 +268,8 @@ export function generateOrderExcel(orderData: OrderData) {
 // 장바구니 데이터를 주문 데이터로 변환하는 헬퍼 함수
 export function convertCartToOrderData(
   cartItems: CartItem[], 
-  customerInfo?: { companyName: string; phone: string }
+  customerInfo?: { companyName: string; phone: string },
+  shippingFee: number = 3000
 ): OrderData {
   const totalAmount = cartItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
   const totalTax = Math.floor(totalAmount * 0.1)
@@ -267,8 +281,8 @@ export function convertCartToOrderData(
     orderDate: new Date().toLocaleDateString('ko-KR'),
     items: cartItems,
     totalAmount,
-    shippingFee: 3000,
-    finalAmount: totalAmount + 3000,
+    shippingFee,
+    finalAmount: totalAmount + shippingFee,
     totalTax
   }
 }
