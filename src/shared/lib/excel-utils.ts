@@ -909,38 +909,9 @@ export function downloadSampleShippingExcel(samples: any[], filename?: string) {
   
   // 배송 정보 데이터 준비
   const shippingData = samples.map(sample => {
-    // 옵션 정보 파싱 (product_options에서 색상, 사이즈 추출)
-    let color = '기본'
-    let size = '기본'
-    
-    if (sample.product_options) {
-      try {
-        // "색상: 블랙, 사이즈: M" 또는 "블랙/M" 형식 모두 처리
-        if (sample.product_options.includes('색상:') && sample.product_options.includes('사이즈:')) {
-          const options = sample.product_options.split(',').map((opt: string) => opt.trim())
-          options.forEach((opt: string) => {
-            if (opt.includes('색상:')) {
-              color = opt.replace('색상:', '').trim()
-            } else if (opt.includes('사이즈:')) {
-              size = opt.replace('사이즈:', '').trim()
-            }
-          })
-        } else if (sample.product_options.includes('/')) {
-          // "블랙/M" 형식
-          const parts = sample.product_options.split('/')
-          if (parts.length >= 2) {
-            color = parts[0].trim()
-            size = parts[1].trim()
-          }
-        } else {
-          // 단일 옵션인 경우 그대로 사용
-          color = sample.product_options
-        }
-      } catch (e) {
-        console.warn('옵션 파싱 오류:', e)
-        color = sample.product_options
-      }
-    }
+    // 색상과 사이즈 정보 가져오기 (이미 분리되어 있음)
+    const color = sample.color || '기본'
+    const size = sample.size || '기본'
     
     // 내품명 생성 (상품명 (색상/사이즈) 형식)
     const itemName = `${sample.product_name} (${color}/${size})`
