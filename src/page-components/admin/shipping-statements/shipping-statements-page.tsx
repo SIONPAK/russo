@@ -96,8 +96,24 @@ export default function ShippingStatementsPage() {
             status: order.status,
             email_sent: !!emailLog, // 이메일 로그가 있으면 발송됨
             email_sent_at: emailLog?.sent_at || null,
-            total_amount: order.order_items?.reduce((sum: number, item: any) => 
-              sum + (item.shipped_quantity * item.unit_price), 0) || 0,
+            total_amount: (() => {
+              // 공급가액 계산
+              const supplyAmount = order.order_items?.reduce((sum: number, item: any) => 
+                sum + (item.shipped_quantity * item.unit_price), 0) || 0;
+              
+              // 부가세액 계산 (공급가액의 10%, 소수점 절사)
+              const taxAmount = Math.floor(supplyAmount * 0.1);
+              
+              // 총 출고 수량 계산 (배송비 계산용)
+              const totalShippedQuantity = order.order_items?.reduce((sum: number, item: any) => 
+                sum + (item.shipped_quantity || 0), 0) || 0;
+              
+              // 배송비 계산 (20장 미만일 때 3,000원)
+              const shippingFee = totalShippedQuantity < 20 ? 3000 : 0;
+              
+              // 총 금액 = 공급가액 + 부가세액 + 배송비
+              return supplyAmount + taxAmount + shippingFee;
+            })(),
             items: order.order_items?.filter((item: any) => item.shipped_quantity > 0).map((item: any) => ({
               product_name: item.product_name,
               color: item.color,
