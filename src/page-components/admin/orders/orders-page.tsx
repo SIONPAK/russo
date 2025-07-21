@@ -833,30 +833,60 @@ export function OrdersPage() {
 
   // 할당재고 기준 총 금액 계산 함수 (공급가액 + 부가세액 + 배송비)
   const calculateAllocatedAmount = (order: any) => {
+    const breakdown = calculateAmountBreakdown(order)
+    return breakdown.totalSupply + breakdown.totalVat
+  }
+
+  // 금액 세부 계산 함수 (공급가액 0.9, 세액 0.1로 분리)
+  const calculateAmountBreakdown = (order: any) => {
     if (!order.order_items || order.order_items.length === 0) {
-      return 0
+      return {
+        itemSupply: 0,
+        itemVat: 0,
+        shippingSupply: 0,
+        shippingVat: 0,
+        totalSupply: 0,
+        totalVat: 0,
+        grandTotal: 0
+      }
     }
     
-    // 1. 공급가액 계산 (할당된 수량 × 단가)
-    const supplyAmount = order.order_items.reduce((sum: number, item: any) => {
+    // 1. 상품 공급가액 계산 (할당된 수량 × 단가)
+    const itemSupply = order.order_items.reduce((sum: number, item: any) => {
       const allocatedQuantity = item.shipped_quantity || 0
       const unitPrice = item.unit_price || 0
       const allocatedAmount = allocatedQuantity * unitPrice
       return sum + allocatedAmount
     }, 0)
     
-    // 2. 부가세액 계산 (공급가액 × 10%)
-    const vatAmount = Math.floor(supplyAmount * 0.1)
+    // 2. 상품 부가세액 계산 (공급가액 × 10%)
+    const itemVat = Math.floor(itemSupply * 0.1)
     
     // 3. 배송비 계산 (20장 미만 시 3000원)
     const totalAllocatedQuantity = order.order_items.reduce((sum: number, item: any) => {
       return sum + (item.shipped_quantity || 0)
     }, 0)
     
-    const shippingFee = totalAllocatedQuantity < 20 ? 3000 : 0
+    const shippingTotal = totalAllocatedQuantity < 20 ? 3000 : 0
     
-    // 4. 총 금액 = 공급가액 + 부가세액 + 배송비
-    return supplyAmount + vatAmount + shippingFee
+    // 4. 배송비를 공급가액과 부가세로 분리 (배송비 = 부가세 포함)
+    const shippingSupply = Math.round(shippingTotal / 1.1)
+    const shippingVat = shippingTotal - shippingSupply
+    
+    // 5. 총 합계
+    const totalSupply = itemSupply + shippingSupply
+    const totalVat = itemVat + shippingVat
+    const grandTotal = totalSupply + totalVat
+    
+    return {
+      itemSupply,
+      itemVat,
+      shippingSupply,
+      shippingVat,
+      totalSupply,
+      totalVat,
+      grandTotal
+    }
   }
 
   // 미출고 여부 확인 함수
@@ -1459,7 +1489,29 @@ export function OrdersPage() {
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <span className="text-blue-700">총 금액 (공급가액+부가세+배송비):</span>
+              <span className="text-blue-700">총 공급가액 (0.9):</span>
+              <span className="font-medium text-blue-900 ml-2">
+                {formatCurrency(
+                  selectedOrdersData.reduce((sum, order) => {
+                    const breakdown = calculateAmountBreakdown(order)
+                    return sum + breakdown.totalSupply
+                  }, 0)
+                )}
+              </span>
+            </div>
+            <div>
+              <span className="text-blue-700">총 세액 (0.1):</span>
+              <span className="font-medium text-blue-900 ml-2">
+                {formatCurrency(
+                  selectedOrdersData.reduce((sum, order) => {
+                    const breakdown = calculateAmountBreakdown(order)
+                    return sum + breakdown.totalVat
+                  }, 0)
+                )}
+              </span>
+            </div>
+            <div>
+              <span className="text-blue-700">총 금액 (1.0):</span>
               <span className="font-medium text-blue-900 ml-2">
                 {formatCurrency(
                   selectedOrdersData.reduce((sum, order) => sum + calculateAllocatedAmount(order), 0)

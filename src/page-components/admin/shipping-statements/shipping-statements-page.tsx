@@ -104,22 +104,32 @@ export default function ShippingStatementsPage() {
             email_sent: !!emailLog,
             email_sent_at: emailLog?.sent_at || null,
             total_amount: (() => {
-              // 공급가액 계산
-              const supplyAmount = order.order_items?.reduce((sum: number, item: any) => 
+              // 상품 공급가액 계산
+              const itemSupplyAmount = order.order_items?.reduce((sum: number, item: any) => 
                 sum + (item.quantity * item.unit_price), 0) || 0;
               
-              // 부가세액 계산 (공급가액의 10%, 소수점 절사)
-              const taxAmount = Math.floor(supplyAmount * 0.1);
+              // 상품 부가세액 계산 (공급가액의 10%, 소수점 절사)
+              const itemTaxAmount = Math.floor(itemSupplyAmount * 0.1);
               
               // 총 주문 수량 계산 (배송비 계산용)
               const totalQuantity = order.order_items?.reduce((sum: number, item: any) => 
                 sum + (item.quantity || 0), 0) || 0;
               
-              // 배송비 계산 (20장 미만일 때 3,000원)
-              const shippingFee = totalQuantity < 20 ? 3000 : 0;
+              // 배송비 계산 (20장 미만일 때 3,000원, 부가세 포함)
+              const shippingTotal = totalQuantity < 20 ? 3000 : 0;
               
-              // 총 금액 = 공급가액 + 부가세액 + 배송비
-              return supplyAmount + taxAmount + shippingFee;
+              // 배송비를 공급가액과 부가세로 분리 (0.9 : 0.1)
+              const shippingSupply = Math.round(shippingTotal / 1.1);
+              const shippingVat = shippingTotal - shippingSupply;
+              
+              // 총 공급가액 = 상품공급가액 + 배송공급가액
+              const totalSupply = itemSupplyAmount + shippingSupply;
+              
+              // 총 부가세 = 상품부가세 + 배송부가세
+              const totalVat = itemTaxAmount + shippingVat;
+              
+              // 총 금액 = 총공급가액 + 총부가세 (1.0)
+              return totalSupply + totalVat;
             })(),
             items: order.order_items?.map((item: any) => ({
               product_name: item.product_name,

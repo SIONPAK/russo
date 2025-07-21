@@ -209,8 +209,10 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
       } else {
         const totalPrice = item.totalPrice || (item.unitPrice * item.quantity)
         const supplyAmount = totalPrice
-        // 배송비는 부가세 없음
-        const taxAmount = item.productName === '배송비' ? 0 : Math.floor(supplyAmount * 0.1)
+        // 배송비는 부가세 포함으로 분리, 상품은 원래대로
+        const taxAmount = item.productName === '배송비' ? 
+          totalPrice - Math.round(totalPrice / 1.1) : 
+          Math.floor(supplyAmount * 0.1)
         // 수량 = 공급가액 / 단가 (0으로 나누기 방지)
         const calculatedQuantity = item.unitPrice === 0 ? 0 : totalPrice / item.unitPrice
         
@@ -230,14 +232,17 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     Object.keys(grouped).forEach(key => {
       const item = grouped[key]
       item.supplyAmount = item.totalPrice
-      // 배송비는 부가세 없음
+      // 배송비만 부가세 포함으로 분리, 상품은 원래대로
       if (item.productName === '배송비') {
-        item.taxAmount = 0
+        item.supplyAmount = Math.round(item.totalPrice / 1.1)
+        item.taxAmount = item.totalPrice - item.supplyAmount
+        // 수량 재계산 (총가격 / 단가, 0으로 나누기 방지)
+        item.totalQuantity = item.unitPrice === 0 ? 0 : item.totalPrice / item.unitPrice
       } else {
         item.taxAmount = Math.floor(item.supplyAmount * 0.1)
+        // 수량 재계산 (공급가액 / 단가, 0으로 나누기 방지)
+        item.totalQuantity = item.unitPrice === 0 ? 0 : item.supplyAmount / item.unitPrice
       }
-      // 수량 재계산 (공급가액 / 단가, 0으로 나누기 방지)
-      item.totalQuantity = item.unitPrice === 0 ? 0 : item.supplyAmount / item.unitPrice
     })
     
     return Object.values(grouped)
@@ -502,17 +507,20 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
       taxAmount: item.taxAmount       // API에서 계산된 값 사용
     }))
 
-    // 배송비 추가 (API에서 계산된 값 사용)
+    // 배송비 추가 (부가세 포함으로 분리)
     const itemsWithShipping = [...processedItems]
     if (data.shippingFee > 0) {
+      const shippingSupply = Math.round(data.shippingFee / 1.1)
+      const shippingTax = data.shippingFee - shippingSupply
+      
       itemsWithShipping.push({
         productName: '배송비',
         color: '-',
         totalQuantity: 1,
         unitPrice: data.shippingFee,
         totalPrice: data.shippingFee,
-        supplyAmount: data.shippingFee,
-        taxAmount: 0 // 배송비는 부가세 없음
+        supplyAmount: shippingSupply,
+        taxAmount: shippingTax
       })
     }
 
@@ -625,9 +633,12 @@ export async function generateConfirmedStatement(data: ConfirmedStatementData): 
       taxAmount: Math.floor(item.total_price * 0.1)
     }))
 
-    // 배송비 추가 (API에서 전달받은 배송비 사용)
+    // 배송비 추가 (부가세 포함으로 분리)
     const itemsWithShipping = [...processedItems]
     if (data.shipping_fee > 0) {
+      const shippingSupply = Math.round(data.shipping_fee / 1.1)
+      const shippingTax = data.shipping_fee - shippingSupply
+      
       itemsWithShipping.push({
         productName: '배송비',
         color: '-',
@@ -635,8 +646,8 @@ export async function generateConfirmedStatement(data: ConfirmedStatementData): 
         quantity: 1,
         unitPrice: data.shipping_fee,
         totalPrice: data.shipping_fee,
-        supplyAmount: data.shipping_fee,
-        taxAmount: 0 // 배송비는 부가세 없음
+        supplyAmount: shippingSupply,
+        taxAmount: shippingTax
       })
     }
 

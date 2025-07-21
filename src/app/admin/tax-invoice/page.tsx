@@ -377,19 +377,19 @@ export default function AdminTaxInvoicePage() {
                 <p className="text-2xl font-bold text-gray-700">{data.summary.totalCompanies}개</p>
               </div>
               <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="text-sm text-blue-600 font-medium">총 공급가액</p>
+                <p className="text-sm text-blue-600 font-medium">총 공급가액 (0.9)</p>
                 <p className="text-2xl font-bold text-blue-700">
                   {formatCurrency(data.summary.grandTotal.actualSupplyAmount)}
                 </p>
               </div>
               <div className="bg-green-50 p-4 rounded-lg">
-                <p className="text-sm text-green-600 font-medium">총 부가세</p>
+                <p className="text-sm text-green-600 font-medium">총 부가세 (0.1)</p>
                 <p className="text-2xl font-bold text-green-700">
                   {formatCurrency(data.summary.grandTotal.estimatedVat)}
                 </p>
               </div>
               <div className="bg-purple-50 p-4 rounded-lg">
-                <p className="text-sm text-purple-600 font-medium">총 부가세 포함</p>
+                <p className="text-sm text-purple-600 font-medium">총 부가세 포함 (1.0)</p>
                 <p className="text-2xl font-bold text-purple-700">
                   {formatCurrency(data.summary.grandTotal.actualSupplyAmount + data.summary.grandTotal.estimatedVat)}
                 </p>
@@ -460,9 +460,9 @@ export default function AdminTaxInvoicePage() {
                       />
                     </th>
                     <th className="border border-gray-300 px-4 py-2 text-left">업체명</th>
-                    <th className="border border-gray-300 px-4 py-2 text-center">공급가액</th>
-                    <th className="border border-gray-300 px-4 py-2 text-center">부가세</th>
-                    <th className="border border-gray-300 px-4 py-2 text-center">부가세포함</th>
+                    <th className="border border-gray-300 px-4 py-2 text-center">공급가액 (0.9)</th>
+                    <th className="border border-gray-300 px-4 py-2 text-center">부가세 (0.1)</th>
+                    <th className="border border-gray-300 px-4 py-2 text-center">부가세포함 (1.0)</th>
                     <th className="border border-gray-300 px-4 py-2 text-center">차감건수</th>
                     <th className="border border-gray-300 px-4 py-2 text-center">최근차감일</th>
                     <th className="border border-gray-300 px-4 py-2 text-center">발행상태</th>
