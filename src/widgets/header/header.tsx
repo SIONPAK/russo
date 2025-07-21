@@ -192,7 +192,7 @@ export default function Header() {
 
       {/* 메인 헤더 */}
       <header className="bg-white shadow-lg sticky top-0 z-40 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" style={{ minWidth: '1024px' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* 로고 */}
             <div className="flex-shrink-0 min-w-[120px]">
@@ -203,7 +203,7 @@ export default function Header() {
 
             {/* 메인 네비게이션 */}
             <div className="flex-1 flex justify-center">
-              <nav className="hidden lg:flex items-center space-x-8 min-w-[200px] justify-center">
+              <nav className="hidden md:flex items-center space-x-8 min-w-[200px] justify-center">
                 {categories.map((category) => (
                   <button
                     key={category.id}
@@ -232,8 +232,8 @@ export default function Header() {
 
             {/* 우측 액션 버튼들 */}
             <div className="flex items-center space-x-3 flex-shrink-0 min-w-[120px] justify-end">
-              {/* 사용자 메뉴 */}
-              <div className="relative" ref={userMenuRef}>
+              {/* 사용자 메뉴 - 데스크톱만 표시 */}
+              <div className="relative hidden md:block" ref={userMenuRef}>
                 <button 
                   onClick={handleUserMenuClick}
                   className="flex items-center p-2 text-gray-700 hover:text-black transition-colors"
@@ -298,27 +298,27 @@ export default function Header() {
                 )}
               </div>
 
-              {/* 검색 버튼 */}
+              {/* 검색 버튼 - 데스크톱만 표시 */}
               <button 
                 onClick={() => router.push('/products')}
-                className="p-2 text-gray-700 hover:text-black transition-colors"
+                className="hidden md:block p-2 text-gray-700 hover:text-black transition-colors"
               >
                 <Search className="h-5 w-5" />
               </button>
 
               {/* 모바일 메뉴 버튼 */}
               <button
-                className="lg:hidden p-2 text-gray-700 hover:text-black transition-colors"
+                className="block md:hidden p-2 text-gray-700 hover:text-black transition-colors border border-gray-300 rounded"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               >
                 {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
 
-              {/* B2B 발주관리 메뉴 (관리자가 아닐 때만) - 모바일/데스크톱 모두 표시 */}
+              {/* B2B 발주관리 메뉴 (관리자가 아닐 때만) - 데스크톱만 표시 */}
               {isAuthenticated && userType === 'customer' && (
                 <Link
                   href="/order-management"
-                  className="flex items-center space-x-1 px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap"
+                  className="hidden md:flex items-center space-x-1 px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap"
                 >
                   <ClipboardList className="h-3 w-3 lg:h-4 lg:w-4" color='white'/>
                   <span className='text-white'>발주관리</span>
@@ -329,7 +329,7 @@ export default function Header() {
 
           {/* 모바일 메뉴 */}
           {isMobileMenuOpen && (
-            <div className="lg:hidden border-t border-gray-200 py-4">
+            <div className="md:hidden border-t border-gray-200 py-4">
               <nav className="grid grid-cols-2 gap-4">
                 {categories.map((category) => (
                   <button
@@ -374,6 +374,18 @@ export default function Header() {
                     ) : (
                       /* 모바일 마이페이지 메뉴 */
                       <div className="space-y-3">
+                        {/* B2B 발주관리 메뉴 (관리자가 아닐 때만) - 최상단 배치 */}
+                        {isAuthenticated && userType === 'customer' && (
+                          <Link
+                            href="/order-management"
+                            className="flex items-center text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors bg-blue-50 px-3 py-2 rounded-md border border-blue-200"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                          >
+                            <ClipboardList className="h-4 w-4 mr-2" />
+                            발주관리
+                          </Link>
+                        )}
+                        
                         {mypageMenuItems.map((item) => {
                           const IconComponent = item.icon
                           return (
@@ -388,18 +400,6 @@ export default function Header() {
                             </Link>
                           )
                         })}
-                        
-                        {/* B2B 발주관리 메뉴 (관리자가 아닐 때만) */}
-                        {userType === 'customer' && (
-                          <Link
-                            href="/order-management"
-                            className="flex items-center text-sm text-gray-600 hover:text-black transition-colors"
-                            onClick={() => setIsMobileMenuOpen(false)}
-                          >
-                            <ClipboardList className="h-4 w-4 mr-2" />
-                            발주관리
-                          </Link>
-                        )}
                       </div>
                     )}
                     
