@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate') || ''
     const is3PMBased = searchParams.get('is_3pm_based') === 'true'
     const allocationStatus = searchParams.get('allocation_status') || 'all'
-    const sortBy = searchParams.get('sort_by') || 'company_name'
-    const sortOrder = searchParams.get('sort_order') || 'desc'
+    const sortBy = searchParams.get('sort_by') || 'created_at'
+    const sortOrder = searchParams.get('sort_order') || 'asc'
 
     const offset = (page - 1) * limit
 
@@ -141,8 +141,8 @@ export async function GET(request: NextRequest) {
     } else if (sortBy === 'total_amount') {
       query = query.order('total_amount', { ascending: sortOrder === 'asc' })
     } else {
-      // 기본 정렬: 주문 시간 순 (최신순)
-      query = query.order('created_at', { ascending: false })
+      // 기본 정렬: 주문 시간 순 (오래된 순서대로 - 주문 들어온 순서)
+      query = query.order('created_at', { ascending: true })
     }
 
     // 페이지네이션

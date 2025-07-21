@@ -806,30 +806,186 @@ export function SamplesPage() {
     }
   }
 
-  // 샘플 배송정보 다운로드 함수
+  // 샘플 배송정보 다운로드 함수 (체크된 항목만)
   const handleDownloadShippingInfo = async () => {
+    if (selectedStatements.length === 0) {
+      showError('다운로드할 샘플을 선택해주세요.')
+      return
+    }
+
     try {
-      // 출고된 샘플들만 가져오기 (shipped 상태)
-      const response = await fetch('/api/admin/samples?status=shipped&limit=1000')
-      const result = await response.json()
-
-      if (result.success && result.data && result.data.length > 0) {
-        // 샘플 데이터를 배송정보 다운로드 형식으로 변환
-        const samplesWithUserInfo = result.data.map((sample: any) => ({
-          ...sample,
-          users: sample.users || {
-            representative_name: sample.customer_name,
-            company_name: sample.customer_name,
-            phone: sample.users?.phone || ''
+      // 선택된 샘플들의 상세 정보 가져오기
+      const selectedSamples = []
+      
+      for (const selectedId of selectedStatements) {
+        // 뷰 모드에 따라 다른 처리
+        if (viewMode === 'grouped') {
+          // 그룹화된 뷰에서는 그룹 전체를 가져옴
+          const group = groupedStatements.find(g => g.id === selectedId)
+          if (group && group.status === 'shipped') {
+                          // 해당 고객의 배송지 정보 조회
+              try {
+                const response = await fetch(`/api/admin/users/${group.customer_id}`)
+                const result = await response.json()
+                
+                let shippingInfo = {
+                  phone: '',
+                  address: ''
+                }
+                
+                if (result.success) {
+                  // shipping_addresses 테이블에서 기본 배송지 조회
+                  const shippingResponse = await fetch(`/api/shipping-addresses?user_id=${group.customer_id}`)
+                  const shippingResult = await shippingResponse.json()
+                  
+                  if (shippingResult.success && shippingResult.data && shippingResult.data.length > 0) {
+                    // 기본 배송지 우선, 없으면 첫 번째 배송지
+                    const defaultAddress = shippingResult.data.find((addr: any) => addr.is_default) || shippingResult.data[0]
+                    shippingInfo = {
+                      phone: defaultAddress.phone || result.data.phone || '',
+                      address: defaultAddress.address || defaultAddress.recipient_address || result.data.address || ''
+                    }
+                  } else {
+                    // shipping_addresses가 없으면 users 테이블 정보 사용
+                    shippingInfo = {
+                      phone: result.data.phone || '',
+                      address: result.data.address || ''
+                    }
+                  }
+                }
+              
+              // 그룹의 각 아이템을 개별적으로 추가
+              for (const item of group.items) {
+                const parsedOptions = parseOptions(item.product_options || '')
+                selectedSamples.push({
+                  sample_number: group.sample_number,
+                  customer_name: group.customer_name,
+                  product_name: item.product_name,
+                  color: item.color || parsedOptions.color || '기본',
+                  size: item.size || parsedOptions.size || 'FREE',
+                  quantity: item.quantity,
+                  tracking_number: group.tracking_number || '',
+                  outgoing_date: group.outgoing_date,
+                  users: {
+                    representative_name: group.customer_name,
+                    company_name: group.customer_name,
+                    phone: shippingInfo.phone,
+                    address: shippingInfo.address
+                  }
+                })
+              }
+            } catch (error) {
+              console.error('사용자/배송지 정보 조회 오류:', error)
+              // 오류 시 기본 정보로 처리
+              for (const item of group.items) {
+                const parsedOptions = parseOptions(item.product_options || '')
+                selectedSamples.push({
+                  sample_number: group.sample_number,
+                  customer_name: group.customer_name,
+                  product_name: item.product_name,
+                  color: item.color || parsedOptions.color || '기본',
+                  size: item.size || parsedOptions.size || 'FREE',
+                  quantity: item.quantity,
+                  tracking_number: group.tracking_number || '',
+                  outgoing_date: group.outgoing_date,
+                  users: {
+                    representative_name: group.customer_name,
+                    company_name: group.customer_name,
+                    phone: '',
+                    address: ''
+                  }
+                })
+              }
+            }
           }
-        }))
-
-        // 배송정보 다운로드 함수 호출
-        downloadSampleShippingExcel(samplesWithUserInfo, `샘플배송정보_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`)
-        showSuccess('샘플 배송정보가 다운로드되었습니다.')
-      } else {
-        showInfo('다운로드할 출고된 샘플이 없습니다.')
+        } else {
+          // 개별 뷰에서는 개별 아이템을 가져옴
+          const statement = statements.find(s => s.id === selectedId)
+          if (statement && statement.status === 'shipped') {
+            try {
+              const response = await fetch(`/api/admin/users/${statement.customer_id}`)
+              const result = await response.json()
+              
+              let shippingInfo = {
+                phone: '',
+                address: ''
+              }
+              
+              if (result.success) {
+                // shipping_addresses 테이블에서 기본 배송지 조회
+                const shippingResponse = await fetch(`/api/shipping-addresses?user_id=${statement.customer_id}`)
+                const shippingResult = await shippingResponse.json()
+                
+                if (shippingResult.success && shippingResult.data && shippingResult.data.length > 0) {
+                  // 기본 배송지 우선, 없으면 첫 번째 배송지
+                  const defaultAddress = shippingResult.data.find((addr: any) => addr.is_default) || shippingResult.data[0]
+                  shippingInfo = {
+                    phone: defaultAddress.phone || result.data.phone || '',
+                    address: defaultAddress.address || defaultAddress.recipient_address || result.data.address || ''
+                  }
+                } else {
+                  // shipping_addresses가 없으면 users 테이블 정보 사용
+                  shippingInfo = {
+                    phone: result.data.phone || '',
+                    address: result.data.address || ''
+                  }
+                }
+              }
+              
+              selectedSamples.push({
+                sample_number: statement.sample_number,
+                customer_name: statement.customer_name,
+                product_name: statement.product_name,
+                color: statement.color || '기본',
+                size: statement.size || 'FREE',
+                quantity: statement.quantity,
+                tracking_number: statement.tracking_number || '',
+                outgoing_date: statement.outgoing_date,
+                users: {
+                  representative_name: statement.customer_name,
+                  company_name: statement.customer_name,
+                  phone: shippingInfo.phone,
+                  address: shippingInfo.address
+                }
+              })
+            } catch (error) {
+              console.error('사용자/배송지 정보 조회 오류:', error)
+              // 오류 시 기본 정보로 처리
+              selectedSamples.push({
+                sample_number: statement.sample_number,
+                customer_name: statement.customer_name,
+                product_name: statement.product_name,
+                color: statement.color || '기본',
+                size: statement.size || 'FREE',
+                quantity: statement.quantity,
+                tracking_number: statement.tracking_number || '',
+                outgoing_date: statement.outgoing_date,
+                users: {
+                  representative_name: statement.customer_name,
+                  company_name: statement.customer_name,
+                  phone: '',
+                  address: ''
+                }
+              })
+            }
+          }
+        }
       }
+
+      if (selectedSamples.length === 0) {
+        showError('선택된 샘플 중 출고완료된 항목이 없습니다.')
+        return
+      }
+
+      console.log('🔍 선택된 샘플 배송정보 다운로드:', {
+        selectedCount: selectedStatements.length,
+        shippedCount: selectedSamples.length,
+        samples: selectedSamples.map(s => `${s.customer_name} - ${s.product_name}`)
+      })
+
+      // 배송정보 다운로드 함수 호출
+      downloadSampleShippingExcel(selectedSamples, `배송정보_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`)
+      showSuccess(`선택된 ${selectedSamples.length}개 샘플의 배송정보가 다운로드되었습니다.`)
     } catch (error) {
       console.error('샘플 배송정보 다운로드 오류:', error)
       showError('샘플 배송정보 다운로드에 실패했습니다.')

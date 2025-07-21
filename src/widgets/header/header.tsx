@@ -314,13 +314,13 @@ export default function Header() {
                 {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
 
-              {/* B2B 발주관리 메뉴 (관리자가 아닐 때만) */}
+              {/* B2B 발주관리 메뉴 (관리자가 아닐 때만) - 모바일/데스크톱 모두 표시 */}
               {isAuthenticated && userType === 'customer' && (
                 <Link
                   href="/order-management"
-                  className="flex items-center space-x-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                  className="flex items-center space-x-1 px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap"
                 >
-                  <ClipboardList className="h-4 w-4" color='white'/>
+                  <ClipboardList className="h-3 w-3 lg:h-4 lg:w-4" color='white'/>
                   <span className='text-white'>발주관리</span>
                 </Link>
               )}

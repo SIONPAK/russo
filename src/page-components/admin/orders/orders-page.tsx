@@ -88,8 +88,8 @@ export function OrdersPage() {
     return getDateBasedOn3PM()
   })
 
-  const [sortBy, setSortBy] = useState<'company_name' | 'created_at' | 'total_amount'>('company_name')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [sortBy, setSortBy] = useState<'company_name' | 'created_at' | 'total_amount'>('created_at')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [isStatementDropdownOpen, setIsStatementDropdownOpen] = useState(false) // 명세서 드롭다운 상태
   const [editingItem, setEditingItem] = useState<{orderId: string, itemId: string} | null>(null)
   

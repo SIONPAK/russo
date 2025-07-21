@@ -118,6 +118,8 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('🔍 실제 마일리지 내역 기반 계산된 잔액:', currentBalance)
+    console.log('🔍 DB users 테이블의 mileage_balance:', userData.mileage_balance)
+    console.log('🔍 잔액 차이:', currentBalance - (userData.mileage_balance || 0))
 
     // 이번 달 통계 계산
     const now = new Date()

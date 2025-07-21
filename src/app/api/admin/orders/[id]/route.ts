@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
+import { getCurrentKoreanDateTime } from '@/shared/lib/utils'
 
 // GET - 개별 주문 상세 조회
 export async function GET(
@@ -79,6 +80,139 @@ export async function GET(
     return NextResponse.json({
       success: false,
       error: '주문 조회 중 오류가 발생했습니다.'
+    }, { status: 500 })
+  }
+}
+
+// DELETE - 주문 삭제 (15:00 이전에만 가능)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const supabase = await createClient()
+
+    // 주문 정보 조회
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        order_number,
+        created_at,
+        status,
+        user_id,
+        order_items (
+          id,
+          product_id,
+          product_name,
+          color,
+          size,
+          quantity,
+          shipped_quantity,
+          allocated_quantity
+        )
+      `)
+      .eq('id', id)
+      .single()
+
+    if (orderError || !order) {
+      return NextResponse.json({
+        success: false,
+        error: '주문을 찾을 수 없습니다.'
+      }, { status: 404 })
+    }
+
+    // 시간 제한 확인 (15:00 이전에만 삭제 가능)
+    const koreanTimeString = getCurrentKoreanDateTime()
+    const koreanTime = new Date(koreanTimeString)
+    const currentHour = koreanTime.getHours()
+    
+    console.log('🕐 주문 삭제 시간 확인:', {
+      koreanTimeString,
+      currentHour,
+      is3PMPassed: currentHour >= 15
+    })
+    
+    if (currentHour >= 15) {
+      return NextResponse.json({
+        success: false,
+        error: '오후 3시 이후에는 주문을 삭제할 수 없습니다.'
+      }, { status: 400 })
+    }
+
+    // 이미 출고된 주문은 삭제 불가
+    if (order.status === 'shipped' || order.status === 'delivered') {
+      return NextResponse.json({
+        success: false,
+        error: '이미 출고된 주문은 삭제할 수 없습니다.'
+      }, { status: 400 })
+    }
+
+    // 출고 수량이 있는 아이템들의 재고 복원
+    for (const item of order.order_items) {
+      if (item.shipped_quantity > 0) {
+        const { error: restoreError } = await supabase
+          .rpc('adjust_physical_stock', {
+            p_product_id: item.product_id,
+            p_color: item.color,
+            p_size: item.size,
+            p_quantity_change: item.shipped_quantity,
+            p_reason: `주문 삭제로 인한 재고 복원 - ${order.order_number}`
+          })
+
+        if (restoreError) {
+          console.error('재고 복원 실패:', restoreError)
+        } else {
+          console.log(`✅ 재고 복원: ${item.product_name} (${item.color}/${item.size}) ${item.shipped_quantity}개`)
+        }
+      }
+    }
+
+    // 주문 아이템 삭제
+    const { error: deleteItemsError } = await supabase
+      .from('order_items')
+      .delete()
+      .eq('order_id', id)
+
+    if (deleteItemsError) {
+      console.error('주문 아이템 삭제 오류:', deleteItemsError)
+      return NextResponse.json({
+        success: false,
+        error: '주문 아이템 삭제에 실패했습니다.'
+      }, { status: 500 })
+    }
+
+    // 주문 삭제
+    const { error: deleteOrderError } = await supabase
+      .from('orders')
+      .delete()
+      .eq('id', id)
+
+    if (deleteOrderError) {
+      console.error('주문 삭제 오류:', deleteOrderError)
+      return NextResponse.json({
+        success: false,
+        error: '주문 삭제에 실패했습니다.'
+      }, { status: 500 })
+    }
+
+    console.log(`✅ 주문 삭제 완료: ${order.order_number}`)
+
+    return NextResponse.json({
+      success: true,
+      message: '주문이 성공적으로 삭제되었습니다.',
+      data: {
+        deletedOrderNumber: order.order_number,
+        deletedAt: new Date().toISOString()
+      }
+    })
+
+  } catch (error) {
+    console.error('주문 삭제 오류:', error)
+    return NextResponse.json({
+      success: false,
+      error: '주문 삭제 중 오류가 발생했습니다.'
     }, { status: 500 })
   }
 }

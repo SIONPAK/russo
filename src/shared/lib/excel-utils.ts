@@ -948,7 +948,7 @@ export function downloadSampleShippingExcel(samples: any[], filename?: string) {
     return {
       '받는분 성명': sample.users?.representative_name || sample.customer_name || '',
       '받는분 전화번호': sample.users?.phone || '',
-      '받는분 주소': sample.delivery_address || '',
+      '받는분 주소': sample.users?.address || sample.delivery_address || '',
       '품목명': '의류',
       '내품명': itemName,
       '내품수량': sample.quantity || 1,
