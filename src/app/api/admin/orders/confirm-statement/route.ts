@@ -261,6 +261,9 @@ export async function POST(request: NextRequest) {
         }
 
         // 5. 이메일 발송 (확정 명세서 첨부)
+        let emailSentSuccessfully = false
+        let emailMessageId = ''
+        
         try {
           // 확정 명세서 데이터 준비
           const statementData = {
@@ -288,7 +291,7 @@ export async function POST(request: NextRequest) {
           const fileName = `확정명세서_${statementNumber}_${getKoreaDateFormatted()}.xlsx`
 
           // 이메일 발송
-          await sendEmail({
+          const emailResult = await sendEmail({
             to: order.users.email,
             subject: `[루소] 확정 명세서 발송 - ${order.order_number}`,
             html: `
@@ -307,8 +310,9 @@ export async function POST(request: NextRequest) {
                 
                 <div style="background-color: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0;">
                   <h3 style="color: #2e7d32; margin-top: 0;">💰 금액 정보</h3>
-                  <p style="font-size: 18px; color: #2e7d32;"><strong>총 금액 (공급가액 + 세액):</strong> ${(shippedAmount + taxAmount).toLocaleString()}원</p>
-                  <p><strong>마일리지 차감:</strong> ${(shippedAmount + taxAmount).toLocaleString()}원</p>
+                  <p style="font-size: 18px; color: #2e7d32;"><strong>총 금액 (공급가액 + 세액${shippingFee > 0 ? ' + 배송비' : ''}):</strong> ${totalAmount.toLocaleString()}원</p>
+                  <p><strong>마일리지 차감:</strong> ${totalAmount.toLocaleString()}원</p>
+                  ${shippingFee > 0 ? `<p><strong>배송비:</strong> ${shippingFee.toLocaleString()}원 (20장 미만)</p>` : ''}
                 </div>
 
                 <div style="background-color: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -343,10 +347,52 @@ export async function POST(request: NextRequest) {
             ]
           })
 
-          console.log('확정 명세서 이메일 발송 완료:', order.users.email)
+          if (emailResult && emailResult.messageId) {
+            emailSentSuccessfully = true
+            emailMessageId = emailResult.messageId
+            
+            // 명세서 테이블에 이메일 발송 완료 상태 업데이트
+            await supabase
+              .from('statements')
+              .update({ 
+                status: 'sent',
+                sent_at: currentTime,
+                updated_at: currentTime
+              })
+              .eq('id', statement.id)
+
+            // 이메일 로그 기록
+            await supabase
+              .from('email_logs')
+              .insert({
+                order_id: order.id,
+                recipient_email: order.users.email,
+                email_type: 'confirmed_statement',
+                subject: `[루소] 확정 명세서 발송 - ${order.order_number}`,
+                status: 'sent',
+                message_id: emailMessageId,
+                sent_at: currentTime
+              })
+
+            console.log('확정 명세서 이메일 발송 완료:', order.users.email)
+          } else {
+            throw new Error('이메일 발송 실패 - messageId 없음')
+          }
         } catch (emailError) {
-          console.error('이메일 발송 오류:', emailError)
-          // 이메일 발송 실패는 전체 프로세스를 실패시키지 않음
+          console.error('확정 명세서 이메일 발송 오류:', emailError)
+          
+          // 이메일 발송 실패 로그 기록
+          await supabase
+            .from('email_logs')
+            .insert({
+              order_id: order.id,
+              recipient_email: order.users.email,
+              email_type: 'confirmed_statement',
+              subject: `[루소] 확정 명세서 발송 - ${order.order_number}`,
+              status: 'failed',
+              error_message: emailError instanceof Error ? emailError.message : '알 수 없는 오류',
+              sent_at: currentTime
+            })
         }
 
         results.push({
@@ -358,7 +404,9 @@ export async function POST(request: NextRequest) {
           mileageDeducted: totalAmount,
           newMileage: newMileage,
           orderStatus: 'confirmed',
-          emailSent: true
+          emailSent: emailSentSuccessfully,
+          emailMessageId: emailMessageId || undefined,
+          shippingFee: shippingFee
         })
 
         console.log('확정 명세서 생성 완료:', {

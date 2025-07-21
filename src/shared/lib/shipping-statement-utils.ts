@@ -620,8 +620,33 @@ export async function generateConfirmedStatement(data: ConfirmedStatementData): 
       size: item.size,
       quantity: item.shipped_quantity, // 출고 수량 사용
       unitPrice: item.unit_price,
-      totalPrice: item.total_price
+      totalPrice: item.total_price,
+      supplyAmount: item.total_price,
+      taxAmount: Math.floor(item.total_price * 0.1)
     }))
+
+    // 배송비 추가 (API에서 전달받은 배송비 사용)
+    const itemsWithShipping = [...processedItems]
+    if (data.shipping_fee > 0) {
+      itemsWithShipping.push({
+        productName: '배송비',
+        color: '-',
+        size: '-',
+        quantity: 1,
+        unitPrice: data.shipping_fee,
+        totalPrice: data.shipping_fee,
+        supplyAmount: data.shipping_fee,
+        taxAmount: 0 // 배송비는 부가세 없음
+      })
+    }
+
+    console.log('🔍 확정 명세서 생성 - 배송비 포함:', {
+      orderNumber: data.order_number,
+      originalItems: processedItems.length,
+      finalItems: itemsWithShipping.length,
+      shippingFee: data.shipping_fee,
+      totalAmount: data.total_amount
+    })
     
     return processTemplate(
       {
@@ -630,7 +655,7 @@ export async function generateConfirmedStatement(data: ConfirmedStatementData): 
         date: data.order_date
       },
       '확정명세서(공급받는자)',
-      processedItems,
+      itemsWithShipping,
       `확정 명세서 - 주문번호: ${data.order_number}`,
       false // 확정 명세서
     )

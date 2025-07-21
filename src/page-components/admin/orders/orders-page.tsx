@@ -665,7 +665,7 @@ export function OrdersPage() {
     updateFilters({ 
       startDate: date,
       is_3pm_based: true,
-      status: 'all'  // 모든 상태 조회 (일반 모드에서는 모든 주문 표시)
+      status: 'not_shipped'  // 출고완료 제외하고 조회
     })
     
     // 날짜 변경 후 자동 할당 실행
