@@ -23,13 +23,14 @@ export async function GET(request: NextRequest) {
       .from('statements')
       .select(`
         *,
-        users!statements_user_id_fkey (
+        users:user_id (
           company_name,
           representative_name,
           phone,
-          email
+          email,
+          customer_grade
         ),
-        orders!statements_order_id_fkey (
+        orders:order_id (
           order_number
         ),
         statement_items (

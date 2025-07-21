@@ -46,8 +46,12 @@ export default function ShippingStatementsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedStatements, setSelectedStatements] = useState<string[]>([])
   const [filters, setFilters] = useState({
-    startDate: '',
-    endDate: '',
+    startDate: (() => {
+      const date = new Date()
+      date.setDate(date.getDate() - 90) // 90일 전으로 확장
+      return date.toISOString().split('T')[0]
+    })(),
+    endDate: new Date().toISOString().split('T')[0], // 오늘
     companyName: '',
     emailSent: 'all'
   })
@@ -60,93 +64,83 @@ export default function ShippingStatementsPage() {
   const fetchStatements = async () => {
     try {
       setLoading(true)
-      const params = new URLSearchParams({
-        status: 'shipped', // 출고된 주문들만 조회
-        search: filters.companyName,
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        limit: '100' // 많은 수의 주문을 가져오기 위해 limit 증가
+      console.log('🔍 [출고명세서] 조회 시작')
+      
+      // 가장 간단한 API 호출
+      const response = await fetch('/api/admin/orders?status=all&limit=1000')
+      const result = await response.json()
+      
+      console.log('🔍 [출고명세서] API 응답:', {
+        success: result.success,
+        ordersCount: result.data?.orders?.length || 0,
+        error: result.error
       })
 
-      const response = await fetch(`/api/admin/orders?${params}`)
-      const result = await response.json()
-
-      if (result.success) {
+      if (result.success && result.data?.orders) {
         // 이메일 발송 로그 조회
         const emailLogResponse = await fetch('/api/admin/orders/email-logs')
         const emailLogResult = await emailLogResponse.json()
         const emailLogs = emailLogResult.success ? emailLogResult.data : []
 
-        // 주문 데이터를 출고 명세서 형태로 변환
-        const transformedStatements = result.data.orders.map((order: any) => {
+        console.log('🔍 [출고명세서] 이메일 로그:', emailLogs.length)
+
+        // 주문 데이터와 이메일 로그 매칭
+        const statementsWithEmail = result.data.orders.map((order: any) => {
           // 해당 주문의 이메일 발송 로그 찾기
           const emailLog = emailLogs.find((log: any) => 
             log.order_id === order.id && 
             (log.email_type === 'shipping_statement' || log.email_type === 'confirmed_statement')
           )
-          
+
           return {
             id: order.id,
             order_id: order.id,
             order_number: order.order_number,
-            company_name: order.users?.company_name || '',
+            company_name: order.users?.company_name || '알 수 없음',
             customer_grade: order.users?.customer_grade || 'general',
             created_at: order.created_at,
-            shipped_at: order.shipped_at,
+            shipped_at: order.shipped_at || order.created_at,
             status: order.status,
-            email_sent: !!emailLog, // 이메일 로그가 있으면 발송됨
+            email_sent: !!emailLog,
             email_sent_at: emailLog?.sent_at || null,
             total_amount: (() => {
               // 공급가액 계산
               const supplyAmount = order.order_items?.reduce((sum: number, item: any) => 
-                sum + (item.shipped_quantity * item.unit_price), 0) || 0;
+                sum + (item.quantity * item.unit_price), 0) || 0;
               
               // 부가세액 계산 (공급가액의 10%, 소수점 절사)
               const taxAmount = Math.floor(supplyAmount * 0.1);
               
-              // 총 출고 수량 계산 (배송비 계산용)
-              const totalShippedQuantity = order.order_items?.reduce((sum: number, item: any) => 
-                sum + (item.shipped_quantity || 0), 0) || 0;
+              // 총 주문 수량 계산 (배송비 계산용)
+              const totalQuantity = order.order_items?.reduce((sum: number, item: any) => 
+                sum + (item.quantity || 0), 0) || 0;
               
               // 배송비 계산 (20장 미만일 때 3,000원)
-              const shippingFee = totalShippedQuantity < 20 ? 3000 : 0;
+              const shippingFee = totalQuantity < 20 ? 3000 : 0;
               
               // 총 금액 = 공급가액 + 부가세액 + 배송비
               return supplyAmount + taxAmount + shippingFee;
             })(),
-            items: order.order_items?.filter((item: any) => item.shipped_quantity > 0).map((item: any) => ({
+            items: order.order_items?.map((item: any) => ({
               product_name: item.product_name,
-              color: item.color,
-              size: item.size,
+              color: item.color || '기본',
+              size: item.size || '',
               quantity: item.quantity,
-              shipped_quantity: item.shipped_quantity,
+              shipped_quantity: item.shipped_quantity || 0,
               unit_price: item.unit_price,
-              total_price: item.unit_price * item.shipped_quantity
+              total_price: item.unit_price * item.quantity
             })) || []
           }
         })
 
-        // 이메일 발송 여부와 회사명 필터링
-        let filteredStatements = transformedStatements
-        
-        if (filters.emailSent !== 'all') {
-          const emailSentBool = filters.emailSent === 'sent'
-          filteredStatements = filteredStatements.filter((stmt: any) => stmt.email_sent === emailSentBool)
-        }
-
-        if (filters.companyName) {
-          filteredStatements = filteredStatements.filter((stmt: any) => 
-            stmt.company_name.toLowerCase().includes(filters.companyName.toLowerCase())
-          )
-        }
-
-        setStatements(filteredStatements)
+        console.log('🔍 [출고명세서] 최종 변환 완료:', statementsWithEmail.length)
+        setStatements(statementsWithEmail)
       } else {
-        console.error('Failed to fetch statements:', result.error)
+        console.error('🔍 [출고명세서] API 실패:', result)
         setStatements([])
       }
     } catch (error) {
-      console.error('Error fetching statements:', error)
+      console.error('🔍 [출고명세서] 오류:', error)
       setStatements([])
     } finally {
       setLoading(false)
