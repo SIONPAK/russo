@@ -104,8 +104,19 @@ export function ShippedOrdersPage() {
         bValue = new Date(b.shipped_at).getTime()
         break
       case 'total_amount':
-        aValue = a.order_items?.reduce((sum, item) => sum + (item.shipped_quantity * item.unit_price), 0) || 0
-        bValue = b.order_items?.reduce((sum, item) => sum + (item.shipped_quantity * item.unit_price), 0) || 0
+        // A 주문의 총 금액 계산 (공급가액 + 부가세 + 배송비)
+        const aSupplyAmount = a.order_items?.reduce((sum, item) => sum + (item.shipped_quantity * item.unit_price), 0) || 0
+        const aTaxAmount = Math.floor(aSupplyAmount * 0.1)
+        const aTotalQuantity = a.order_items?.reduce((sum, item) => sum + (item.shipped_quantity || 0), 0) || 0
+        const aShippingFee = aTotalQuantity < 20 ? 3000 : 0
+        aValue = aSupplyAmount + aTaxAmount + aShippingFee
+        
+        // B 주문의 총 금액 계산 (공급가액 + 부가세 + 배송비)
+        const bSupplyAmount = b.order_items?.reduce((sum, item) => sum + (item.shipped_quantity * item.unit_price), 0) || 0
+        const bTaxAmount = Math.floor(bSupplyAmount * 0.1)
+        const bTotalQuantity = b.order_items?.reduce((sum, item) => sum + (item.shipped_quantity || 0), 0) || 0
+        const bShippingFee = bTotalQuantity < 20 ? 3000 : 0
+        bValue = bSupplyAmount + bTaxAmount + bShippingFee
         break
       default:
         return 0
@@ -386,9 +397,22 @@ export function ShippedOrdersPage() {
               <p className="text-sm text-gray-600">총 출고 금액</p>
               <p className="text-2xl font-bold text-green-600">
                 {formatCurrency(orders.reduce((sum, order) => {
-                  const shippedAmount = order.order_items?.reduce((itemSum, item) => 
+                  // 공급가액 계산
+                  const supplyAmount = order.order_items?.reduce((itemSum, item) => 
                     itemSum + (item.shipped_quantity * item.unit_price), 0) || 0
-                  return sum + shippedAmount
+                  
+                  // 부가세액 계산 (공급가액의 10%, 소수점 절사)
+                  const taxAmount = Math.floor(supplyAmount * 0.1)
+                  
+                  // 총 출고 수량 계산 (배송비 계산용)
+                  const totalQuantity = order.order_items?.reduce((itemSum, item) => 
+                    itemSum + (item.shipped_quantity || 0), 0) || 0
+                  
+                  // 배송비 계산 (20장 미만일 때 3,000원)
+                  const shippingFee = totalQuantity < 20 ? 3000 : 0
+                  
+                  // 총 금액 = 공급가액 + 부가세액 + 배송비
+                  return sum + (supplyAmount + taxAmount + shippingFee)
                 }, 0))}
               </p>
             </div>
@@ -646,8 +670,24 @@ export function ShippedOrdersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {formatCurrency(order.order_items?.reduce((sum, item) => 
-                          sum + (item.shipped_quantity * item.unit_price), 0) || 0)}
+                        {formatCurrency((() => {
+                          // 공급가액 계산
+                          const supplyAmount = order.order_items?.reduce((sum, item) => 
+                            sum + (item.shipped_quantity * item.unit_price), 0) || 0
+                          
+                          // 부가세액 계산 (공급가액의 10%, 소수점 절사)
+                          const taxAmount = Math.floor(supplyAmount * 0.1)
+                          
+                          // 총 출고 수량 계산 (배송비 계산용)
+                          const totalQuantity = order.order_items?.reduce((sum, item) => 
+                            sum + (item.shipped_quantity || 0), 0) || 0
+                          
+                          // 배송비 계산 (20장 미만일 때 3,000원)
+                          const shippingFee = totalQuantity < 20 ? 3000 : 0
+                          
+                          // 총 금액 = 공급가액 + 부가세액 + 배송비
+                          return supplyAmount + taxAmount + shippingFee
+                        })())}
                       </div>
                     </td>
                   </tr>
@@ -670,7 +710,24 @@ export function ShippedOrdersPage() {
               <span className="font-medium text-green-900 ml-2">
                 {formatCurrency(
                   orders.filter(order => selectedOrders.includes(order.id))
-                    .reduce((sum, order) => sum + order.total_amount, 0)
+                    .reduce((sum, order) => {
+                      // 공급가액 계산
+                      const supplyAmount = order.order_items?.reduce((itemSum, item) => 
+                        itemSum + (item.shipped_quantity * item.unit_price), 0) || 0
+                      
+                      // 부가세액 계산 (공급가액의 10%, 소수점 절사)
+                      const taxAmount = Math.floor(supplyAmount * 0.1)
+                      
+                      // 총 출고 수량 계산 (배송비 계산용)
+                      const totalQuantity = order.order_items?.reduce((itemSum, item) => 
+                        itemSum + (item.shipped_quantity || 0), 0) || 0
+                      
+                      // 배송비 계산 (20장 미만일 때 3,000원)
+                      const shippingFee = totalQuantity < 20 ? 3000 : 0
+                      
+                      // 총 금액 = 공급가액 + 부가세액 + 배송비
+                      return sum + (supplyAmount + taxAmount + shippingFee)
+                    }, 0)
                 )}
               </span>
             </div>
