@@ -88,6 +88,30 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // 이미 마일리지가 차감된 주문인지 확인
+        const { data: existingMileageRecord, error: mileageCheckError } = await supabase
+          .from('mileage')
+          .select('id, amount, description, created_at')
+          .eq('order_id', order.id)
+          .eq('type', 'spend')
+          .eq('source', 'order')
+          .single()
+
+        if (existingMileageRecord && !mileageCheckError) {
+          console.log('이미 마일리지가 차감된 주문:', order.order_number, {
+            차감금액: existingMileageRecord.amount,
+            차감일시: existingMileageRecord.created_at,
+            설명: existingMileageRecord.description
+          })
+          results.push({
+            orderId: order.id,
+            orderNumber: order.order_number,
+            success: false,
+            error: `이미 마일리지가 차감된 주문입니다. (차감금액: ${existingMileageRecord.amount.toLocaleString()}원)`
+          })
+          continue
+        }
+
         // 실제 출고된 상품만 필터링
         const shippedItems = order.order_items.filter((item: any) => 
           item.shipped_quantity && item.shipped_quantity > 0
