@@ -108,24 +108,36 @@ export async function GET(request: NextRequest) {
 
     console.log('🔍 전체 마일리지 데이터 수:', allMileageData?.length || 0)
 
+    // 상세 디버깅: 각 마일리지 데이터 출력
+    console.log('🔍 전체 마일리지 데이터 상세:')
+    allMileageData?.forEach((item: any, index: number) => {
+      console.log(`  ${index + 1}. ${item.type === 'earn' ? '적립' : '차감'}: ${item.amount}원 (${item.created_at})`)
+    })
+
     // 잔액 계산 - 항상 실제 마일리지 내역을 기반으로 계산
     let currentBalance = 0
+    let earnTotal = 0
+    let spendTotal = 0
     
     if (allMileageData) {
-      currentBalance = allMileageData.reduce((sum: number, item: any) => {
-        // type이 'earn'이면 +, 'spend'이면 - 로 계산
+      allMileageData.forEach((item: any) => {
+        console.log(`🔍 처리 중: type=${item.type}, amount=${item.amount}`)
         if (item.type === 'earn') {
-          return sum + item.amount
+          earnTotal += Math.abs(item.amount) // 적립은 항상 양수로 표시
+          currentBalance += Math.abs(item.amount)
         } else if (item.type === 'spend') {
-          return sum - item.amount
+          spendTotal += Math.abs(item.amount) // 차감도 양수로 표시 (총 차감액)
+          currentBalance += item.amount // spend는 이미 음수로 저장되어 있으므로 그대로 더함
         }
-        return sum
-      }, 0)
+      })
     }
 
-    console.log('🔍 실제 마일리지 내역 기반 계산된 잔액:', currentBalance)
-    console.log('🔍 DB users 테이블의 mileage_balance:', userData.mileage_balance)
-    console.log('🔍 잔액 차이:', currentBalance - (userData.mileage_balance || 0))
+    console.log('🔍 계산 결과:')
+    console.log(`  - 총 적립: ${earnTotal}원`)
+    console.log(`  - 총 차감: ${spendTotal}원`)
+    console.log(`  - 계산된 잔액: ${currentBalance}원`)
+    console.log(`  - DB 저장된 잔액: ${userData.mileage_balance || 0}원`)
+    console.log(`  - 잔액 차이: ${currentBalance - (userData.mileage_balance || 0)}원`)
 
     // 이번 달 통계 계산
     const now = new Date()
@@ -139,11 +151,11 @@ export async function GET(request: NextRequest) {
 
     const thisMonthEarned = thisMonthData
       .filter((item: any) => item.type === 'earn')
-      .reduce((sum: number, item: any) => sum + item.amount, 0)
+      .reduce((sum: number, item: any) => sum + Math.abs(item.amount), 0)
 
     const thisMonthSpent = thisMonthData
       .filter((item: any) => item.type === 'spend')
-      .reduce((sum: number, item: any) => sum + item.amount, 0)
+      .reduce((sum: number, item: any) => sum + Math.abs(item.amount), 0)
 
     const summary = {
       currentBalance,

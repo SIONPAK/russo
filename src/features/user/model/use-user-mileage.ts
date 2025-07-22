@@ -17,12 +17,19 @@ export function useUserMileage() {
 
     setLoading(true)
     try {
-      const response = await fetch(`/api/mileage?userId=${user.id}&limit=1`)
+      // 캐시 방지를 위해 타임스탬프 추가
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/api/mileage?userId=${user.id}&limit=1&_t=${timestamp}`)
       const result = await response.json()
       
+      console.log('🔍 헤더 마일리지 API 응답:', result.data?.summary)
+      
       if (result.success && result.data.summary) {
-        setMileageBalance(result.data.summary.currentBalance || 0)
+        const balance = result.data.summary.currentBalance || 0
+        console.log('🔍 헤더 마일리지 설정:', balance)
+        setMileageBalance(balance)
       } else {
+        console.log('🔍 헤더 마일리지 API 실패 또는 데이터 없음')
         setMileageBalance(0)
       }
     } catch (error) {

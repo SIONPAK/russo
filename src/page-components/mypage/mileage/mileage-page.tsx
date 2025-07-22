@@ -105,12 +105,18 @@ export function MileagePage() {
       }
 
       
+      // 캐시 방지를 위해 타임스탬프 추가
+      searchParams.append('_t', new Date().getTime().toString())
       const response = await fetch(`/api/mileage?${searchParams}`)
       const result = await response.json()
       
+      console.log('🔍 [마일리지 페이지] API 요청 파라미터:', searchParams.toString())
+      console.log('🔍 [마일리지 페이지] API 전체 응답:', result)
 
       if (result.success) {
-        console.log('🔍 마일리지 API 응답:', result.data.summary)
+        console.log('🔍 [마일리지 페이지] 요약 데이터:', result.data.summary)
+        console.log('🔍 [마일리지 페이지] 거래 내역 수:', result.data.mileages?.length || 0)
+        
         setTransactions(result.data.mileages || [])
         setSummary(result.data.summary || {
           currentBalance: 0,
@@ -255,7 +261,7 @@ export function MileagePage() {
               <ArrowDownCircle className="w-5 h-5 text-red-600" />
             </div>
             <p className="text-2xl font-bold text-red-600">
-              -{formatPrice(summary.thisMonthSpent)}원
+              {formatPrice(summary.thisMonthSpent)}원
             </p>
             <p className="text-gray-600 text-xs mt-1">{new Date().getMonth() + 1}월 사용 금액</p>
           </div>
