@@ -546,24 +546,46 @@ export function SamplesPage() {
 
   // 통계는 상태로 관리 (fetchStatements에서 업데이트됨)
 
-  // 고객 검색 함수
+  // 고객 검색 함수 (디바운싱 적용)
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null)
+
   const searchCustomers = async (keyword: string) => {
     if (!keyword.trim()) {
       setCustomerSearchResults([])
       return
     }
 
-    try {
-      const response = await fetch(`/api/admin/users?search=${encodeURIComponent(keyword)}&limit=10`)
-      const result = await response.json()
-
-      if (result.success) {
-        setCustomerSearchResults(result.data)
-      }
-    } catch (error) {
-      console.error('고객 검색 오류:', error)
+    // 기존 타이머 취소
+    if (searchTimeout) {
+      clearTimeout(searchTimeout)
     }
+
+    // 500ms 후에 검색 실행
+    const newTimeout = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/admin/users?search=${encodeURIComponent(keyword)}&limit=10&approval_status=approved`)
+        const result = await response.json()
+
+        if (result.success) {
+          setCustomerSearchResults(result.data || [])
+        }
+      } catch (error) {
+        console.error('고객 검색 오류:', error)
+        setCustomerSearchResults([])
+      }
+    }, 500)
+
+    setSearchTimeout(newTimeout)
   }
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout)
+      }
+    }
+  }, [searchTimeout])
 
   // 상품 검색 함수
   const searchProducts = async (keyword: string) => {
