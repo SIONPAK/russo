@@ -24,54 +24,51 @@ export async function DELETE(
       }, { status: 404 })
     }
 
-    // 업무일 기준 당일 생성된 발주서만 수정/삭제 가능 (전일 15:00 ~ 당일 14:59)
+    // 💡 올바른 삭제 시간 제한 로직
     const now = new Date()
     const koreaTime = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
     const orderTime = new Date(order.created_at)
     const orderKoreaTime = new Date(orderTime.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
     
-    // 현재 업무일의 시작 시간 계산 (전일 15:00)
-    let workdayStart = new Date(koreaTime)
-    if (koreaTime.getHours() < 15) {
-      // 현재 시각이 15시 이전이면 전전일 15:00부터 시작
-      workdayStart.setDate(workdayStart.getDate() - 2)
-    } else {
-      // 현재 시각이 15시 이후면 전일 15:00부터 시작
-      workdayStart.setDate(workdayStart.getDate() - 1)
-    }
-    workdayStart.setHours(15, 0, 0, 0)
+    // 당일 15:00 기준점 계산
+    const todayThreePM = new Date(koreaTime)
+    todayThreePM.setHours(15, 0, 0, 0)
     
-    // 현재 업무일의 종료 시간 계산 (당일 14:59)
-    const workdayEnd = new Date(workdayStart)
-    workdayEnd.setDate(workdayEnd.getDate() + 1)
-    workdayEnd.setHours(14, 59, 59, 999)
+    // 전일 15:00 계산
+    const yesterdayThreePM = new Date(todayThreePM)
+    yesterdayThreePM.setDate(yesterdayThreePM.getDate() - 1)
     
-    // 주문이 현재 업무일 범위에 있는지 확인
-    const isCurrentWorkday = orderKoreaTime >= workdayStart && orderKoreaTime <= workdayEnd
-    
-    if (!isCurrentWorkday) {
-      return NextResponse.json({
-        success: false,
-        error: `당일 생성된 발주서만 삭제할 수 있습니다. (업무일 기준: ${workdayStart.toLocaleDateString('ko-KR')} 15:00 ~ ${workdayEnd.toLocaleDateString('ko-KR')} 14:59)`
-      }, { status: 400 })
-    }
-    
-    // 현재 업무일의 삭제 마감시간 (당일 14:59)
-    const deleteCutoffTime = new Date(workdayEnd)
-    
-    console.log('🕐 업무일 기준 시간 확인:', {
+    console.log('🕐 발주서 삭제 시간 확인:', {
       currentTime: koreaTime.toLocaleString('ko-KR'),
       orderTime: orderKoreaTime.toLocaleString('ko-KR'),
-      workdayStart: workdayStart.toLocaleString('ko-KR'),
-      workdayEnd: workdayEnd.toLocaleString('ko-KR'),
-      isCurrentWorkday,
-      canDelete: koreaTime <= deleteCutoffTime
+      todayThreePM: todayThreePM.toLocaleString('ko-KR'),
+      yesterdayThreePM: yesterdayThreePM.toLocaleString('ko-KR')
     })
     
-    if (koreaTime > deleteCutoffTime) {
+    // 케이스 1: 당일 15:00 이후에 생성된 주문 → 언제든 삭제 가능
+    if (orderKoreaTime >= todayThreePM) {
+      console.log('✅ 당일 15:00 이후 생성된 주문 → 삭제 가능')
+      // 삭제 가능, 추가 검사 없음
+    }
+    // 케이스 2: 전일 15:00 ~ 당일 14:59 범위의 주문 → 당일 14:59까지만 삭제 가능
+    else if (orderKoreaTime >= yesterdayThreePM) {
+      console.log('📅 전일 15:00 ~ 당일 14:59 범위 주문 → 시간 제한 확인')
+      
+      const deleteCutoffTime = new Date(todayThreePM)
+      deleteCutoffTime.setMinutes(-1) // 14:59
+      
+      if (koreaTime > deleteCutoffTime) {
+        return NextResponse.json({
+          success: false,
+          error: `전일 업무시간(15:00~14:59) 주문은 당일 14:59까지만 삭제 가능합니다. (현재 시각: ${koreaTime.toLocaleString('ko-KR')})`
+        }, { status: 400 })
+      }
+    }
+    // 케이스 3: 그 이전 주문 → 삭제 불가
+    else {
       return NextResponse.json({
         success: false,
-        error: `업무일 기준 오후 3시 이후에는 발주서를 삭제할 수 없습니다. (현재 시각: ${koreaTime.toLocaleString('ko-KR')})`
+        error: `해당 발주서는 삭제 기간이 지났습니다. (주문 시각: ${orderKoreaTime.toLocaleString('ko-KR')})`
       }, { status: 400 })
     }
 

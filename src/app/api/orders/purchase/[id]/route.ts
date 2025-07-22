@@ -110,40 +110,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, message: '주문 업데이트에 실패했습니다.' }, { status: 500 })
     }
 
-    // 기존 재고 이력 복원 (기존 발주 취소)
-    if (existingItems) {
-      for (const item of existingItems) {
-        if (item.product_id && item.quantity !== 0) {
-          // 기존 발주량을 반대로 적용하여 재고 복원
-          const adjustmentQuantity = -item.quantity
-          const adjustmentType = item.quantity > 0 ? 'outbound' : 'inbound'
-          
-          await supabase
-            .from('inventory_history')
-            .insert({
-              id: randomUUID(),
-              product_id: item.product_id,
-              quantity: adjustmentQuantity,
-              type: adjustmentType,
-              reason: `발주 수정 - 기존 발주 취소 (${existingOrder.order_number})`,
-              reference_id: orderId,
-              reference_type: 'order_update_cancel'
-            })
-        }
-      }
-    }
-
-    // 기존 주문 상품 삭제
-    const { error: deleteItemsError } = await supabase
-      .from('order_items')
-      .delete()
-      .eq('order_id', orderId)
-
-    if (deleteItemsError) {
-      console.error('기존 주문 상품 삭제 오류:', deleteItemsError)
-      return NextResponse.json({ success: false, message: '기존 주문 상품 삭제에 실패했습니다.' }, { status: 500 })
-    }
-
     // 기존 반품명세서 삭제 (반품 접수 수정 시)
     const { error: deleteReturnError } = await supabase
       .from('return_statements')
@@ -155,70 +121,152 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // 반품명세서 삭제 실패해도 수정은 진행
     }
 
-    // 새로운 주문 상품 생성 (0 이상 수량 - 0 수량도 포함)
-    const positiveItems = items.filter((item: any) => item.quantity >= 0)
+    // 💡 진짜 UPDATE 방식으로 수정 - 개별 아이템 처리
+    console.log('🔄 [진짜 수정] 개별 아이템 UPDATE/INSERT/DELETE 시작')
     
-    if (positiveItems.length > 0) {
-      const orderItems = positiveItems.map((item: any) => {
-        // 기존 아이템의 출고 수량 찾기
-        const existingItem = existingItems?.find(existing => 
-          existing.product_id === item.product_id &&
-          existing.color === item.color &&
-          existing.size === item.size
-        )
+    const positiveItems = items.filter((item: any) => item.quantity >= 0)
+    const processedExistingItems: string[] = []
+
+    // 1단계: 기존 아이템 UPDATE 또는 새 아이템 INSERT
+    for (const item of positiveItems) {
+      // 기존 아이템인지 확인 (product_id, color, size로 매칭)
+      const existingItem = existingItems?.find(existing => 
+        existing.product_id === item.product_id &&
+        existing.color === item.color &&
+        existing.size === item.size
+      )
+
+      if (existingItem) {
+        // 기존 아이템 UPDATE
+        processedExistingItems.push(existingItem.id)
         
-        const preservedShippedQuantity = existingItem?.shipped_quantity || 0
-        const preservedAllocatedQuantity = existingItem?.allocated_quantity || 0
+        const quantityDiff = item.quantity - existingItem.quantity
         
-        console.log(`📦 [수정] 기존 출고 수량 보존:`, {
+        console.log(`📝 [UPDATE] 기존 아이템 수정:`, {
+          id: existingItem.id,
           productId: item.product_id,
           color: item.color,
           size: item.size,
+          oldQuantity: existingItem.quantity,
           newQuantity: item.quantity,
-          preservedShippedQuantity: preservedShippedQuantity,
-          preservedAllocatedQuantity: preservedAllocatedQuantity
+          quantityDiff: quantityDiff
         })
-        
-        return {
-          order_id: orderId,
-          product_id: item.product_id,
-          product_name: item.product_name,
+
+        const { error: updateError } = await supabase
+          .from('order_items')
+          .update({
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.unit_price * item.quantity
+          })
+          .eq('id', existingItem.id)
+
+        if (updateError) {
+          console.error('아이템 업데이트 오류:', updateError)
+          return NextResponse.json({ success: false, message: '주문 상품 업데이트에 실패했습니다.' }, { status: 500 })
+        }
+
+        // 재고 이력 생성 (수량 변경이 있는 경우만)
+        if (quantityDiff !== 0) {
+          await supabase
+            .from('inventory_history')
+            .insert({
+              id: randomUUID(),
+              product_id: item.product_id,
+              quantity: quantityDiff,
+              type: quantityDiff > 0 ? 'outbound' : 'inbound',
+              reason: `발주 수정 - 수량 변경 (${existingOrder.order_number})`,
+              reference_id: orderId,
+              reference_type: 'order_update'
+            })
+        }
+      } else {
+        // 새 아이템 INSERT
+        console.log(`➕ [INSERT] 새 아이템 추가:`, {
+          productId: item.product_id,
           color: item.color,
           size: item.size,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total_price: item.unit_price * item.quantity,
-          shipped_quantity: preservedShippedQuantity,  // 기존 출고 수량 보존
-          allocated_quantity: preservedAllocatedQuantity  // 기존 할당 수량 보존
+          quantity: item.quantity
+        })
+
+        const { error: insertError } = await supabase
+          .from('order_items')
+          .insert({
+            order_id: orderId,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            color: item.color,
+            size: item.size,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.unit_price * item.quantity,
+            shipped_quantity: 0,
+            allocated_quantity: 0
+          })
+
+        if (insertError) {
+          console.error('새 아이템 추가 오류:', insertError)
+          return NextResponse.json({ success: false, message: '새 주문 상품 추가에 실패했습니다.' }, { status: 500 })
         }
-      })
 
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems)
-
-      if (itemsError) {
-        console.error('주문 상품 생성 오류:', itemsError)
-        return NextResponse.json({ success: false, message: '주문 상품 생성에 실패했습니다.' }, { status: 500 })
+        // 재고 이력 생성
+        if (item.quantity > 0) {
+          await supabase
+            .from('inventory_history')
+            .insert({
+              id: randomUUID(),
+              product_id: item.product_id,
+              quantity: item.quantity,
+              type: 'outbound',
+              reason: `발주 수정 - 신규 상품 추가 (${existingOrder.order_number})`,
+              reference_id: orderId,
+              reference_type: 'order_update_add'
+            })
+        }
       }
     }
 
-    // 새로운 재고 이력 생성 (양수 수량만)
-    for (const item of positiveItems) {
-      if (item.product_id && item.quantity > 0) {
+    // 2단계: 제거된 기존 아이템 DELETE
+    const itemsToDelete = existingItems?.filter(existing => 
+      !processedExistingItems.includes(existing.id)
+    ) || []
+
+    for (const itemToDelete of itemsToDelete) {
+      console.log(`🗑️ [DELETE] 제거된 아이템 삭제:`, {
+        id: itemToDelete.id,
+        productId: itemToDelete.product_id,
+        color: itemToDelete.color,
+        size: itemToDelete.size,
+        quantity: itemToDelete.quantity
+      })
+
+      const { error: deleteError } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('id', itemToDelete.id)
+
+      if (deleteError) {
+        console.error('아이템 삭제 오류:', deleteError)
+        return NextResponse.json({ success: false, message: '주문 상품 삭제에 실패했습니다.' }, { status: 500 })
+      }
+
+      // 재고 이력 생성 (재고 복원)
+      if (itemToDelete.quantity !== 0) {
         await supabase
           .from('inventory_history')
           .insert({
             id: randomUUID(),
-            product_id: item.product_id,
-            quantity: item.quantity,
-            type: 'outbound',
-            reason: `발주 수정 - 새 발주 적용 (${existingOrder.order_number})`,
+            product_id: itemToDelete.product_id,
+            quantity: -itemToDelete.quantity,
+            type: itemToDelete.quantity > 0 ? 'inbound' : 'outbound',
+            reason: `발주 수정 - 상품 제거 (${existingOrder.order_number})`,
             reference_id: orderId,
-            reference_type: 'order_update_new'
+            reference_type: 'order_update_remove'
           })
       }
     }
+
+    console.log(`✅ [진짜 수정] 완료 - 업데이트: ${processedExistingItems.length}개, 추가: ${positiveItems.length - processedExistingItems.length}개, 삭제: ${itemsToDelete.length}개`)
 
     // 음수 수량 항목이 있으면 반품명세서 생성
     const negativeItems = items.filter((item: any) => item.quantity < 0)
@@ -300,142 +348,29 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       console.log(`ℹ️ [수정] 반품 아이템 없음 - 반품명세서 생성 건너뜀`)
     }
 
-    // 간단한 가용재고 기반 할당 처리
-    console.log('🔄 [수정] 가용재고 기반 할당 시작')
+    // 💡 자동 재고 재할당 처리 (전체 시스템 자동 할당)
+    console.log('🔄 [수정] 자동 재고 재할당 호출')
     
-    // 새로 생성된 주문 아이템들에 대해 부족한 수량만 할당
-    if (positiveItems.length > 0) {
-      console.log(`📊 [수정] 할당 대상 아이템: ${positiveItems.length}개`)
+    try {
+      const autoAllocationResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/orders/auto-allocation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      })
+
+      const autoAllocationResult = await autoAllocationResponse.json()
       
-      for (const item of positiveItems) {
-        console.log(`🔄 [수정] 아이템 할당 시작:`, {
-          productId: item.product_id,
-          productName: item.product_name,
-          color: item.color,
-          size: item.size,
-          quantity: item.quantity
-        })
-        
-        // 현재 출고 수량과 전체 수량 비교하여 부족한 수량 계산
-        const { data: currentOrderItem, error: currentItemError } = await supabase
-          .from('order_items')
-          .select('shipped_quantity, allocated_quantity')
-          .eq('order_id', orderId)
-          .eq('product_id', item.product_id)
-          .eq('color', item.color)
-          .eq('size', item.size)
-          .single()
-
-        if (currentItemError) {
-          console.error('현재 주문 아이템 조회 실패:', currentItemError)
-          continue
-        }
-
-        const currentShippedQuantity = currentOrderItem.shipped_quantity || 0
-        const unshippedQuantity = item.quantity - currentShippedQuantity
-        
-        console.log(`📊 [수정] 할당 필요 수량 계산:`, {
-          productId: item.product_id,
-          color: item.color,
-          size: item.size,
-          totalQuantity: item.quantity,
-          currentShippedQuantity: currentShippedQuantity,
-          unshippedQuantity: unshippedQuantity
-        })
-
-        if (unshippedQuantity > 0) {
-          // 가용 재고 확인
-          const { data: availableStock, error: stockError } = await supabase
-            .rpc('calculate_available_stock', {
-              p_product_id: item.product_id,
-              p_color: item.color,
-              p_size: item.size
-            })
-
-          const additionalAllocatable = Math.min(unshippedQuantity, availableStock || 0)
-          
-          console.log('📊 [가용재고 기반 할당] 처리:', {
-            productId: item.product_id,
-            color: item.color,
-            size: item.size,
-            unshippedQuantity: unshippedQuantity,
-            availableStock: availableStock || 0,
-            additionalAllocatable: additionalAllocatable
-          })
-
-          if (additionalAllocatable > 0) {
-            // 가용재고 범위 내에서 재고 할당 수행
-            const { error: allocationError } = await supabase
-              .rpc('allocate_stock', {
-                p_product_id: item.product_id,
-                p_quantity: additionalAllocatable,
-                p_color: item.color,
-                p_size: item.size
-              })
-
-            if (!allocationError) {
-              // 주문 아이템 업데이트 (기존 출고 수량에 추가)
-              const newShippedQuantity = currentShippedQuantity + additionalAllocatable
-              const newAllocatedQuantity = (currentOrderItem.allocated_quantity || 0) + additionalAllocatable
-              
-              const { error: updateError } = await supabase
-                .from('order_items')
-                .update({
-                  shipped_quantity: newShippedQuantity,
-                  allocated_quantity: newAllocatedQuantity
-                })
-                .eq('order_id', orderId)
-                .eq('product_id', item.product_id)
-                .eq('color', item.color)
-                .eq('size', item.size)
-
-              if (!updateError) {
-                console.log('✅ [수정] 추가 할당 완료:', {
-                  productId: item.product_id,
-                  color: item.color,
-                  size: item.size,
-                  oldShippedQuantity: currentShippedQuantity,
-                  newShippedQuantity: newShippedQuantity,
-                  additionalAllocatable: additionalAllocatable,
-                  totalQuantity: item.quantity,
-                  remainingUnshipped: item.quantity - newShippedQuantity
-                })
-              } else {
-                console.error('❌ [주문 아이템 업데이트 실패]:', updateError)
-              }
-            } else {
-              console.error('❌ [재고 할당 실패]:', allocationError)
-            }
-          } else {
-            console.log('ℹ️ [수정] 가용재고 부족으로 추가 할당 없음:', {
-              productId: item.product_id,
-              color: item.color,
-              size: item.size,
-              unshippedQuantity: unshippedQuantity,
-              availableStock: availableStock || 0,
-              currentShippedQuantity: currentShippedQuantity,
-              totalQuantity: item.quantity
-            })
-          }
-        } else {
-          console.log('ℹ️ [수정] 이미 전량 출고되어 추가 할당 불필요:', {
-            productId: item.product_id,
-            color: item.color,
-            size: item.size,
-            currentShippedQuantity: currentShippedQuantity,
-            totalQuantity: item.quantity
-          })
-        }
-        
-        console.log(`✅ [수정] 아이템 처리 완료:`, {
-          productId: item.product_id,
-          color: item.color,
-          size: item.size
-        })
+      if (autoAllocationResult.success) {
+        console.log('✅ [수정] 자동 재할당 완료:', autoAllocationResult.summary)
+      } else {
+        console.log('ℹ️ [수정] 자동 재할당 결과:', autoAllocationResult.message)
       }
+    } catch (error) {
+      console.error('❌ [수정] 자동 재할당 호출 실패:', error)
+      // 에러가 발생해도 수정은 계속 진행
     }
-
-    console.log('✅ [수정] 가용재고 기반 할당 완료')
 
     // 수정된 주문의 할당 상태 계산
     const { data: updatedOrderItems, error: updatedOrderError } = await supabase
