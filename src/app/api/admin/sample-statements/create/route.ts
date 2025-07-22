@@ -156,128 +156,90 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 샘플 아이템들을 samples 테이블에 생성 (개별 번호 사용하되 그룹으로 관리)
+    // 샘플 아이템들을 samples 테이블에 순차 생성 (분할 방지)
     let totalAmount = 0
-    const samplePromises = items.map(async (item: any, index: number) => {
-      // 샘플은 무료 제공이지만, 미반납 시 차감할 금액은 실제 상품 가격
-      const unitPrice = 0 // 샘플 제공 가격 (무료)
-      const totalPrice = 0 // 샘플 제공 총액 (무료)
+    const createdSamples = []
+
+    console.log(`🔄 ${items.length}개 샘플을 그룹 ${mainSampleNumber}으로 순차 생성 시작`)
+
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index]
       
-      // 미반납 시 차감할 마일리지 금액 (실제 상품 가격 × 수량)
-      const penaltyAmount = (item.unit_price || 0) * item.quantity
+      try {
+        // 샘플은 무료 제공이지만, 미반납 시 차감할 금액은 실제 상품 가격
+        const unitPrice = 0 // 샘플 제공 가격 (무료)
+        const totalPrice = 0 // 샘플 제공 총액 (무료)
+        
+        // 미반납 시 차감할 마일리지 금액 (실제 상품 가격 × 수량)
+        const penaltyAmount = (item.unit_price || 0) * item.quantity
 
-      // 각 아이템마다 고유한 번호 생성 (UNIQUE 제약조건 때문)
-      const itemSampleNumber = `${mainSampleNumber}-${String(index + 1).padStart(2, '0')}`
+        // 각 아이템마다 고유한 번호 생성 (UNIQUE 제약조건 때문)
+        const itemSampleNumber = `${mainSampleNumber}-${String(index + 1).padStart(2, '0')}`
 
-      console.log(`Creating sample ${index + 1} in group ${mainSampleNumber}:`, {
-        sample_number: itemSampleNumber,
-        group_number: mainSampleNumber,
-        product_name: item.product_name,
-        color: item.color,
-        size: item.size,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        penaltyAmount
-      })
-
-      const { data, error } = await supabase
-        .from('samples')
-        .insert({
-          sample_number: itemSampleNumber, // 개별 고유 번호
-          customer_id: customer_id,
-          customer_name: customer.company_name || customer.representative_name,
-          product_id: item.product_id,
+        console.log(`📦 샘플 ${index + 1}/${items.length} 생성 중:`, {
+          sample_number: itemSampleNumber,
+          group_number: mainSampleNumber,
           product_name: item.product_name,
-          product_options: `색상: ${item.color || '기본'}, 사이즈: ${item.size || 'FREE'}`,
+          color: item.color,
+          size: item.size,
           quantity: item.quantity,
-          sample_type: 'photography', // 샘플은 무조건 무료 (촬영용)
-          charge_amount: penaltyAmount, // 미반납 시 차감할 금액 (실제 상품 가격 × 수량)
-          status: 'pending',
-          due_date: dueDate.toISOString().split('T')[0],
-          delivery_address: deliveryAddress ? 
-            `${deliveryAddress.address} (${deliveryAddress.recipient_name}, ${deliveryAddress.phone})` : 
-            customer.address,
-          admin_notes: admin_notes || `샘플 그룹 ${mainSampleNumber} (${index + 1}/${items.length}) - 반납기한: ${dueDate.toISOString().split('T')[0]} (미반납시 ₩${penaltyAmount.toLocaleString()} 차감)`,
-          // 그룹 정보를 notes에 추가하여 그룹 관리
-          notes: `GROUP:${mainSampleNumber}|ITEM:${index + 1}|TOTAL:${items.length}|PENALTY:${penaltyAmount}`,
-          created_at: getKoreaTime(),
-          updated_at: getKoreaTime()
+          unit_price: item.unit_price,
+          penaltyAmount
         })
-        .select()
 
-      if (error) {
-        console.error(`Sample creation error for item ${index + 1}:`, error)
-        throw error
-      }
-
-      console.log(`Sample ${index + 1} created successfully in group:`, data)
-      totalAmount += penaltyAmount // 총 미반납 시 차감 금액 누적
-      return data
-    })
-
-    let createdSamples = []
-    try {
-      console.log(`Creating ${items.length} samples with group number: ${mainSampleNumber}`)
-      createdSamples = await Promise.all(samplePromises)
-      console.log(`Successfully created ${createdSamples.length} samples in group ${mainSampleNumber}`)
-    } catch (error) {
-      console.error('Sample creation error:', error)
-      return NextResponse.json({
-        success: false,
-        error: '샘플 생성에 실패했습니다.'
-      }, { status: 500 })
-    }
-
-    // 재고 변동 이력 기록 (샘플 출고) - 한국 시간으로 저장
-    try {
-      const stockMovements = createdSamples.flat().map(sample => ({
-        product_id: sample.product_id,
-        movement_type: 'sample_out',
-        quantity: -sample.quantity, // 음수 (출고)
-        reference_id: sample.id,
-        reference_type: 'sample',
-        notes: `샘플 출고: ${sample.sample_number} (촬영용 샘플 발송)`,
-        created_at: getKoreaTime()
-      }))
-
-      const { error: stockError } = await supabase
-        .from('stock_movements')
-        .insert(stockMovements)
-
-      if (stockError) {
-        console.error('Stock movements insert error:', stockError)
-        // 재고 이력 실패는 경고만 하고 계속 진행
-      }
-
-      // 상품 재고 수량도 차감
-      for (const sample of createdSamples.flat()) {
-        // 현재 재고 조회
-        const { data: product, error: productError } = await supabase
-          .from('products')
-          .select('stock_quantity')
-          .eq('id', sample.product_id)
+        const { data, error } = await supabase
+          .from('samples')
+          .insert({
+            sample_number: itemSampleNumber, // 개별 고유 번호
+            customer_id: customer_id,
+            customer_name: customer.company_name || customer.representative_name,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            product_options: `색상: ${item.color || '기본'}, 사이즈: ${item.size || 'FREE'}`,
+            quantity: item.quantity,
+            sample_type: 'photography', // 샘플은 무조건 무료 (촬영용)
+            charge_amount: penaltyAmount, // 미반납 시 차감할 금액 (실제 상품 가격 × 수량)
+            status: 'pending',
+            due_date: dueDate.toISOString().split('T')[0],
+            delivery_address: deliveryAddress ? 
+              `${deliveryAddress.address} (${deliveryAddress.recipient_name}, ${deliveryAddress.phone})` : 
+              customer.address,
+            admin_notes: admin_notes || `샘플 그룹 ${mainSampleNumber} (${index + 1}/${items.length}) - 반납기한: ${dueDate.toISOString().split('T')[0]} (미반납시 ₩${penaltyAmount.toLocaleString()} 차감)`,
+            // 그룹 정보를 notes에 추가하여 그룹 관리
+            notes: `GROUP:${mainSampleNumber}|ITEM:${index + 1}|TOTAL:${items.length}|PENALTY:${penaltyAmount}`,
+            created_at: getKoreaTime(),
+            updated_at: getKoreaTime()
+          })
+          .select()
           .single()
 
-        if (productError) {
-          console.error(`Product fetch error for ${sample.product_id}:`, productError)
-          continue
+        if (error) {
+          console.error(`❌ 샘플 ${index + 1} 생성 오류:`, error)
+          throw error
         }
 
-        // 재고 차감
-        const newStockQuantity = Math.max(0, (product.stock_quantity || 0) - sample.quantity)
-        const { error: stockUpdateError } = await supabase
-          .from('products')
-          .update({ stock_quantity: newStockQuantity })
-          .eq('id', sample.product_id)
+        console.log(`✅ 샘플 ${index + 1} 생성 완료:`, data.sample_number)
+        totalAmount += penaltyAmount // 총 미반납 시 차감 금액 누적
+        createdSamples.push(data)
 
-        if (stockUpdateError) {
-          console.error(`Product stock update error for ${sample.product_id}:`, stockUpdateError)
+        // 순차 처리를 위한 짧은 지연 (분할 방지)
+        if (index < items.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100))
         }
+
+      } catch (error) {
+        console.error(`❌ 샘플 ${index + 1} 생성 실패:`, error)
+        return NextResponse.json({
+          success: false,
+          error: `샘플 생성에 실패했습니다. (${index + 1}번째 아이템)`
+        }, { status: 500 })
       }
-    } catch (error) {
-      console.error('Stock movement recording error:', error)
-      // 재고 이력 실패는 경고만 하고 계속 진행
     }
+
+        console.log(`🎉 그룹 ${mainSampleNumber} 생성 완료: ${createdSamples.length}개 샘플`)
+
+    // 💡 샘플은 재고 연동하지 않음 (재고 차감 및 이력 기록 제거)
+    // 샘플 출고/회수는 팀장님이 별도 수동 관리
 
     // 명세서 총액을 미반납 시 차감할 총 금액으로 업데이트
     const { error: updateError } = await supabase

@@ -630,17 +630,33 @@ export function OrderManagementPage() {
     setIsSaving(true) // 저장 시작
 
     try {
+      // 주문 아이템 유효성 검사
+      const invalidItems = orderItems.filter(item => !item.productId || item.productId === '')
+      if (invalidItems.length > 0) {
+        console.error('❌ 유효하지 않은 상품 ID가 있는 아이템들:', invalidItems)
+        showError(`상품 정보가 올바르지 않습니다. 상품을 다시 선택해주세요.`)
+        return
+      }
+
       const orderData = {
         user_id: user?.id,
-        items: orderItems.map(item => ({
-          product_id: item.productId,
-          product_code: item.productCode,
-          product_name: item.productName,
-          color: item.color,
-          size: item.size,
-          quantity: item.quantity,
-          unit_price: item.unitPrice
-        })),
+        items: orderItems.map(item => {
+          console.log('📦 발주 아이템:', {
+            productId: item.productId,
+            productName: item.productName,
+            quantity: item.quantity
+          })
+          
+          return {
+            product_id: item.productId,
+            product_code: item.productCode,
+            product_name: item.productName,
+            color: item.color,
+            size: item.size,
+            quantity: item.quantity,
+            unit_price: item.unitPrice
+          }
+        }),
         shipping_address_id: selectedShippingAddress.id,
         shipping_address: selectedShippingAddress.address,
         shipping_postal_code: selectedShippingAddress.postal_code,

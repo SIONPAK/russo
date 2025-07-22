@@ -235,21 +235,37 @@ export function OrderPage({ cartItems = [], orderType }: OrderPageProps) {
         return
       }
 
+      // 주문 아이템 유효성 검사
+      const invalidItems = orderItems.filter(item => !item.productId || item.productId === '')
+      if (invalidItems.length > 0) {
+        console.error('❌ 유효하지 않은 상품 ID가 있는 아이템들:', invalidItems)
+        alert('상품 정보가 올바르지 않습니다. 상품을 다시 선택해주세요.')
+        return
+      }
+
       // 일반 주문 API 호출
       const orderData = {
         userId: user.id,
         orderType: 'normal' as const,
-        items: orderItems.map(item => ({
-          productId: item.productId,
-          productName: item.productName,
-          productCode: item.productCode,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: item.totalPrice,
-          color: item.color,
-          size: item.size,
-          options: item.options
-        })),
+        items: orderItems.map(item => {
+          console.log('📦 주문 아이템:', {
+            productId: item.productId,
+            productName: item.productName,
+            quantity: item.quantity
+          })
+          
+          return {
+            productId: item.productId,
+            productName: item.productName,
+            productCode: item.productCode,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            color: item.color,
+            size: item.size,
+            options: item.options
+          }
+        }),
         shippingInfo: {
           name: formData.shippingInfo.name,
           phone: formData.shippingInfo.phone,

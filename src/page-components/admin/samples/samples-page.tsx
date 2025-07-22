@@ -97,7 +97,7 @@ export function SamplesPage() {
   const [selectedStatements, setSelectedStatements] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<'grouped' | 'individual'>('grouped')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(10)
+  const [itemsPerPage, setItemsPerPage] = useState(100)
   const [totalCount, setTotalCount] = useState(0)
   const [filters, setFilters] = useState({
     search: '',
@@ -196,9 +196,12 @@ export function SamplesPage() {
   const fetchStatements = useCallback(async (filterParams = filters) => {
     try {
       setLoading(true)
+      
+      // 묶음보기에서는 전체 데이터를 가져와서 그룹 단위로 페이지네이션
+      // 개별보기에서는 기존대로 서버 페이지네이션
       const queryParams = new URLSearchParams({
-        page: currentPage.toString(),
-        limit: itemsPerPage.toString(),
+        page: viewMode === 'grouped' ? '1' : currentPage.toString(),
+        limit: viewMode === 'grouped' ? '1000' : itemsPerPage.toString(),
         ...filterParams
       })
 
@@ -541,8 +544,11 @@ export function SamplesPage() {
     ? statements.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
     : statements
 
+  // 묶음보기에서는 그룹 단위로 페이지네이션
+  const paginatedGroupedStatements = groupedStatements.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
   // 전체 개수 계산 (뷰 모드에 따라 다름)
-  const totalItems = viewMode === 'individual' ? statements.length : totalCount
+  const totalItems = viewMode === 'individual' ? statements.length : groupedStatements.length
 
   // 통계는 상태로 관리 (fetchStatements에서 업데이트됨)
 
@@ -1207,6 +1213,8 @@ export function SamplesPage() {
           </div>
         </div>
 
+
+
         <div className="overflow-x-auto">
           {viewMode === 'grouped' ? (
             // 업체별 그룹화 뷰 - 테이블 형태로 간단하게
@@ -1216,10 +1224,10 @@ export function SamplesPage() {
                   <th className="w-12 px-4 py-4 text-left">
                     <input
                       type="checkbox"
-                      checked={selectedStatements.length === groupedStatements.length && groupedStatements.length > 0}
+                      checked={selectedStatements.length === paginatedGroupedStatements.length && paginatedGroupedStatements.length > 0}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedStatements(groupedStatements.map(g => g.id))
+                          setSelectedStatements(paginatedGroupedStatements.map(g => g.id))
                         } else {
                           setSelectedStatements([])
                         }
@@ -1251,7 +1259,7 @@ export function SamplesPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {groupedStatements.map((group, index) => (
+                {paginatedGroupedStatements.map((group, index) => (
                   <tr key={`${group.sample_number}-${group.id}-${index}`} className="hover:bg-gray-50">
                     <td className="px-4 py-4">
                       <input
@@ -1348,7 +1356,7 @@ export function SamplesPage() {
             </table>
           ) : (
             // 개별 상품 뷰 (기존 테이블)
-            <table className="w-full min-w-[1200px]">
+            <table className="w-full min-w-[1400px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="w-12 px-4 py-4 text-left">
@@ -1365,40 +1373,37 @@ export function SamplesPage() {
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-40 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     샘플코드
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-48 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     품목명
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-24 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     컬러
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-20 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     사이즈
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-16 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     수량
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    제공방식
-                  </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-28 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     미반납시 차감
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-32 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     고객
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-24 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     남은 기간
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-36 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     생성일
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-20 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     상태
                   </th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-32 px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     액션
                   </th>
                 </tr>
@@ -1445,11 +1450,7 @@ export function SamplesPage() {
                         {statement.quantity}개
                       </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="text-sm font-medium text-green-600">
-                        무료 제공
-                      </div>
-                    </td>
+
                     <td className="px-4 py-4">
                       <div className="text-sm font-medium text-red-600">
                         {formatCurrency(statement.unit_price)}
@@ -1580,6 +1581,7 @@ export function SamplesPage() {
       </div>
 
       {/* 페이지네이션 */}
+      {(
       <div className="flex items-center justify-between bg-white px-4 py-3 border-t border-gray-200">
         <div className="flex-1 flex justify-between sm:hidden">
           <Button
@@ -1601,12 +1603,28 @@ export function SamplesPage() {
         </div>
         
         <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-          <div>
+          <div className="flex items-center space-x-4">
             <p className="text-sm text-gray-700">
               총 <span className="font-medium">{totalItems}</span>개 중{' '}
               <span className="font-medium">{Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)}</span>-
               <span className="font-medium">{Math.min(currentPage * itemsPerPage, totalItems)}</span>개 표시
             </p>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm text-gray-700">페이지당:</label>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value))
+                  setCurrentPage(1) // 페이지를 첫 페이지로 리셋
+                }}
+                className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value={10}>10개</option>
+                <option value={20}>20개</option>
+                <option value={50}>50개</option>
+                <option value={100}>100개</option>
+              </select>
+            </div>
           </div>
           
           <div className="flex items-center space-x-2">
@@ -1651,6 +1669,7 @@ export function SamplesPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* 샘플 생성 모달 */}
       {showCreateModal && (

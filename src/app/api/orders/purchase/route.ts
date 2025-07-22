@@ -126,18 +126,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: '주문 생성에 실패했습니다.' }, { status: 500 })
     }
 
-    // 주문 상품 생성 (양수 수량만)
+    // 주문 상품 생성 (양수 수량만, 유효성 검사 추가)
     if (positiveItems.length > 0) {
-      const orderItems = positiveItems.map((item: any) => ({
-        order_id: order.id,
-        product_id: item.product_id,
-        product_name: item.product_name,
-        color: item.color,
-        size: item.size,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_price: item.unit_price * item.quantity
-      }))
+      const orderItems = positiveItems.map((item: any) => {
+        // UUID 유효성 검사
+        if (!item.product_id || item.product_id === '' || typeof item.product_id !== 'string') {
+          console.error('❌ 발주서 - 유효하지 않은 product_id:', item.product_id, '상품명:', item.product_name)
+          throw new Error(`상품 ID가 유효하지 않습니다: ${item.product_name}`)
+        }
+
+        return {
+          order_id: order.id,
+          product_id: item.product_id,
+          product_name: item.product_name,
+          color: item.color,
+          size: item.size,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total_price: item.unit_price * item.quantity
+        }
+      })
 
       const { error: itemsError } = await supabase
         .from('order_items')

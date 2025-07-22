@@ -15,8 +15,8 @@ export async function GET(request: NextRequest) {
     
     const offset = (page - 1) * limit
 
-    // 간단한 샘플 데이터 조회
-    let query = supabase
+    // 그룹 기준으로 먼저 전체 샘플 데이터 조회 (필터링 적용)
+    let allSamplesQuery = supabase
       .from('samples')
       .select(`
         id,
@@ -45,21 +45,20 @@ export async function GET(request: NextRequest) {
         shipped_at,
         delivered_at,
         rejected_at
-      `, { count: 'exact' })
+      `)
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
 
     // 상태 필터링
     if (status && status !== 'all') {
-      query = query.eq('status', status)
+      allSamplesQuery = allSamplesQuery.eq('status', status)
     }
 
     // 검색 필터링
     if (search) {
-      query = query.or(`sample_number.ilike.%${search}%,customer_name.ilike.%${search}%,product_name.ilike.%${search}%`)
+      allSamplesQuery = allSamplesQuery.or(`sample_number.ilike.%${search}%,customer_name.ilike.%${search}%,product_name.ilike.%${search}%`)
     }
 
-    const { data: samples, error, count } = await query
+    const { data: allSamples, error } = await allSamplesQuery
 
     if (error) {
       console.error('샘플 명세서 조회 오류:', error)
@@ -69,9 +68,9 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    console.log(`✅ 샘플 명세서 조회 완료: ${samples?.length || 0}건`)
+    console.log(`✅ 샘플 명세서 조회 완료: ${allSamples?.length || 0}건`)
 
-    const samplesData = samples || []
+    const samplesData = allSamples || []
 
     // 샘플 데이터 처리
     const processedSamples = samplesData.map(sample => {
@@ -185,7 +184,7 @@ export async function GET(request: NextRequest) {
       charged: processedSamples.filter(s => s.status === 'charged').length
     }
 
-    const totalPages = Math.ceil((count || 0) / limit)
+    const totalPages = Math.ceil(groupedStatements.length / limit)
 
     return NextResponse.json({
       success: true,
@@ -194,7 +193,7 @@ export async function GET(request: NextRequest) {
         pagination: {
           page,
           limit,
-          total: count || 0,
+          total: groupedStatements.length,
           totalPages
         },
         stats
