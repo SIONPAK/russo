@@ -121,13 +121,15 @@ export async function GET(request: NextRequest) {
     
     if (allMileageData) {
       allMileageData.forEach((item: any) => {
-        console.log(`🔍 처리 중: type=${item.type}, amount=${item.amount}`)
+        const absoluteAmount = Math.abs(item.amount) // 무조건 양수로 변환
+        console.log(`🔍 처리 중: type=${item.type}, 원본=${item.amount}, 절댓값=${absoluteAmount}`)
+        
         if (item.type === 'earn') {
-          earnTotal += Math.abs(item.amount) // 적립은 항상 양수로 표시
-          currentBalance += Math.abs(item.amount)
+          earnTotal += absoluteAmount
+          currentBalance += absoluteAmount // 적립은 더하기
         } else if (item.type === 'spend') {
-          spendTotal += Math.abs(item.amount) // 차감도 양수로 표시 (총 차감액)
-          currentBalance += item.amount // spend는 이미 음수로 저장되어 있으므로 그대로 더함
+          spendTotal += absoluteAmount
+          currentBalance -= absoluteAmount // 차감은 빼기
         }
       })
     }
