@@ -48,11 +48,40 @@ export function ProfilePage() {
   }
 
   const handleSave = async () => {
+    if (!formData.phone || !formData.email) {
+      showError('전화번호와 이메일은 필수 항목입니다.')
+      return
+    }
+
     try {
-      showSuccess('회원정보가 성공적으로 수정되었습니다.')
-      setIsEditing(false)
+      const response = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: (user as any)?.user_id,
+          phone: formData.phone,
+          email: formData.email,
+          address: formData.address,
+          postal_code: formData.postal_code
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('회원정보가 성공적으로 수정되었습니다.')
+        setIsEditing(false)
+        
+        // 사용자 정보 업데이트 후 전역 상태도 업데이트 필요시
+        // useAuthStore의 setUser 함수 호출하여 최신 정보로 업데이트
+      } else {
+        showError(result.error || '회원정보 수정에 실패했습니다.')
+      }
     } catch (error) {
-      showError('회원정보 수정에 실패했습니다.')
+      console.error('회원정보 수정 오류:', error)
+      showError('회원정보 수정 중 오류가 발생했습니다.')
     }
   }
 
@@ -73,15 +102,34 @@ export function ProfilePage() {
     }
 
     try {
-      showSuccess('비밀번호가 성공적으로 변경되었습니다.')
-      setPasswordData({
-        current_password: '',
-        new_password: '',
-        confirm_password: ''
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: (user as any)?.user_id,
+          currentPassword: passwordData.current_password,
+          newPassword: passwordData.new_password
+        })
       })
-      setShowPasswordFields(false)
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('비밀번호가 성공적으로 변경되었습니다.')
+        setPasswordData({
+          current_password: '',
+          new_password: '',
+          confirm_password: ''
+        })
+        setShowPasswordFields(false)
+      } else {
+        showError(result.message || '비밀번호 변경에 실패했습니다.')
+      }
     } catch (error) {
-      showError('비밀번호 변경에 실패했습니다.')
+      console.error('비밀번호 변경 오류:', error)
+      showError('비밀번호 변경 중 오류가 발생했습니다.')
     }
   }
 
