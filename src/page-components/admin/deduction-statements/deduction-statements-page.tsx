@@ -20,7 +20,8 @@ import {
   XCircle,
   Mail,
   Plus,
-  X
+  X,
+  Edit
 } from 'lucide-react'
 
 interface DeductionStatement {
@@ -80,6 +81,8 @@ export default function DeductionStatementsPage() {
     size: string
     unitPrice: number
   }[]>([])
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingStatement, setEditingStatement] = useState<DeductionStatement | null>(null)
 
   useEffect(() => {
     fetchStatements()
@@ -605,6 +608,19 @@ export default function DeductionStatementsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
+                        {statement.status === 'pending' && (
+                          <Button
+                            onClick={() => {
+                              setEditingStatement(statement)
+                              setShowEditModal(true)
+                            }}
+                            size="sm"
+                            variant="outline"
+                            className="text-blue-600 hover:text-blue-700"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           onClick={() => handleStatementDownload(statement.id)}
                           size="sm"
@@ -632,9 +648,627 @@ export default function DeductionStatementsPage() {
           }}
         />
       )}
+
+      {/* 차감명세서 수정 모달 */}
+      {showEditModal && editingStatement && (
+        <DeductionStatementEditModal
+          statement={editingStatement}
+          onClose={() => {
+            setShowEditModal(false)
+            setEditingStatement(null)
+          }}
+          onSuccess={() => {
+            setShowEditModal(false)
+            setEditingStatement(null)
+            fetchStatements()
+          }}
+        />
+            )}
     </div>
   )
 }
+
+// 차감명세서 수정 모달 컴포넌트
+function DeductionStatementEditModal({ 
+  statement,
+  onClose, 
+  onSuccess 
+}: { 
+  statement: DeductionStatement
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [formData, setFormData] = useState({
+    deductionType: statement.deduction_type,
+    deductionReason: statement.deduction_reason,
+    items: statement.items.map(item => ({
+      product_name: item.product_name,
+      color: item.color,
+      size: item.size,
+      deduction_quantity: item.deduction_quantity,
+      unit_price: item.unit_price
+    }))
+  })
+  const [loading, setLoading] = useState(false)
+  const [showProductSearchModal, setShowProductSearchModal] = useState(false)
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null)
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [productSearchTerm, setProductSearchTerm] = useState('')
+  const [selectedProducts, setSelectedProducts] = useState<{
+    productId: string
+    productName: string
+    productCode: string
+    color: string
+    size: string
+    unitPrice: number
+  }[]>([])
+
+  // 상품 검색
+  const searchProducts = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setProductSearchResults([])
+      return
+    }
+
+    setIsSearchingProducts(true)
+    try {
+      const response = await fetch(`/api/admin/products?search=${encodeURIComponent(searchTerm)}&limit=20`)
+      const result = await response.json()
+
+      if (result.success) {
+        setProductSearchResults(result.data || [])
+      }
+    } catch (error) {
+      console.error('Product search error:', error)
+      setProductSearchResults([])
+    } finally {
+      setIsSearchingProducts(false)
+    }
+  }
+
+  const toggleProductSelection = (product: any, color: string, size: string) => {
+    const isSelected = selectedProducts.some(p => 
+      p.productId === product.id && p.color === color && p.size === size
+    )
+
+    if (isSelected) {
+      setSelectedProducts(prev => prev.filter(p => 
+        !(p.productId === product.id && p.color === color && p.size === size)
+      ))
+    } else {
+      const unitPrice = product.is_on_sale && product.sale_price ? product.sale_price : product.price
+      setSelectedProducts(prev => [...prev, {
+        productId: product.id,
+        productName: product.name,
+        productCode: product.code,
+        color,
+        size,
+        unitPrice
+      }])
+    }
+  }
+
+  const addSelectedProductsToStatement = () => {
+    const newItems = selectedProducts.map(product => ({
+      product_name: product.productName,
+      color: product.color,
+      size: product.size,
+      deduction_quantity: 1,
+      unit_price: product.unitPrice
+    }))
+
+    setFormData(prev => ({
+      ...prev,
+      items: [...prev.items, ...newItems]
+    }))
+    
+    setShowProductSearchModal(false)
+    setSelectedProducts([])
+    setProductSearchTerm('')
+    setProductSearchResults([])
+  }
+
+  const isProductSelected = (product: any, color: string, size: string) => {
+    return selectedProducts.some(p => 
+      p.productId === product.id && p.color === color && p.size === size
+    )
+  }
+
+  // 아이템 제거
+  const removeItem = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }))
+  }
+
+  // 아이템 업데이트
+  const updateItem = (index: number, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }))
+  }
+
+  // 차감명세서 수정
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!formData.deductionReason || formData.items.length === 0) {
+      showError('필수 정보를 모두 입력해주세요.')
+      return
+    }
+
+    // 아이템 검증
+    const invalidItems = formData.items.filter(item => 
+      !item.product_name || item.deduction_quantity <= 0 || item.unit_price <= 0
+    )
+    if (invalidItems.length > 0) {
+      showError('모든 상품의 정보를 올바르게 입력해주세요.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      
+      const response = await fetch(`/api/admin/deduction-statements/${statement.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        showSuccess('차감명세서가 성공적으로 수정되었습니다.')
+        onSuccess()
+      } else {
+        showError('차감명세서 수정에 실패했습니다: ' + data.error)
+      }
+    } catch (error) {
+      console.error('차감명세서 수정 오류:', error)
+      showError('차감명세서 수정 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const totalAmount = formData.items.reduce((sum, item) => {
+    const supplyAmount = item.deduction_quantity * item.unit_price
+    const vat = Math.floor(supplyAmount * 0.1)
+    return sum + supplyAmount + vat
+  }, 0)
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900">차감명세서 수정</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* 기본 정보 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  업체명
+                </label>
+                <Input
+                  type="text"
+                  value={statement.company_name}
+                  disabled
+                  className="bg-gray-100"
+                />
+                <p className="text-xs text-gray-500 mt-1">업체명은 수정할 수 없습니다.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  차감 유형 *
+                </label>
+                <select
+                  value={formData.deductionType}
+                  onChange={(e) => setFormData(prev => ({ ...prev, deductionType: e.target.value as any }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="defect">불량</option>
+                  <option value="shortage">부족</option>
+                  <option value="damage">파손</option>
+                  <option value="return">반품</option>
+                  <option value="other">기타</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                차감 사유 *
+              </label>
+              <textarea
+                value={formData.deductionReason}
+                onChange={(e) => setFormData(prev => ({ ...prev, deductionReason: e.target.value }))}
+                placeholder="차감 사유를 상세히 입력하세요"
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            {/* 차감 상품 목록 */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h4 className="text-lg font-medium text-gray-900">차감 상품</h4>
+                <Button
+                  type="button"
+                  onClick={() => setShowProductSearchModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  상품 추가
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {formData.items.map((item, index) => (
+                  <div key={index} className="p-4 border border-gray-200 rounded-lg">
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-sm font-medium text-gray-700">상품 {index + 1}</span>
+                      <Button
+                        type="button"
+                        onClick={() => removeItem(index)}
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            상품명 *
+                          </label>
+                          <Input
+                            type="text"
+                            value={item.product_name}
+                            onChange={(e) => updateItem(index, 'product_name', e.target.value)}
+                            required
+                            className="bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            색상
+                          </label>
+                          <Input
+                            type="text"
+                            value={item.color}
+                            onChange={(e) => updateItem(index, 'color', e.target.value)}
+                            className="bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            사이즈
+                          </label>
+                          <Input
+                            type="text"
+                            value={item.size}
+                            onChange={(e) => updateItem(index, 'size', e.target.value)}
+                            className="bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            차감 수량 *
+                          </label>
+                          <Input
+                            type="number"
+                            value={item.deduction_quantity}
+                            onChange={(e) => updateItem(index, 'deduction_quantity', parseInt(e.target.value) || 0)}
+                            min="1"
+                            required
+                            className="bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            단가 *
+                          </label>
+                          <Input
+                            type="number"
+                            value={item.unit_price}
+                            onChange={(e) => updateItem(index, 'unit_price', parseInt(e.target.value) || 0)}
+                            min="0"
+                            required
+                            className="bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            단가<br/>
+                            <span className="text-xs text-gray-600">(세금제외)</span>
+                          </label>
+                          <Input
+                            type="text"
+                            value={`${(item.deduction_quantity * item.unit_price).toLocaleString()}원`}
+                            readOnly
+                            className="bg-gray-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            부가세<br/>
+                            <span className="text-xs text-gray-600">(10%)</span>
+                          </label>
+                          <Input
+                            type="text"
+                            value={`${Math.floor(item.deduction_quantity * item.unit_price * 0.1).toLocaleString()}원`}
+                            readOnly
+                            className="bg-gray-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            합계<br/>
+                            <span className="text-xs text-blue-600">(단가+부가세)</span>
+                          </label>
+                          <Input
+                            type="text"
+                            value={`${(() => {
+                              const supplyAmount = item.deduction_quantity * item.unit_price
+                              const vat = Math.floor(supplyAmount * 0.1)
+                              return (supplyAmount + vat).toLocaleString()
+                            })()}원`}
+                            readOnly
+                            className="bg-gray-100"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {formData.items.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  위의 "상품 추가" 버튼을 클릭하여 상품을 추가해주세요.
+                </div>
+              )}
+            </div>
+
+            {/* 총 차감 금액 */}
+            {formData.items.length > 0 && (
+              <div className="bg-red-50 p-4 rounded-lg">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <span className="text-sm text-red-800">단가 합계</span>
+                    <div className="text-lg font-medium text-red-900">
+                      -{formData.items.reduce((sum, item) => sum + (item.deduction_quantity * item.unit_price), 0).toLocaleString()}원
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-sm text-red-800">부가세 합계</span>
+                    <div className="text-lg font-medium text-red-900">
+                      -{formData.items.reduce((sum, item) => sum + Math.floor(item.deduction_quantity * item.unit_price * 0.1), 0).toLocaleString()}원
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-sm text-red-800">총 차감 금액</span>
+                    <div className="text-xl font-bold text-red-600">
+                      -{totalAmount.toLocaleString()}원
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 버튼 */}
+            <div className="flex justify-end space-x-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={loading}
+              >
+                취소
+              </Button>
+              <Button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={loading || formData.items.length === 0}
+              >
+                {loading ? '수정 중...' : '차감명세서 수정'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* 상품 검색 모달 */}
+      {showProductSearchModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[85vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">상품 검색</h3>
+                <p className="text-sm text-gray-600 mt-1">상품명 또는 상품코드로 검색하세요.</p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowProductSearchModal(false)
+                  setSelectedProducts([])
+                  setProductSearchTerm('')
+                  setProductSearchResults([])
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                닫기
+              </Button>
+            </div>
+            
+            <div className="p-6">
+              <div className="flex space-x-2 mb-6">
+                <Input
+                  type="text"
+                  value={productSearchTerm}
+                  onChange={(e) => {
+                    setProductSearchTerm(e.target.value)
+                    searchProducts(e.target.value)
+                  }}
+                  placeholder="상품명 또는 상품코드로 검색하세요"
+                  className="flex-1 h-12"
+                  autoFocus
+                />
+                <Button 
+                  onClick={() => searchProducts(productSearchTerm)} 
+                  disabled={isSearchingProducts}
+                  className="h-12 px-6"
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  {isSearchingProducts ? '검색중...' : '검색'}
+                </Button>
+              </div>
+              
+              <div className="max-h-96 overflow-y-auto">
+                {isSearchingProducts ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-4 text-gray-600">검색 중...</p>
+                  </div>
+                ) : productSearchResults.length > 0 ? (
+                  <div className="space-y-4">
+                    {productSearchResults.map((product) => {
+                      // 색상과 사이즈 옵션 추출
+                      const inventoryOptions = product.inventory_options as any[] || []
+                      const colors: string[] = inventoryOptions.length > 0
+                        ? [...new Set(inventoryOptions.map((opt: any) => opt.color).filter(Boolean).map(String))]
+                        : ['기본']
+                      const sizes: string[] = inventoryOptions.length > 0
+                        ? [...new Set(inventoryOptions.map((opt: any) => opt.size).filter(Boolean).map(String))]
+                        : ['FREE']
+                      
+                      return (
+                        <div key={product.id} className="border border-gray-200 rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4 className="font-medium text-gray-900">{product.name}</h4>
+                              <p className="text-sm text-gray-600">코드: {product.code}</p>
+                              <p className="text-sm text-blue-600 font-medium">
+                                {product.is_on_sale && product.sale_price 
+                                  ? `${product.sale_price.toLocaleString()}원 (세일가)`
+                                  : `${product.price.toLocaleString()}원`
+                                }
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {colors.map((color) =>
+                              sizes.map((size) => {
+                                const isSelected = isProductSelected(product, color, size)
+                                return (
+                                  <Button
+                                    key={`${color}-${size}`}
+                                    variant={isSelected ? "default" : "outline"}
+                                    onClick={() => toggleProductSelection(product, color, size)}
+                                    className={`text-left justify-start ${
+                                      isSelected 
+                                        ? 'bg-blue-600 text-white border-blue-600' 
+                                        : 'hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {isSelected && <span className="mr-2">✓</span>}
+                                    {color} / {size}
+                                  </Button>
+                                )
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : productSearchTerm ? (
+                  <div className="text-center py-8 text-gray-500">
+                    검색 결과가 없습니다.
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    상품명 또는 상품코드를 입력하세요.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-600">
+                  {selectedProducts.length > 0 && (
+                    <span className="font-medium text-blue-600">
+                      {selectedProducts.length}개 상품 선택됨
+                    </span>
+                  )}
+                </div>
+                {selectedProducts.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setSelectedProducts([])}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    선택 해제
+                  </Button>
+                )}
+              </div>
+              <div className="flex space-x-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowProductSearchModal(false)
+                    setSelectedProducts([])
+                    setProductSearchTerm('')
+                    setProductSearchResults([])
+                  }}
+                >
+                  취소
+                </Button>
+                <Button
+                  onClick={addSelectedProductsToStatement}
+                  disabled={selectedProducts.length === 0}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  선택한 상품 추가 ({selectedProducts.length})
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+} 
 
 // 차감명세서 생성 모달 컴포넌트
 function DeductionStatementCreateModal({ 
