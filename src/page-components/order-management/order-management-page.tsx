@@ -1244,7 +1244,7 @@ export function OrderManagementPage() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">발주번호</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">발주일시</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">총 금액</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">금액</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상태</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">운송장번호</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">배송지</th>
@@ -1274,10 +1274,28 @@ export function OrderManagementPage() {
                           <div>{new Date(order.created_at).toLocaleString('ko-KR')}</div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                          {shippedAmounts[order.order_number] !== undefined 
-                            ? formatCurrency(shippedAmounts[order.order_number])
-                            : '계산 중...'
-                          }
+                          <div className="flex flex-col">
+                            {order.status === 'pending' ? (
+                              // 대기 상태: 주문 총금액
+                              <>
+                                <span className="font-medium">
+                                  {formatCurrency(order.total_amount)}
+                                </span>
+                                <span className="text-xs text-gray-500">주문 총금액</span>
+                              </>
+                            ) : (
+                              // 출고완료: 실출고 금액
+                              <>
+                                <span className="font-medium">
+                                  {shippedAmounts[order.order_number] !== undefined 
+                                    ? formatCurrency(shippedAmounts[order.order_number])
+                                    : '계산 중...'
+                                  }
+                                </span>
+                                <span className="text-xs text-gray-500">실출고 금액</span>
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -1541,11 +1559,22 @@ export function OrderManagementPage() {
                   <div className="space-y-2 text-sm">
                     <div><span className="font-medium">발주번호:</span> {selectedOrder.order_number}</div>
                     <div><span className="font-medium">발주일시:</span> {new Date(selectedOrder.created_at).toLocaleString('ko-KR')}</div>
-                    <div><span className="font-medium">총 금액:</span> {formatCurrency(
-                      selectedOrder.order_items?.reduce((sum: number, item: any) => {
-                        return sum + ((item.unit_price || 0) * (item.shipped_quantity || 0))
-                      }, 0) || 0
-                    )}</div>
+                    <div>
+                      <span className="font-medium">
+                        {selectedOrder.status === 'pending' ? '주문 총금액:' : '실출고 금액:'}
+                      </span>{' '}
+                      {selectedOrder.status === 'pending' ? (
+                        // 대기 상태: 주문 총금액
+                        formatCurrency(selectedOrder.total_amount)
+                      ) : (
+                        // 출고완료: 실출고 금액
+                        formatCurrency(
+                          selectedOrder.order_items?.reduce((sum: number, item: any) => {
+                            return sum + ((item.unit_price || 0) * (item.shipped_quantity || 0))
+                          }, 0) || 0
+                        )
+                      )}
+                    </div>
                     <div>
                       <span className="font-medium">상태:</span>
                       <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -1596,9 +1625,13 @@ export function OrderManagementPage() {
                       <tr>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상품명</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">옵션</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수량</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {selectedOrder.status === 'pending' ? '주문 수량' : '실출고 수량'}
+                        </th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">단가</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">총액</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {selectedOrder.status === 'pending' ? '주문 금액' : '실출고 금액'}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -1608,9 +1641,16 @@ export function OrderManagementPage() {
                           <td className="px-4 py-3 text-sm text-gray-600">
                             {item.color && item.size ? `${item.color} / ${item.size}` : '-'}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.shipped_quantity || 0}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {selectedOrder.status === 'pending' ? (item.quantity || 0) : (item.shipped_quantity || 0)}
+                          </td>
                           <td className="px-4 py-3 text-sm text-gray-900">{formatCurrency(item.unit_price)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency((item.unit_price || 0) * (item.shipped_quantity || 0))}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                            {selectedOrder.status === 'pending'
+                              ? formatCurrency((item.unit_price || 0) * (item.quantity || 0))
+                              : formatCurrency((item.unit_price || 0) * (item.shipped_quantity || 0))
+                            }
+                          </td>
                         </tr>
                       )) || (
                         <tr>
