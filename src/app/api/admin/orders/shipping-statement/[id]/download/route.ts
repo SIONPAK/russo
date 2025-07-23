@@ -67,8 +67,8 @@ export async function GET(
     // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
     const taxAmount = Math.floor(supplyAmount * 0.1)
 
-    // 🔧 배송비 계산 (20장 미만일 때 3,000원)
-    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+    // 🔧 배송비 계산 (출고된 상품이 있고 20장 미만일 때만 3,000원)
+    const shippingFee = (totalShippedQuantity > 0 && totalShippedQuantity < 20) ? 3000 : 0
 
     // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
     const totalAmount = supplyAmount + taxAmount + shippingFee

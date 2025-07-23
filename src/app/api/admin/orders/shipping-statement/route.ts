@@ -278,7 +278,7 @@ export async function GET(request: NextRequest) {
           return sum + (item.unit_price * item.shipped_quantity)
         }, 0)
         const taxAmount = Math.floor(supplyAmount * 0.1)
-        const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+        const shippingFee = (totalShippedQuantity > 0 && totalShippedQuantity < 20) ? 3000 : 0
         const calculatedTotalAmount = supplyAmount + taxAmount + shippingFee
 
         const shippingStatementData = {
@@ -369,8 +369,8 @@ export async function GET(request: NextRequest) {
       // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
       const taxAmount = Math.floor(supplyAmount * 0.1)
 
-      // 🔧 배송비 계산 (20장 미만일 때 3,000원)
-      const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+      // 🔧 배송비 계산 (출고된 상품이 있고 20장 미만일 때만 3,000원)
+      const shippingFee = (totalShippedQuantity > 0 && totalShippedQuantity < 20) ? 3000 : 0
 
       // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
       const calculatedTotalAmount = supplyAmount + taxAmount + shippingFee
@@ -478,8 +478,8 @@ async function generateMultipleStatementsExcel(orders: any[]): Promise<Buffer> {
     // 🔧 부가세액 계산 (공급가액의 10%, 소수점 절사)
     const taxAmount = Math.floor(supplyAmount * 0.1)
 
-    // 🔧 배송비 계산 (20장 미만일 때 3,000원)
-    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+    // 🔧 배송비 계산 (출고된 상품이 있고 20장 미만일 때만 3,000원)
+    const shippingFee = (totalShippedQuantity > 0 && totalShippedQuantity < 20) ? 3000 : 0
 
     // 🔧 총 금액 계산 (공급가액 + 부가세액 + 배송비)
     const calculatedTotalAmount = supplyAmount + taxAmount + shippingFee
@@ -801,9 +801,9 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     const originalTotal = orderItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.quantity), 0)
     const shippedTotal = shippedItems.reduce((sum: number, item: any) => sum + (item.unit_price * item.shipped_quantity), 0)
     
-    // 🔧 배송비 계산 (20장 미만일 때 3,000원)
+    // 🔧 배송비 계산 (출고된 상품이 있고 20장 미만일 때만 3,000원)
     const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => sum + item.shipped_quantity, 0)
-    const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+    const shippingFee = (totalShippedQuantity > 0 && totalShippedQuantity < 20) ? 3000 : 0
     
     const finalTotal = shippedTotal + shippingFee
     

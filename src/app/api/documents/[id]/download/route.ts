@@ -138,7 +138,7 @@ export async function GET(
       const totalSupplyAmount = mappedItems.reduce((sum: number, item: any) => sum + item.supplyAmount, 0)
       const totalTaxAmount = mappedItems.reduce((sum: number, item: any) => sum + item.taxAmount, 0)
       const totalQuantity = mappedItems.reduce((sum: number, item: any) => sum + item.quantity, 0)
-      const shippingFee = totalQuantity < 20 ? 3000 : 0
+      const shippingFee = (totalQuantity > 0 && totalQuantity < 20) ? 3000 : 0
       const totalAmount = totalSupplyAmount + totalTaxAmount + shippingFee
 
       const statementData: ShippingStatementData = {

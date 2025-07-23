@@ -138,8 +138,8 @@ export async function POST(request: NextRequest) {
 
         // 세액 계산 (공급가액의 10%)
         const taxAmount = Math.floor(shippedAmount * 0.1)
-        // 🔧 배송비 계산 (20장 미만일 때 3,000원)
-        const shippingFee = totalShippedQuantity < 20 ? 3000 : 0
+        // 🔧 배송비 계산 (출고된 상품이 있고 20장 미만일 때만 3,000원)
+        const shippingFee = (totalShippedQuantity > 0 && totalShippedQuantity < 20) ? 3000 : 0
         const totalAmount = shippedAmount + taxAmount + shippingFee
 
         // 1. 거래명세서 생성
