@@ -837,9 +837,15 @@ export function SamplesPage() {
   // 샘플 배송정보 다운로드 함수 (체크된 항목만)
   const handleDownloadShippingInfo = async () => {
     if (selectedStatements.length === 0) {
-      showError('다운로드할 샘플을 선택해주세요.')
+      showError('배송정보를 다운로드할 샘플을 선택해주세요.')
       return
     }
+
+    console.log('🔄 선택된 샘플 배송정보 다운로드 시작:', {
+      selectedCount: selectedStatements.length,
+      viewMode,
+      selectedIds: selectedStatements
+    })
 
     try {
       // 선택된 샘플들의 상세 정보 가져오기
@@ -850,7 +856,7 @@ export function SamplesPage() {
         if (viewMode === 'grouped') {
           // 그룹화된 뷰에서는 그룹 전체를 가져옴
           const group = groupedStatements.find(g => g.id === selectedId)
-          if (group && group.status === 'shipped') {
+          if (group && group.status !== 'returned') {
                           // 해당 고객의 배송지 정보 조회
               try {
                 const response = await fetch(`/api/admin/users/${group.customer_id}`)
@@ -929,7 +935,7 @@ export function SamplesPage() {
         } else {
           // 개별 뷰에서는 개별 아이템을 가져옴
           const statement = statements.find(s => s.id === selectedId)
-          if (statement && statement.status === 'shipped') {
+          if (statement && statement.status !== 'returned') {
             try {
               const response = await fetch(`/api/admin/users/${statement.customer_id}`)
               const result = await response.json()
@@ -1001,7 +1007,7 @@ export function SamplesPage() {
       }
 
       if (selectedSamples.length === 0) {
-        showError('선택된 샘플 중 출고완료된 항목이 없습니다.')
+        showError('선택된 샘플 중 배송 가능한 항목이 없습니다. 회수완료된 샘플은 배송정보를 다운로드할 수 없습니다.')
         return
       }
 
@@ -1012,8 +1018,15 @@ export function SamplesPage() {
       })
 
       // 배송정보 다운로드 함수 호출
-      downloadSampleShippingExcel(selectedSamples, `배송정보_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`)
-      showSuccess(`선택된 ${selectedSamples.length}개 샘플의 배송정보가 다운로드되었습니다.`)
+      const fileName = `샘플_배송정보_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`
+      downloadSampleShippingExcel(selectedSamples, fileName)
+      
+      const skippedCount = selectedStatements.length - selectedSamples.length
+      if (skippedCount > 0) {
+        showSuccess(`${selectedSamples.length}개 샘플의 배송정보가 다운로드되었습니다. (${skippedCount}개 항목은 회수완료 상태여서 제외됨)`)
+      } else {
+        showSuccess(`선택된 ${selectedSamples.length}개 샘플의 배송정보가 다운로드되었습니다.`)
+      }
     } catch (error) {
       console.error('샘플 배송정보 다운로드 오류:', error)
       showError('샘플 배송정보 다운로드에 실패했습니다.')
@@ -1037,9 +1050,14 @@ export function SamplesPage() {
             <FileText className="h-4 w-4 mr-2" />
             샘플 명세서 생성
           </Button>
-          <Button variant="outline" onClick={handleDownloadShippingInfo}>
+          <Button 
+            variant="outline" 
+            onClick={handleDownloadShippingInfo}
+            disabled={selectedStatements.length === 0}
+            className={selectedStatements.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
+          >
             <Download className="h-4 w-4 mr-2" />
-            배송정보 다운로드
+            배송정보 다운로드 ({selectedStatements.length})
           </Button>
           <div className="relative">
             <input
