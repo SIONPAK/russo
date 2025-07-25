@@ -20,6 +20,20 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit
     const supabase = createClient()
 
+    // 검색시 매칭되는 사용자 ID들 (카운트 쿼리에서도 사용)
+    let userIds: string[] = []
+    
+    if (search) {
+      // JOIN된 테이블에서 검색할 때는 별도 처리가 필요
+      // 먼저 검색 조건에 맞는 사용자들을 찾고, 그 사용자들의 마일리지를 조회
+      const { data: matchingUsers } = await supabase
+        .from('users')
+        .select('id')
+        .ilike('company_name', `%${search}%`)
+      
+      userIds = matchingUsers?.map(user => user.id) || []
+    }
+
     let query = supabase
       .from('mileage')
       .select(`
@@ -50,7 +64,13 @@ export async function GET(request: NextRequest) {
     }
     
     if (search) {
-      query = query.or(`description.ilike.%${search}%,users.company_name.ilike.%${search}%`)
+      if (userIds.length > 0) {
+        // 회사명으로 검색된 사용자들의 마일리지 또는 설명에서 검색
+        query = query.or(`description.ilike.%${search}%,user_id.in.(${userIds.join(',')})`)
+      } else {
+        // 회사명 매칭이 없으면 설명에서만 검색
+        query = query.ilike('description', `%${search}%`)
+      }
     }
     
     if (dateFrom) {
@@ -91,8 +111,12 @@ export async function GET(request: NextRequest) {
     }
     
     if (search) {
-      // 검색 조건은 사용자와 조인이 필요하므로 기본 쿼리 사용
-      countQuery = countQuery.or(`description.ilike.%${search}%`)
+      // 검색 조건을 동일하게 적용
+      if (userIds && userIds.length > 0) {
+        countQuery = countQuery.or(`description.ilike.%${search}%,user_id.in.(${userIds.join(',')})`)
+      } else {
+        countQuery = countQuery.ilike('description', `%${search}%`)
+      }
     }
     
     if (dateFrom) {

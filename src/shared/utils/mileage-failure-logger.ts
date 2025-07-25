@@ -28,21 +28,22 @@ export async function logMileageFailure(failureData: MileageFailureLog): Promise
     
     const supabase = await createClient()
     
-    // 중복 체크: 동일한 업체명, 금액, 날짜, 오류 사유의 로그가 최근 1시간 내에 있는지 확인
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    // 🔍 완전 중복 방지: 동일한 로그가 이미 존재하면 아예 등록하지 않음
     
-    const { data: existingLog } = await supabase
+    // 1. 완전 동일한 로그 체크 (시간 제한 없음)
+    const { data: exactDuplicateLog } = await supabase
       .from('lusso_mileage_failure_logs')
-      .select('id')
+      .select('id, created_at')
       .eq('business_name', failureData.business_name)
       .eq('attempted_amount', failureData.attempted_amount)
       .eq('reason', failureData.reason)
+      .eq('error_details', failureData.error_details)
+      .eq('settlement_type', failureData.settlement_type)
       .eq('settlement_date', failureData.settlement_date)
-      .gte('created_at', oneHourAgo)
-      .single()
+      .limit(1)
     
-    if (existingLog) {
-      console.log('🚫 중복 실패 로그 건너뛰기:', failureData.business_name)
+    if (exactDuplicateLog && exactDuplicateLog.length > 0) {
+      console.log('🚫 완전 동일한 실패 로그가 이미 존재 - 등록 건너뛰기:', failureData.business_name, exactDuplicateLog[0].created_at)
       return
     }
     
@@ -73,9 +74,26 @@ export async function logMileageFailure(failureData: MileageFailureLog): Promise
 // 마일리지 제외 로그 기록 함수 (중복 거래 등)
 export async function logMileageExclusion(exclusionData: MileageFailureLog): Promise<void> {
   try {
-    
+    console.log('마일리지 제외 로그 저장:', exclusionData)
     
     const supabase = await createClient()
+    
+    // 🔍 완전 중복 방지: 동일한 제외 로그가 이미 존재하면 아예 등록하지 않음
+    const { data: exactDuplicateExclusionLog } = await supabase
+      .from('lusso_mileage_exclusion_logs')
+      .select('id, created_at')
+      .eq('business_name', exclusionData.business_name)
+      .eq('attempted_amount', exclusionData.attempted_amount)
+      .eq('reason', exclusionData.error_details)
+      .eq('error_details', exclusionData.error_details)
+      .eq('settlement_type', exclusionData.settlement_type)
+      .eq('settlement_date', exclusionData.settlement_date)
+      .limit(1)
+    
+    if (exactDuplicateExclusionLog && exactDuplicateExclusionLog.length > 0) {
+      console.log('🚫 완전 동일한 제외 로그가 이미 존재 - 등록 건너뛰기:', exclusionData.business_name, exactDuplicateExclusionLog[0].created_at)
+      return
+    }
     
     const { error } = await supabase
       .from('lusso_mileage_exclusion_logs')

@@ -27,7 +27,9 @@ export function MileagePage() {
     closeAddModal,
     openEditModal,
     closeEditModal,
-    fetchMileages
+    fetchMileages,
+    handleFilterChange,
+    handlePageChange
   } = useMileageManagement()
 
   const [bankdaSettings, setBankdaSettings] = useState({
@@ -412,8 +414,8 @@ export function MileagePage() {
         onEdit={openEditModal}
         onDelete={deleteMileage}
         pagination={pagination}
-        onPageChange={(page) => fetchMileages({ page })}
-        onFilterChange={(filters) => fetchMileages({ page: 1, ...filters })}
+        onPageChange={handlePageChange}
+        onFilterChange={handleFilterChange}
       />
 
       <AddMileageModal

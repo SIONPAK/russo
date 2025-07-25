@@ -20,6 +20,10 @@ export function useMileageManagement() {
     status?: string
     type?: string
     userId?: string
+    search?: string
+    source?: string
+    dateFrom?: string
+    dateTo?: string
   } = {}) => {
     setLoading(true)
     try {
@@ -31,6 +35,10 @@ export function useMileageManagement() {
       if (params.status) searchParams.append('status', params.status)
       if (params.type) searchParams.append('type', params.type)
       if (params.userId) searchParams.append('userId', params.userId)
+      if (params.search) searchParams.append('search', params.search)
+      if (params.source) searchParams.append('source', params.source)
+      if (params.dateFrom) searchParams.append('dateFrom', params.dateFrom)
+      if (params.dateTo) searchParams.append('dateTo', params.dateTo)
 
       const response = await fetch(`/api/admin/mileage?${searchParams}`)
       const result = await response.json()
@@ -240,6 +248,26 @@ export function useMileageManagement() {
     }
   }
 
+  // 필터 변경 처리 함수 추가
+  const handleFilterChange = async (filters: {
+    search?: string
+    status?: string
+    type?: string
+    source?: string
+    dateFrom?: string
+    dateTo?: string
+  }) => {
+    await fetchMileages({
+      page: 1, // 필터 변경 시 첫 페이지로
+      ...filters
+    })
+  }
+
+  // 페이지 변경 처리 함수 추가
+  const handlePageChange = async (page: number) => {
+    await fetchMileages({ page })
+  }
+
   return {
     mileages,
     loading,
@@ -259,6 +287,8 @@ export function useMileageManagement() {
     closeAddModal,
     openEditModal,
     closeEditModal,
-    fetchMileages
+    fetchMileages,
+    handleFilterChange,
+    handlePageChange
   }
 } 

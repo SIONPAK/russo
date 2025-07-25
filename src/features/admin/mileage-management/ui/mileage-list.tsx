@@ -33,12 +33,12 @@ interface MileageListProps {
   }
   onPageChange?: (page: number) => void
   onFilterChange?: (filters: {
-    search: string
-    status: string
-    type: string
-    source: string
-    dateFrom: string
-    dateTo: string
+    search?: string
+    status?: string
+    type?: string
+    source?: string
+    dateFrom?: string
+    dateTo?: string
   }) => void
 }
 
@@ -61,30 +61,18 @@ export function MileageList({
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  const filteredMileages = mileages.filter(mileage => {
-    const matchesSearch = searchTerm === '' || 
-      mileage.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (mileage.user?.company_name && mileage.user.company_name.toLowerCase().includes(searchTerm.toLowerCase()))
-    
-    const matchesStatus = statusFilter === 'all' || mileage.status === statusFilter
-    const matchesType = typeFilter === 'all' || mileage.type === typeFilter
-    const matchesSource = sourceFilter === 'all' || mileage.source === sourceFilter
-    
-    const matchesDateFrom = !dateFrom || new Date(mileage.created_at) >= new Date(dateFrom)
-    const matchesDateTo = !dateTo || new Date(mileage.created_at) <= new Date(dateTo + 'T23:59:59')
-
-    return matchesSearch && matchesStatus && matchesType && matchesSource && matchesDateFrom && matchesDateTo
-  })
+  // 서버 사이드 필터링으로 변경 - 클라이언트 사이드 필터링 제거
+  const filteredMileages = mileages
 
   const applyFilters = () => {
     if (onFilterChange) {
       onFilterChange({
-        search: searchTerm,
-        status: statusFilter,
-        type: typeFilter,
-        source: sourceFilter,
-        dateFrom,
-        dateTo
+        search: searchTerm || undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        type: typeFilter !== 'all' ? typeFilter : undefined,
+        source: sourceFilter !== 'all' ? sourceFilter : undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined
       })
     }
   }
@@ -96,6 +84,11 @@ export function MileageList({
     setSourceFilter('all')
     setDateFrom('')
     setDateTo('')
+    
+    // 서버에도 리셋 요청
+    if (onFilterChange) {
+      onFilterChange({})
+    }
   }
 
   const setQuickDate = (months: number) => {

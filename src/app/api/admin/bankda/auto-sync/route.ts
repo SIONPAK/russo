@@ -227,32 +227,58 @@ async function performBankdaSync() {
         const bankdaTransactionId = `BANKDA_${transaction.bkdate}_${transaction.bktime}_${transaction.bkcode}_${parseInt(transaction.bkinput)}_${transaction.bkjukyo.replace(/[^가-힣a-zA-Z0-9]/g, '')}`;
         console.log(`🔑 거래 고유 ID: ${bankdaTransactionId}`);
         
-        // 고유 식별자로 중복 체크 (가장 확실한 방법)
+        // 🔍 다중 중복 체크 - 더 강화된 방식
+        // 1. 고유 식별자로 중복 체크 (가장 확실한 방법)
         const { data: existingByUniqueId } = await supabase
           .from('mileage')
           .select('id, description, created_at')
           .ilike('description', `%${bankdaTransactionId}%`)
-          .in('source', ['auto', 'manual']) // 'bankda_auto'와 'bankda_manual'을 'auto'와 'manual'로 변경
-          .single();
+          .in('source', ['auto', 'manual'])
+          .limit(1);
         
-        if (existingByUniqueId) {
+        if (existingByUniqueId && existingByUniqueId.length > 0) {
           console.log(`🚫 중복 거래 건너뛰기 (고유ID 일치): ${bankdaTransactionId}`);
-          console.log(`   기존 기록: ${existingByUniqueId.description} (${existingByUniqueId.created_at})`);
+          console.log(`   기존 기록: ${existingByUniqueId[0].description} (${existingByUniqueId[0].created_at})`);
           continue;
         }
         
-        // 추가 안전장치: 거래코드 + 금액 조합으로도 체크
-        const { data: existingByCodeAmount } = await supabase
-          .from('mileage')
-          .select('id, description, created_at')
-          .ilike('description', `%[${transaction.bkcode}]%`)
-          .eq('amount', parseInt(transaction.bkinput))
-          .in('source', ['auto', 'manual']) // 'bankda_auto'와 'bankda_manual'을 'auto'와 'manual'로 변경
+        // 2. 거래코드 + 금액 + 사용자 조합으로 체크 (더 정밀한 방법)
+        const { data: userForDuplicateCheck } = await supabase
+          .from('users')
+          .select('id')
+          .eq('company_name', matchedCompany)
           .single();
         
-        if (existingByCodeAmount) {
-          console.log(`🚫 중복 거래 건너뛰기 (코드+금액 일치): [${transaction.bkcode}] ${parseInt(transaction.bkinput)}원`);
-          console.log(`   기존 기록: ${existingByCodeAmount.description} (${existingByCodeAmount.created_at})`);
+        if (userForDuplicateCheck) {
+          const { data: existingByCodeAmountUser } = await supabase
+            .from('mileage')
+            .select('id, description, created_at')
+            .ilike('description', `%[${transaction.bkcode}]%`)
+            .eq('amount', parseInt(transaction.bkinput))
+            .eq('user_id', userForDuplicateCheck.id)
+            .in('source', ['auto', 'manual'])
+            .limit(1);
+          
+          if (existingByCodeAmountUser && existingByCodeAmountUser.length > 0) {
+            console.log(`🚫 중복 거래 건너뛰기 (코드+금액+사용자 일치): [${transaction.bkcode}] ${parseInt(transaction.bkinput)}원 for ${matchedCompany}`);
+            console.log(`   기존 기록: ${existingByCodeAmountUser[0].description} (${existingByCodeAmountUser[0].created_at})`);
+            continue;
+          }
+        }
+        
+        // 3. 같은 날짜+시간+금액 조합으로 체크 (추가 안전장치)
+        const transactionDateTime = `${transaction.bkdate} ${transaction.bktime}`;
+        const { data: existingByDateTime } = await supabase
+          .from('mileage')
+          .select('id, description, created_at')
+          .ilike('description', `%${transactionDateTime}%`)
+          .eq('amount', parseInt(transaction.bkinput))
+          .in('source', ['auto', 'manual'])
+          .limit(1);
+        
+        if (existingByDateTime && existingByDateTime.length > 0) {
+          console.log(`🚫 중복 거래 건너뛰기 (날짜+시간+금액 일치): ${transactionDateTime} ${parseInt(transaction.bkinput)}원`);
+          console.log(`   기존 기록: ${existingByDateTime[0].description} (${existingByDateTime[0].created_at})`);
           continue;
         }
         
@@ -856,35 +882,63 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
         // 🎯 뱅크다 거래 고유 식별자 생성 (수동 동기화용)
         const bankdaTransactionId = `BANKDA_${transaction.bkdate}_${transaction.bktime}_${transaction.bkcode}_${parseInt(transaction.bkinput)}_${transaction.bkjukyo.replace(/[^가-힣a-zA-Z0-9]/g, '')}`;
         
-        // 고유 식별자로 중복 체크
+        // 🔍 다중 중복 체크 - 더 강화된 방식 (수동 동기화용)
+        // 1. 고유 식별자로 중복 체크
         const { data: existingByUniqueId } = await supabase
           .from('mileage')
           .select('id, description, created_at')
           .ilike('description', `%${bankdaTransactionId}%`)
-          .in('source', ['auto', 'manual']) // 'bankda_auto'와 'bankda_manual'을 'auto'와 'manual'로 변경
-          .single();
+          .in('source', ['auto', 'manual'])
+          .limit(1);
         
-        if (existingByUniqueId) {
+        if (existingByUniqueId && existingByUniqueId.length > 0) {
           console.log(`중복 거래 건너뛰기 (고유ID): ${bankdaTransactionId}`);
           transactionDetail.status = 'duplicate';
-          transactionDetail.error = `이미 처리된 거래 (고유ID 중복) - ${existingByUniqueId.created_at}`;
+          transactionDetail.error = `이미 처리된 거래 (고유ID 중복) - ${existingByUniqueId[0].created_at}`;
           details.push(transactionDetail);
           continue;
         }
 
-        // 추가 안전장치: 거래코드 + 금액 조합으로도 체크
-        const { data: existingByCodeAmount } = await supabase
-          .from('mileage')
-          .select('id, description, created_at')
-          .ilike('description', `%[${transaction.bkcode}]%`)
-          .eq('amount', parseInt(transaction.bkinput))
-          .in('source', ['auto', 'manual']) // 'bankda_auto'와 'bankda_manual'을 'auto'와 'manual'로 변경
+        // 2. 거래코드 + 금액 + 사용자 조합으로 체크
+        const { data: userForDuplicateCheck } = await supabase
+          .from('users')
+          .select('id')
+          .eq('company_name', matchedCompany)
           .single();
         
-        if (existingByCodeAmount) {
-          console.log(`중복 거래 건너뛰기 (코드+금액): [${transaction.bkcode}] ${parseInt(transaction.bkinput)}원`);
+        if (userForDuplicateCheck) {
+          const { data: existingByCodeAmountUser } = await supabase
+            .from('mileage')
+            .select('id, description, created_at')
+            .ilike('description', `%[${transaction.bkcode}]%`)
+            .eq('amount', parseInt(transaction.bkinput))
+            .eq('user_id', userForDuplicateCheck.id)
+            .in('source', ['auto', 'manual'])
+            .limit(1);
+          
+          if (existingByCodeAmountUser && existingByCodeAmountUser.length > 0) {
+            console.log(`중복 거래 건너뛰기 (코드+금액+사용자): [${transaction.bkcode}] ${parseInt(transaction.bkinput)}원 for ${matchedCompany}`);
+            transactionDetail.status = 'duplicate';
+            transactionDetail.error = `이미 처리된 거래 (코드+금액+사용자 중복) - ${existingByCodeAmountUser[0].created_at}`;
+            details.push(transactionDetail);
+            continue;
+          }
+        }
+
+        // 3. 같은 날짜+시간+금액 조합으로 체크
+        const transactionDateTime = `${transaction.bkdate} ${transaction.bktime}`;
+        const { data: existingByDateTime } = await supabase
+          .from('mileage')
+          .select('id, description, created_at')
+          .ilike('description', `%${transactionDateTime}%`)
+          .eq('amount', parseInt(transaction.bkinput))
+          .in('source', ['auto', 'manual'])
+          .limit(1);
+        
+        if (existingByDateTime && existingByDateTime.length > 0) {
+          console.log(`중복 거래 건너뛰기 (날짜+시간+금액): ${transactionDateTime} ${parseInt(transaction.bkinput)}원`);
           transactionDetail.status = 'duplicate';
-          transactionDetail.error = `이미 처리된 거래 (코드+금액 중복) - ${existingByCodeAmount.created_at}`;
+          transactionDetail.error = `이미 처리된 거래 (날짜+시간+금액 중복) - ${existingByDateTime[0].created_at}`;
           details.push(transactionDetail);
           continue;
         }
