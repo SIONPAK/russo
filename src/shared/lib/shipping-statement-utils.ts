@@ -163,6 +163,7 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     companyName: data.companyName,
     title,
     itemsCount: items.length,
+    isShippingStatement,
     environment: process.env.NODE_ENV
   })
 
@@ -184,11 +185,13 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   const worksheet = workbook.Sheets[worksheetName]
   console.log('📊 워크시트 로드 완료:', worksheetName)
 
-  // 색상별 상품 그룹화
+  // 색상과 사이즈별 상품 그룹화
   const groupItemsByColorAndProduct = (items: any[]) => {
     const grouped: { [key: string]: { 
       productName: string
       color: string
+      size?: string
+      spec: string  // 규격/색상 컬럼용 (색상 + 사이즈)
       totalQuantity: number
       unitPrice: number
       totalPrice: number
@@ -198,7 +201,9 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     
     items.forEach(item => {
       const color = item.color || '기본'
-      const key = `${item.productName}_${color}`
+      const size = item.size || ''
+      // 색상과 사이즈를 조합한 키 생성
+      const key = `${item.productName}_${color}_${size}`
       
       if (grouped[key]) {
         const additionalPrice = item.totalPrice || (item.unitPrice * item.quantity)
@@ -216,9 +221,17 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
         // 수량 = 공급가액 / 단가 (0으로 나누기 방지)
         const calculatedQuantity = item.unitPrice === 0 ? 0 : totalPrice / item.unitPrice
         
+        // 규격/색상 컬럼용 텍스트 생성
+        let spec = color
+        if (size && size !== '' && size !== '-') {
+          spec += ` / ${size}`
+        }
+        
         grouped[key] = {
           productName: item.productName,
           color,
+          size,
+          spec,  // 색상 + 사이즈 조합
           totalQuantity: calculatedQuantity,
           unitPrice: item.unitPrice,
           totalPrice,
@@ -249,9 +262,17 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   }
 
   const groupedItems = groupItemsByColorAndProduct(items)
+  console.log('🔍 그룹화 전 원본 아이템들:', items.map(item => ({
+    productName: item.productName,
+    color: item.color,
+    size: item.size
+  })))
+  
   console.log('🔍 그룹화된 아이템:', groupedItems.map(item => ({
     productName: item.productName,
     color: item.color,
+    size: item.size,
+    spec: item.spec,
     quantity: item.totalQuantity
   })))
 
@@ -335,6 +356,8 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
       console.log(`🔍 상품 ${i + 1} 처리:`, {
         productName: item.productName,
         color: item.color,
+        size: item.size,
+        spec: item.spec,
         quantity: item.totalQuantity
       })
       
@@ -348,10 +371,10 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
         }
       }
       
-      // 규격/색상 (D열) - 중앙정렬, UTF-8 명시
+      // 규격/색상 (D열) - 색상과 사이즈 조합, 중앙정렬, UTF-8 명시
       worksheet[`D${row}`] = {
         t: 's',
-        v: String(item.color),
+        v: String(item.spec || item.color),
         s: {
           alignment: { horizontal: 'center' },
           font: { name: 'Arial Unicode MS' }
@@ -493,13 +516,19 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
       supplyAmount: data.supplyAmount,
       taxAmount: data.taxAmount,
       shippingFee: data.shippingFee,
-      totalAmount: data.totalAmount
+      totalAmount: data.totalAmount,
+      sampleItems: data.items.slice(0, 2).map(item => ({
+        productName: item.productName,
+        color: item.color,
+        size: item.size
+      }))
     })
 
     // 🔧 API에서 전달받은 데이터를 그대로 활용
     const processedItems = data.items.map(item => ({
       productName: item.productName,
       color: item.color || '기본',
+      size: item.size || '', // 사이즈 정보 추가
       totalQuantity: item.quantity,
       unitPrice: item.unitPrice,
       totalPrice: item.totalPrice,
@@ -516,6 +545,7 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
       itemsWithShipping.push({
         productName: '배송비',
         color: '-',
+        size: '-', // 배송비에도 사이즈 필드 추가
         totalQuantity: 1,
         unitPrice: data.shippingFee,
         totalPrice: data.shippingFee,
@@ -622,6 +652,12 @@ export async function generateUnshippedStatement(data: UnshippedStatementData): 
 export async function generateConfirmedStatement(data: ConfirmedStatementData): Promise<Buffer> {
   try {
     // 확정 명세서 데이터를 처리
+    console.log('🔍 확정명세서 원본 아이템 데이터:', data.items.map(item => ({
+      product_name: item.product_name,
+      color: item.color,
+      size: item.size
+    })))
+    
     const processedItems = data.items.map(item => ({
       productName: item.product_name,
       color: item.color,
@@ -632,6 +668,12 @@ export async function generateConfirmedStatement(data: ConfirmedStatementData): 
       supplyAmount: item.total_price,
       taxAmount: Math.floor(item.total_price * 0.1)
     }))
+    
+    console.log('🔍 확정명세서 처리된 아이템 데이터:', processedItems.map(item => ({
+      productName: item.productName,
+      color: item.color,
+      size: item.size
+    })))
 
     // 배송비 추가 (부가세 포함으로 분리)
     const itemsWithShipping = [...processedItems]
