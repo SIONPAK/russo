@@ -951,9 +951,14 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           </tr>
     `
     
-    // 출고 상품 목록
+    // 출고 상품 목록 (조건부 확장: 10건 이하는 9개까지, 10건 이상은 29개까지)
+    const maxItems = shippedItems.length > 10 ? 29 : 9
+    const maxTotalRows = shippedItems.length > 10 ? 30 : 10
+    
+    console.log(`📄 PDF 템플릿 확장: 상품 ${shippedItems.length}개, 최대표시 ${maxItems}개, 총행수 ${maxTotalRows}행`)
+    
     let itemRowCount = 0
-    for (let idx = 0; idx < shippedItems.length && idx < 9; idx++) {
+    for (let idx = 0; idx < shippedItems.length && idx < maxItems; idx++) {
       const item = shippedItems[idx]
       // "미출고" 건은 금액 0원 처리
       const isUnshipped = order.tracking_number === '미출고'
@@ -997,8 +1002,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
       itemRowCount++
     }
     
-    // 나머지 빈 행들 채우기 (총 10행까지)
-    for (let idx = itemRowCount; idx < 10; idx++) {
+    // 나머지 빈 행들 채우기 (조건부: 10건 이하는 10행까지, 10건 이상은 30행까지)
+    for (let idx = itemRowCount; idx < maxTotalRows; idx++) {
       htmlContent += `
         <tr>
           <td class="col1 row-10 empty-cell"></td>

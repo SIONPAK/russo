@@ -167,9 +167,14 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     environment: process.env.NODE_ENV
   })
 
-  // 템플릿 파일 로드 (인코딩 명시)
-  const templatePath = path.join(process.cwd(), 'public/templates/루소_영수증.xlsx')
-  console.log('📁 템플릿 경로:', templatePath)
+  // 상품 개수에 따른 템플릿 선택
+  const templateFileName = items.length > 10 ? '루소_영수증_10건이상.xlsx' : '루소_영수증.xlsx'
+  const templatePath = path.join(process.cwd(), `public/templates/${templateFileName}`)
+  console.log('📁 템플릿 선택:', {
+    itemCount: items.length,
+    templateFileName,
+    templatePath
+  })
   
   const templateBuffer = fs.readFileSync(templatePath)
   console.log('📄 템플릿 로드 완료, 크기:', templateBuffer.length)
@@ -346,8 +351,13 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     }
   }
   
-  // 상품 정보 입력 (12행부터 21행까지, 10개)
-  for (let i = 0; i < 10; i++) {
+  // 상품 정보 입력 (템플릿에 따라 처리)
+  const maxTemplateRows = items.length > 10 ? 30 : 10  // 템플릿별 최대 행 수
+  const actualItemCount = Math.min(groupedItems.length, maxTemplateRows)
+  
+  console.log(`🔧 상품 처리: ${groupedItems.length}개 상품, 템플릿 최대: ${maxTemplateRows}행, 실제 처리: ${actualItemCount}개`)
+  
+  for (let i = 0; i < actualItemCount; i++) {
     const row = 12 + i
     
     if (i < groupedItems.length) {
@@ -360,6 +370,16 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
         spec: item.spec,
         quantity: item.totalQuantity
       })
+      
+      // No. 번호 (B열) - 중앙정렬
+      worksheet[`B${row}`] = {
+        t: 'n',
+        v: i + 1,
+        s: {
+          alignment: { horizontal: 'center' },
+          font: { name: 'Arial Unicode MS' }
+        }
+      }
       
       // 품명 (C열) - 좌측정렬, UTF-8 명시
       worksheet[`C${row}`] = { 
@@ -443,23 +463,21 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     }
   }
   
-  // 합계 행 (22행)
-  const summaryRow = 22
+  // 템플릿별 합계 행 위치 및 수식 처리
+  const summaryRow = items.length > 10 ? 42 : 22  // 10건이상 템플릿은 42행, 기본은 22행
+  const lastDataRow = 11 + actualItemCount
   
-  // "합    계" 텍스트 - 중앙정렬, 볼드, UTF-8 명시
-  worksheet[`B${summaryRow}`] = {
-    t: 's',
-    v: '합    계',
-    s: {
-      alignment: { horizontal: 'center' },
-      font: { bold: true, name: 'Arial Unicode MS' }
-    }
-  }
+  console.log(`🔧 템플릿별 합계 처리:`, {
+    templateType: items.length > 10 ? '10건이상' : '기본',
+    summaryRow,
+    dataRange: `G12:G${lastDataRow}`,
+    actualItems: actualItemCount
+  })
   
-  // 공급가액 합계 (G열) - 콤마 포맷, 중앙정렬
+  // 합계행의 공급가액 수식 업데이트 (G열)
   worksheet[`G${summaryRow}`] = {
     t: 'n',
-    v: totalSupplyAmount,
+    f: `SUM(G12:G${lastDataRow})`,
     z: '#,##0',
     s: {
       alignment: { horizontal: 'center' },
@@ -467,10 +485,10 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     }
   }
   
-  // 세액 합계 (H열) - 콤마 포맷, 중앙정렬
+  // 합계행의 세액 수식 업데이트 (H열)
   worksheet[`H${summaryRow}`] = {
     t: 'n',
-    v: totalTaxAmount,
+    f: `SUM(H12:H${lastDataRow})`,
     z: '#,##0',
     s: {
       alignment: { horizontal: 'center' },
