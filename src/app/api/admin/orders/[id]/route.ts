@@ -65,7 +65,7 @@ export async function GET(
       order_items: order.order_items?.map((item: any) => ({
         ...item,
         available_stock: getAvailableStock(item.products, item.color, item.size),
-        allocated_quantity: item.shipped_quantity || 0,
+        allocated_quantity: item.shipped_quantity || 0, // 화면 표시용: 출고된 수량
         allocation_status: getItemAllocationStatus(item)
       })) || []
     }

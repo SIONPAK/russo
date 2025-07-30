@@ -697,17 +697,30 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       console.log(`🔄 자동 할당 후 가용 재고 업데이트: ${totalAllocated}개 차감`)
       
       if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options) && color && size) {
-        // 현재 할당된 재고 계산
-        const { data: allocatedItems, error: allocatedError } = await supabase
+        // 현재 할당된 재고 계산 (미출고 수량)
+        const { data: orderItems, error: allocatedError } = await supabase
           .from('order_items')
-          .select('shipped_quantity')
+          .select(`
+            quantity,
+            shipped_quantity,
+            orders!order_items_order_id_fkey (
+              status
+            )
+          `)
           .eq('product_id', productId)
           .eq('color', color)
           .eq('size', size)
-          .not('shipped_quantity', 'is', null)
-          .gt('shipped_quantity', 0)
 
-        const currentAllocated = allocatedItems?.reduce((sum: number, item: any) => sum + (item.shipped_quantity || 0), 0) || 0
+        const currentAllocated = orderItems?.reduce((sum: number, item: any) => {
+          const order = Array.isArray(item.orders) ? item.orders[0] : item.orders
+          const isPendingOrder = order && ['pending', 'confirmed', 'processing', 'allocated'].includes(order.status)
+          
+          if (isPendingOrder) {
+            const pendingQuantity = item.quantity - (item.shipped_quantity || 0)
+            return sum + Math.max(0, pendingQuantity)
+          }
+          return sum
+        }, 0) || 0
 
         const updatedOptions = currentProduct.inventory_options.map((option: any) => {
           if (option.color === color && option.size === size) {
@@ -731,21 +744,33 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
           })
           .eq('id', productId)
       } else {
-        // 전체 재고의 경우 모든 옵션의 allocated_stock 업데이트
-        const { data: allocatedItems, error: allocatedError } = await supabase
+        // 전체 재고의 경우 모든 옵션의 allocated_stock 업데이트 (미출고 수량)
+        const { data: orderItems, error: allocatedError } = await supabase
           .from('order_items')
-          .select('color, size, shipped_quantity')
+          .select(`
+            color,
+            size,
+            quantity,
+            shipped_quantity,
+            orders!order_items_order_id_fkey (
+              status
+            )
+          `)
           .eq('product_id', productId)
-          .not('shipped_quantity', 'is', null)
-          .gt('shipped_quantity', 0)
 
         const optionAllocations = new Map()
         
-        if (allocatedItems) {
-          allocatedItems.forEach((item: any) => {
-            const key = `${item.color}-${item.size}`
-            const allocated = optionAllocations.get(key) || 0
-            optionAllocations.set(key, allocated + (item.shipped_quantity || 0))
+        if (orderItems) {
+          orderItems.forEach((item: any) => {
+            const order = Array.isArray(item.orders) ? item.orders[0] : item.orders
+            const isPendingOrder = order && ['pending', 'confirmed', 'processing', 'allocated'].includes(order.status)
+            
+            if (isPendingOrder) {
+              const key = `${item.color}-${item.size}`
+              const allocated = optionAllocations.get(key) || 0
+              const pendingQuantity = item.quantity - (item.shipped_quantity || 0)
+              optionAllocations.set(key, allocated + Math.max(0, pendingQuantity))
+            }
           })
         }
 

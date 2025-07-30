@@ -167,7 +167,7 @@ export async function GET(request: NextRequest) {
           order.order_items?.map(async (item: any) => ({
             ...item,
             available_stock: await getAvailableStock(supabase, item.products, item.color, item.size),
-            allocated_quantity: item.shipped_quantity || 0,
+            allocated_quantity: item.shipped_quantity || 0, // 화면 표시용: 출고된 수량
             allocation_status: await getItemAllocationStatus(supabase, item)
           })) || []
         )
