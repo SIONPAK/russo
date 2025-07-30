@@ -8,12 +8,62 @@ export function useMileageManagement() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingMileage, setEditingMileage] = useState<Mileage | null>(null)
+  const [userBalances, setUserBalances] = useState<{[userId: string]: number}>({})
+  const [selectedUser, setSelectedUser] = useState<string>('')
+  const [cumulativeBalances, setCumulativeBalances] = useState<{[mileageId: string]: number}>({})
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
     total: 0,
     totalPages: 0
   })
+
+  // 시점별 누적 잔액 계산
+  const calculateCumulativeBalances = (mileages: any[]) => {
+    const userCumulativeBalances: {[mileageId: string]: number} = {}
+    const userRunningBalances: {[userId: string]: number} = {}
+
+    // 시간순으로 정렬 (오래된 것부터)
+    const sortedMileages = [...mileages].sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+
+    sortedMileages.forEach(mileage => {
+      if (!userRunningBalances[mileage.user_id]) {
+        userRunningBalances[mileage.user_id] = 0
+      }
+
+      // 해당 마일리지 적용
+      if (mileage.type === 'earn') {
+        userRunningBalances[mileage.user_id] += Math.abs(mileage.amount)
+      } else if (mileage.type === 'spend') {
+        userRunningBalances[mileage.user_id] -= Math.abs(mileage.amount)
+      }
+
+      // 해당 시점의 누적 잔액 저장
+      userCumulativeBalances[mileage.id] = userRunningBalances[mileage.user_id]
+    })
+
+    setCumulativeBalances(userCumulativeBalances)
+  }
+
+  // 사용자 마일리지 잔액 조회 (현재 잔액용 - 참고용)
+  const fetchUserBalance = async (userId: string, companyName: string) => {
+    try {
+      const response = await fetch(`/api/mileage?userId=${userId}&limit=1000`)
+      const result = await response.json()
+
+      if (result.success && result.data.summary) {
+        setUserBalances(prev => ({
+          ...prev,
+          [userId]: result.data.summary.currentBalance
+        }))
+        setSelectedUser(companyName)
+      }
+    } catch (error) {
+      console.error('사용자 잔액 조회 중 오류:', error)
+    }
+  }
 
   const fetchMileages = async (params: {
     page?: number
@@ -67,6 +117,16 @@ export function useMileageManagement() {
         
         setMileages(transformedMileages)
         setPagination(result.pagination)
+
+        // 시점별 누적 잔액 계산
+        if (transformedMileages.length > 0) {
+          calculateCumulativeBalances(transformedMileages)
+        } else {
+          // 결과가 없으면 잔액 정보 초기화
+          setCumulativeBalances({})
+          setUserBalances({})
+          setSelectedUser('')
+        }
       } else {
         console.error('마일리지 조회 실패:', result.error)
         setMileages([])
@@ -275,6 +335,9 @@ export function useMileageManagement() {
     showAddModal,
     showEditModal,
     editingMileage,
+    userBalances,
+    selectedUser,
+    cumulativeBalances,
     pagination,
     approveMileage,
     rejectMileage,

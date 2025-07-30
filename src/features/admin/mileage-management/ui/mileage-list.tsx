@@ -25,6 +25,9 @@ interface MileageListProps {
   onAddMileage: () => void
   onEdit?: (mileage: Mileage) => void
   onDelete?: (mileageId: string) => void
+  userBalances?: {[userId: string]: number} // 사용자별 현재 마일리지 잔액
+  selectedUser?: string // 선택된 사용자 이름
+  cumulativeBalances?: {[mileageId: string]: number} // 마일리지 ID별 해당 시점 누적 잔액
   pagination?: {
     page: number
     limit: number
@@ -50,6 +53,9 @@ export function MileageList({
   onAddMileage,
   onEdit,
   onDelete,
+  userBalances,
+  selectedUser,
+  cumulativeBalances,
   pagination,
   onPageChange,
   onFilterChange
@@ -398,6 +404,9 @@ export function MileageList({
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   금액
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">
+                  최종 마일리지
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   소스
                 </th>
@@ -433,6 +442,15 @@ export function MileageList({
                     <span className={mileage.type === 'earn' ? 'text-blue-600' : 'text-red-600'}>
                       {mileage.type === 'earn' ? '+' : '-'}{formatCurrency(Math.abs(mileage.amount))}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-blue-50">
+                    {cumulativeBalances && cumulativeBalances[mileage.id] !== undefined ? (
+                      <span className={cumulativeBalances[mileage.id] >= 0 ? 'text-blue-600' : 'text-red-600'}>
+                        {formatCurrency(cumulativeBalances[mileage.id])}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">계산중...</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {getSourceText(mileage.source)}

@@ -15,6 +15,9 @@ export function MileagePage() {
     showAddModal,
     showEditModal,
     editingMileage,
+    userBalances,
+    selectedUser,
+    cumulativeBalances,
     pagination,
     approveMileage,
     rejectMileage,
@@ -413,6 +416,9 @@ export function MileagePage() {
         onAddMileage={openAddModal}
         onEdit={openEditModal}
         onDelete={deleteMileage}
+        userBalances={userBalances}
+        selectedUser={selectedUser}
+        cumulativeBalances={cumulativeBalances}
         pagination={pagination}
         onPageChange={handlePageChange}
         onFilterChange={handleFilterChange}
