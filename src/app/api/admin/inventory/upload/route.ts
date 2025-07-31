@@ -169,25 +169,63 @@ export async function POST(request: NextRequest) {
           console.log('✅ 재고 변동 이력 기록 완료')
         }
 
-        // 🎯 재고 증가 시 자동 할당 (재고가 늘어난 경우)
+        // 🎯 재고 증가 시 해당 상품의 미출고 주문이 있는지 먼저 체크
         if (targetStockQuantity > currentPhysicalStock) {
-          console.log(`🔄 재고 증가로 자동 할당 시작: ${product.id}, ${color}, ${size}`)
-          const autoAllocationResult = await autoAllocateToUnshippedOrders(
-            supabase, 
-            product.id, 
-            (color && color !== '-') ? color : undefined,
-            (size && size !== '-') ? size : undefined
-          )
+          console.log(`🔍 미출고 주문 존재 여부 체크: ${product.id}, ${color}, ${size}`)
           
-          if (autoAllocationResult.allocations && autoAllocationResult.allocations.length > 0) {
-            allocationResults.push({
-              productCode,
-              productName: product.name,
-              color: (color && color !== '-') ? color : null,
-              size: (size && size !== '-') ? size : null,
-              inboundQuantity: targetStockQuantity - currentPhysicalStock,
-              allocations: autoAllocationResult.allocations
-            })
+          // 해당 상품의 미출고 주문이 있는지 확인 (샘플 주문 제외)
+          let checkQuery = supabase
+            .from('order_items')
+            .select(`
+              id,
+              quantity,
+              shipped_quantity,
+              orders!inner (
+                id,
+                status,
+                order_number
+              )
+            `)
+            .eq('product_id', product.id)
+            .not('orders.status', 'in', '(shipped,delivered,cancelled,returned,refunded)')
+            .not('orders.order_number', 'like', 'SAMPLE-%')
+          
+          // 색상/사이즈 필터링
+          if (color && color !== '-') checkQuery = checkQuery.eq('color', color)
+          if (size && size !== '-') checkQuery = checkQuery.eq('size', size)
+          
+          const { data: orderItems, error: checkError } = await checkQuery
+          
+          if (checkError) {
+            console.error('❌ 주문 체크 실패:', checkError)
+          } else {
+            // 실제 미출고 수량이 있는 주문이 있는지 확인
+            const hasUnshippedOrders = orderItems?.some(item => 
+              (item.quantity - (item.shipped_quantity || 0)) > 0
+            )
+            
+            if (hasUnshippedOrders) {
+              console.log(`✅ 미출고 주문 발견! 자동 할당 시작`)
+              const autoAllocationResult = await autoAllocateToUnshippedOrders(
+                supabase, 
+                product.id, 
+                (color && color !== '-') ? color : undefined,
+                (size && size !== '-') ? size : undefined
+              )
+              
+              if (autoAllocationResult.allocations && autoAllocationResult.allocations.length > 0) {
+                allocationResults.push({
+                  productCode,
+                  productName: product.name,
+                  color: (color && color !== '-') ? color : null,
+                  size: (size && size !== '-') ? size : null,
+                  inboundQuantity: targetStockQuantity - currentPhysicalStock,
+                  allocations: autoAllocationResult.allocations
+                })
+              }
+            } else {
+              console.log(`📋 미출고 주문 없음. 자동 할당 생략`)
+            }
           }
         }
         
