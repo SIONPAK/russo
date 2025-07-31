@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { Button } from '@/shared/ui/button'
@@ -57,16 +57,40 @@ export default function ShippingStatementsPage() {
   })
   const [emailSending, setEmailSending] = useState(false)
 
+  // 프론트엔드에서 필터링된 statements 계산
+  const filteredStatements = useMemo(() => {
+    return statements.filter((statement) => {
+      // 날짜 필터링
+      const statementDate = new Date(statement.created_at).toISOString().split('T')[0]
+      if (filters.startDate && statementDate < filters.startDate) return false
+      if (filters.endDate && statementDate > filters.endDate) return false
+      
+      // 업체명 필터링
+      if (filters.companyName.trim() && 
+          !statement.company_name.toLowerCase().includes(filters.companyName.toLowerCase().trim())) {
+        return false
+      }
+      
+      // 이메일 발송 상태 필터링
+      if (filters.emailSent !== 'all') {
+        if (filters.emailSent === 'sent' && !statement.email_sent) return false
+        if (filters.emailSent === 'not_sent' && statement.email_sent) return false
+      }
+      
+      return true
+    })
+  }, [statements, filters])
+
   useEffect(() => {
     fetchStatements()
-  }, [filters])
+  }, []) // filters 의존성 제거
 
   const fetchStatements = async () => {
     try {
       setLoading(true)
       console.log('🔍 [출고명세서] 조회 시작')
       
-      // 가장 간단한 API 호출
+      // 가장 간단한 API 호출 (모든 데이터 가져오기)
       const response = await fetch('/api/admin/orders?status=all&limit=1000')
       const result = await response.json()
       
@@ -394,24 +418,24 @@ export default function ShippingStatementsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow">
           <h3 className="text-sm font-medium text-gray-600">총 명세서</h3>
-          <p className="text-2xl font-bold text-blue-600">{statements.length}건</p>
+          <p className="text-2xl font-bold text-blue-600">{filteredStatements.length}건</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
           <h3 className="text-sm font-medium text-gray-600">이메일 발송완료</h3>
           <p className="text-2xl font-bold text-green-600">
-            {statements.filter(s => s.email_sent).length}건
+            {filteredStatements.filter(s => s.email_sent).length}건
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
           <h3 className="text-sm font-medium text-gray-600">이메일 미발송</h3>
           <p className="text-2xl font-bold text-red-600">
-            {statements.filter(s => !s.email_sent).length}건
+            {filteredStatements.filter(s => !s.email_sent).length}건
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
           <h3 className="text-sm font-medium text-gray-600">총 출고금액</h3>
           <p className="text-2xl font-bold text-purple-600">
-            {statements.reduce((sum, s) => sum + s.total_amount, 0).toLocaleString()}원
+            {filteredStatements.reduce((sum, s) => sum + s.total_amount, 0).toLocaleString()}원
           </p>
         </div>
       </div>
@@ -425,7 +449,7 @@ export default function ShippingStatementsPage() {
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
-                    checked={selectedStatements.length === statements.length && statements.length > 0}
+                    checked={selectedStatements.length === filteredStatements.length && filteredStatements.length > 0}
                     onChange={toggleAllSelection}
                     className="rounded"
                   />
@@ -446,14 +470,14 @@ export default function ShippingStatementsPage() {
                     로딩 중...
                   </td>
                 </tr>
-              ) : statements.length === 0 ? (
+              ) : filteredStatements.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                    출고 명세서가 없습니다.
+                    검색 조건에 맞는 출고 명세서가 없습니다.
                   </td>
                 </tr>
               ) : (
-                statements.map((statement) => (
+                filteredStatements.map((statement) => (
                   <tr key={statement.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <input
