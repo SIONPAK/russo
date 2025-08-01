@@ -540,10 +540,23 @@ async function reallocateAfterStockReduction(supabase: any, productId: string, c
         .eq('id', productId)
     }
 
-    // 6. 영향받은 주문들의 상태 업데이트
+    // 6. 영향받은 주문들의 상태 업데이트 (이미 출고된 주문 제외)
     const affectedOrderIds = [...new Set(reallocations.map(realloc => realloc.orderId))]
     
     for (const orderId of affectedOrderIds) {
+      // 먼저 주문의 현재 상태 확인
+      const { data: currentOrder } = await supabase
+        .from('orders')
+        .select('status')
+        .eq('id', orderId)
+        .single()
+
+      // 🚚 이미 출고된 주문(shipped, delivered, completed 등)은 상태 변경 스킵
+      if (currentOrder && ['shipped', 'delivered', 'completed', 'cancelled', 'returned', 'refunded'].includes(currentOrder.status)) {
+        console.log(`⏭️ 출고 완료된 주문 상태 변경 스킵: ${orderId} (현재 상태: ${currentOrder.status})`)
+        continue
+      }
+
       // 해당 주문의 모든 아이템 상태 확인
       const { data: orderItems } = await supabase
         .from('order_items')
@@ -564,6 +577,8 @@ async function reallocateAfterStockReduction(supabase: any, productId: string, c
       } else if (hasPartialShipped) {
         newStatus = 'partial' // 부분 할당
       }
+
+      console.log(`🔄 주문 상태 업데이트: ${orderId} (${currentOrder?.status} → ${newStatus})`)
 
       await supabase
         .from('orders')

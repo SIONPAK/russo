@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ [1단계] 완료 - ${orderItems?.length || 0}개 아이템 초기화`)
 
-    // 2단계: 모든 발주 주문의 상태를 pending으로 초기화
+    // 2단계: 모든 발주 주문의 상태를 pending으로 초기화 (이미 출고된 주문 제외)
     console.log('📝 [2단계] 주문 상태 초기화')
     
     const { data: orders, error: resetOrdersError } = await supabase
