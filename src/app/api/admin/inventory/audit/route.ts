@@ -36,32 +36,39 @@ export async function POST(request: NextRequest) {
       if (product.inventory_options && Array.isArray(product.inventory_options) && product.inventory_options.length > 0) {
         // 옵션별 재고가 있는 경우
         for (const option of product.inventory_options) {
-          const systemStock = option.stock_quantity || 0
+          const systemStock = option.physical_stock || option.stock_quantity || 0
           const actualStock = Math.max(0, systemStock + Math.floor(Math.random() * 21) - 10) // -10 ~ +10 범위
           const difference = actualStock - systemStock
 
           if (difference !== 0) {
             discrepancies++
             
-            // 차이가 있는 경우 재고 조정 (inventory_options 업데이트)
-            const updatedOptions = product.inventory_options.map((opt: any) => 
-              opt.color === option.color && opt.size === option.size 
-                ? { ...opt, stock_quantity: actualStock }
-                : opt
-            )
-            
-            const { error: updateError } = await supabase
-              .from('products')
-              .update({
-                inventory_options: updatedOptions,
-                stock_quantity: updatedOptions.reduce((sum: number, opt: any) => sum + opt.stock_quantity, 0),
-                updated_at: getKoreaTime()
+            // 🔄 adjust_physical_stock 함수를 사용한 재고 조정
+            const { data: adjustResult, error: adjustError } = await supabase
+              .rpc('adjust_physical_stock', {
+                p_product_id: product.id,
+                p_color: option.color,
+                p_size: option.size,
+                p_quantity_change: difference,
+                p_reason: `재고 실사 - 시스템 재고: ${systemStock}개, 실제 재고: ${actualStock}개`
               })
-              .eq('id', product.id)
 
-            if (updateError) {
-              console.error('Product update error:', updateError)
+            if (adjustError || !adjustResult) {
+              console.error('Adjust physical stock error:', adjustError)
             }
+            
+            // 재고 변동 이력 기록
+            await supabase
+              .from('stock_movements')
+              .insert({
+                product_id: product.id,
+                movement_type: 'audit',
+                quantity: difference,
+                color: option.color,
+                size: option.size,
+                notes: `재고 실사 조정 - 시스템: ${systemStock}개 → 실제: ${actualStock}개 (차이: ${difference > 0 ? '+' : ''}${difference}개)`,
+                created_at: getKoreaTime()
+              })
 
             auditResults.push({
               productCode: product.code,
@@ -83,18 +90,32 @@ export async function POST(request: NextRequest) {
         if (difference !== 0) {
           discrepancies++
           
-          // 차이가 있는 경우 재고 조정
-          const { error: updateError } = await supabase
-            .from('products')
-            .update({
-              stock_quantity: actualStock,
-              updated_at: getKoreaTime()
+          // 🔄 adjust_physical_stock 함수를 사용한 재고 조정
+          const { data: adjustResult, error: adjustError } = await supabase
+            .rpc('adjust_physical_stock', {
+              p_product_id: product.id,
+              p_color: null,
+              p_size: null,
+              p_quantity_change: difference,
+              p_reason: `재고 실사 - 시스템 재고: ${systemStock}개, 실제 재고: ${actualStock}개`
             })
-            .eq('id', product.id)
 
-          if (updateError) {
-            console.error('Product update error:', updateError)
+          if (adjustError || !adjustResult) {
+            console.error('Adjust physical stock error:', adjustError)
           }
+          
+          // 재고 변동 이력 기록
+          await supabase
+            .from('stock_movements')
+            .insert({
+              product_id: product.id,
+              movement_type: 'audit',
+              quantity: difference,
+              color: null,
+              size: null,
+              notes: `재고 실사 조정 - 시스템: ${systemStock}개 → 실제: ${actualStock}개 (차이: ${difference > 0 ? '+' : ''}${difference}개)`,
+              created_at: getKoreaTime()
+            })
 
           auditResults.push({
             productCode: product.code,

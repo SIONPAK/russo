@@ -130,14 +130,52 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`📊 현재 물리적 재고: ${currentPhysicalStock}개 → 목표: ${targetStockQuantity}개`)
+        
+        // 🎯 재고 처리 방식 구분
+        let adjustQuantityChange: number
+        let adjustReason: string
+        
+        if (targetStockQuantity === 0) {
+          // 0으로 입력 시: 물리적 재고를 0으로 절대값 설정
+          adjustQuantityChange = -currentPhysicalStock  // 현재 재고를 모두 차감하여 0으로 만듦
+          adjustReason = `엑셀 일괄 업로드 - 재고 0개로 절대값 설정 (기존: ${currentPhysicalStock}개)`
+          console.log(`🔄 [0 설정] 물리적 재고를 0으로 절대값 설정: ${currentPhysicalStock}개 → 0개 (차감: ${Math.abs(adjustQuantityChange)}개)`)
+        } else {
+          // 0이 아닌 값 입력 시: 차이값으로 추가/차감 처리
+          adjustQuantityChange = targetStockQuantity - currentPhysicalStock
+          if (adjustQuantityChange > 0) {
+            adjustReason = `엑셀 일괄 업로드 - 재고 ${adjustQuantityChange}개 추가 (${currentPhysicalStock}개 → ${targetStockQuantity}개)`
+            console.log(`🔄 [추가] 물리적 재고 추가: ${currentPhysicalStock}개 → ${targetStockQuantity}개 (추가: ${adjustQuantityChange}개)`)
+          } else if (adjustQuantityChange < 0) {
+            adjustReason = `엑셀 일괄 업로드 - 재고 ${Math.abs(adjustQuantityChange)}개 차감 (${currentPhysicalStock}개 → ${targetStockQuantity}개)`
+            console.log(`🔄 [차감] 물리적 재고 차감: ${currentPhysicalStock}개 → ${targetStockQuantity}개 (차감: ${Math.abs(adjustQuantityChange)}개)`)
+          } else {
+            adjustReason = `엑셀 일괄 업로드 - 재고 변동 없음 (${targetStockQuantity}개 유지)`
+            console.log(`🔄 [유지] 물리적 재고 변동 없음: ${targetStockQuantity}개`)
+          }
+        }
 
+        console.log(`🔍 [디버그] 재고 계산 상세:`, {
+          hasOptions: !!product.inventory_options,
+          optionsLength: product.inventory_options?.length || 0,
+          targetOption: color && color !== '-' && size && size !== '-' ? 
+            product.inventory_options?.find((opt: any) => opt.color === color && opt.size === size) : null,
+          inputStockQuantity: stockQuantity,
+          targetStockQuantity,
+          currentPhysicalStock,
+          quantityChange: adjustQuantityChange,
+          adjustType: targetStockQuantity === 0 ? 'ABSOLUTE_ZERO' : (adjustQuantityChange > 0 ? 'ADD' : adjustQuantityChange < 0 ? 'SUBTRACT' : 'NO_CHANGE'),
+          productStockQuantity: product.stock_quantity
+        })
+
+        // adjust_physical_stock 함수 호출
         const { data: adjustResult, error: adjustError } = await supabase
           .rpc('adjust_physical_stock', {
             p_product_id: product.id,
             p_color: (color && color !== '-') ? color : null,
             p_size: (size && size !== '-') ? size : null,
-            p_quantity_change: targetStockQuantity - currentPhysicalStock, // 절대값 설정을 위한 차이값 계산
-            p_reason: `엑셀 일괄 업로드 - 재고 ${targetStockQuantity}개로 설정`
+            p_quantity_change: adjustQuantityChange,
+            p_reason: adjustReason
           })
 
         if (adjustError || !adjustResult) {
@@ -150,16 +188,15 @@ export async function POST(request: NextRequest) {
         console.log('✅ [엑셀 업로드] 물리적 재고 조정 완료')
 
         // 📝 재고 변동 이력 기록
-        const quantityChange = targetStockQuantity - currentPhysicalStock
         const { error: movementError } = await supabase
           .from('stock_movements')
           .insert({
             product_id: product.id,
             movement_type: 'adjustment',
-            quantity: quantityChange,
+            quantity: adjustQuantityChange,
             color: (color && color !== '-') ? color : null,
             size: (size && size !== '-') ? size : null,
-            notes: `엑셀 일괄 업로드 - 재고 ${targetStockQuantity}개로 설정 (${productCode})`,
+            notes: adjustReason + ` (${productCode})`,
             created_at: getKoreaTime()
           })
 
