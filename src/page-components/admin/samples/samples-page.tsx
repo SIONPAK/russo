@@ -116,6 +116,7 @@ export function SamplesPage() {
   const [showCreateStatementModal, setShowCreateStatementModal] = useState(false)
   const [sampleItems, setSampleItems] = useState<SampleItem[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
+  const [isCreating, setIsCreating] = useState(false) // 샘플 생성 중 상태
   const [showCustomerSearch, setShowCustomerSearch] = useState(false)
   const [customerSearchKeyword, setCustomerSearchKeyword] = useState('')
   const [customerSearchResults, setCustomerSearchResults] = useState<any[]>([])
@@ -148,17 +149,20 @@ export function SamplesPage() {
     return { daysRemaining: diffDays, isOverdue: diffDays < 0 }
   }
 
-  // 날짜 포맷 함수
+  // 날짜 포맷 함수 (한국시간 그대로 표시)
   const formatDateTime = (dateString: string) => {
+    // 데이터베이스에 한국시간으로 저장되어 있으므로 UTC 변환 없이 그대로 표시
     const date = new Date(dateString)
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }) + ' ' + date.toLocaleTimeString('ko-KR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hour = date.getHours()
+    const minute = String(date.getMinutes()).padStart(2, '0')
+    
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour
+    const period = hour >= 12 ? '후' : '전'
+    
+    return `${year}.${month}.${day} 오${period} ${String(displayHour).padStart(2, '0')}:${minute}`
   }
 
   // 알림 함수들
@@ -786,6 +790,8 @@ export function SamplesPage() {
 
   // 샘플 명세서 생성 (직접 입력)
   const createSampleStatement = async () => {
+    if (isCreating) return // 이미 생성 중이면 중복 실행 방지
+
     if (!selectedCustomer) {
       showError('고객을 선택해주세요.')
       return
@@ -801,7 +807,7 @@ export function SamplesPage() {
       return
     }
 
-    
+    setIsCreating(true) // 생성 시작
 
     try {
       const response = await fetch('/api/admin/sample-statements/create', {
@@ -831,6 +837,8 @@ export function SamplesPage() {
     } catch (error) {
       console.error('샘플 명세서 생성 오류:', error)
       showError('샘플 명세서 생성 중 오류가 발생했습니다.')
+    } finally {
+      setIsCreating(false) // 생성 완료 후 상태 해제
     }
   }
 
@@ -1843,10 +1851,10 @@ export function SamplesPage() {
                 </Button>
                 <Button 
                   onClick={createSampleStatement} 
-                  disabled={!selectedCustomer || sampleItems.length === 0}
+                  disabled={!selectedCustomer || sampleItems.length === 0 || isCreating}
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  샘플 생성
+                  {isCreating ? '생성 중...' : '샘플 생성'}
                 </Button>
               </div>
             </div>
