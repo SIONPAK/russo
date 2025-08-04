@@ -75,19 +75,9 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // 🎯 음수 입력 시 안전장치: 물리재고가 0 이하로 떨어지지 않도록 제한
-        let targetStockQuantity = stockQuantity
-        if (stockQuantity < 0) {
-          console.log(`⚠️ 음수값 입력 감지: ${stockQuantity}개 → 0개로 제한`)
-          targetStockQuantity = 0
-        }
 
-        // 🎯 음수값 처리: 음수 입력 시 0으로 처리
-        let finalStockQuantity = stockQuantity
-        if (stockQuantity < 0) {
-          console.log(`⚠️ 음수값 입력 감지: ${stockQuantity} → 0으로 처리`)
-          finalStockQuantity = 0
-        }
+
+
 
         // 상품 조회
         const { data: product, error: productError } = await supabase
@@ -117,41 +107,77 @@ export async function POST(request: NextRequest) {
 
         // 현재 물리적 재고 확인 (재할당 로직 판단용)
         let currentPhysicalStock = 0
+        let targetOption = null
         
         if (color && color !== '-' && size && size !== '-' && product.inventory_options) {
-          const targetOption = product.inventory_options.find((opt: any) => 
+          targetOption = product.inventory_options.find((opt: any) => 
             opt.color === color && opt.size === size
           )
-          currentPhysicalStock = targetOption ? (targetOption.physical_stock || 0) : 0
+          
+          console.log(`🔍 [재고 확인] 타겟 옵션 찾기:`, {
+            searchColor: color,
+            searchSize: size,
+            foundOption: targetOption,
+            allOptions: product.inventory_options
+          })
+          
+          if (targetOption) {
+            // physical_stock 필드가 있으면 우선 사용, 없으면 stock_quantity 사용
+            currentPhysicalStock = targetOption.physical_stock !== undefined 
+              ? targetOption.physical_stock 
+              : (targetOption.stock_quantity || 0)
+              
+            console.log(`📊 [재고 계산] 옵션별 재고:`, {
+              physical_stock: targetOption.physical_stock,
+              allocated_stock: targetOption.allocated_stock,
+              stock_quantity: targetOption.stock_quantity,
+              calculated_currentPhysicalStock: currentPhysicalStock
+            })
+          } else {
+            console.log(`⚠️ [재고 확인] 해당 옵션을 찾을 수 없음: ${color}/${size}`)
+            currentPhysicalStock = 0
+          }
         } else {
-          currentPhysicalStock = product.inventory_options 
-            ? product.inventory_options.reduce((sum: number, opt: any) => sum + (opt.physical_stock || 0), 0)
-            : product.stock_quantity || 0
+          // 전체 재고 계산
+          if (product.inventory_options && Array.isArray(product.inventory_options)) {
+            currentPhysicalStock = product.inventory_options.reduce((sum: number, opt: any) => {
+              const optPhysical = opt.physical_stock !== undefined 
+                ? opt.physical_stock 
+                : (opt.stock_quantity || 0)
+              return sum + optPhysical
+            }, 0)
+          } else {
+            currentPhysicalStock = product.stock_quantity || 0
+          }
+          
+          console.log(`📊 [재고 계산] 전체 재고:`, {
+            inventory_options: product.inventory_options,
+            calculated_currentPhysicalStock: currentPhysicalStock,
+            product_stock_quantity: product.stock_quantity
+          })
         }
 
-        console.log(`📊 현재 물리적 재고: ${currentPhysicalStock}개 → 목표: ${targetStockQuantity}개`)
+        console.log(`📊 현재 물리적 재고: ${currentPhysicalStock}개, 입력값: ${stockQuantity > 0 ? '+' : ''}${stockQuantity}개`)
         
-        // 🎯 재고 처리 방식 구분
+        // 🎯 재고 처리 방식: 엑셀 입력값만큼 상대값으로 추가/차감
         let adjustQuantityChange: number
         let adjustReason: string
         
-        if (targetStockQuantity === 0) {
-          // 0으로 입력 시: 물리적 재고를 0으로 절대값 설정
-          adjustQuantityChange = -currentPhysicalStock  // 현재 재고를 모두 차감하여 0으로 만듦
+        if (stockQuantity === 0) {
+          // 0 입력 시: 물리적 재고를 0으로 절대값 설정
+          adjustQuantityChange = -currentPhysicalStock
           adjustReason = `엑셀 일괄 업로드 - 재고 0개로 절대값 설정 (기존: ${currentPhysicalStock}개)`
-          console.log(`🔄 [0 설정] 물리적 재고를 0으로 절대값 설정: ${currentPhysicalStock}개 → 0개 (차감: ${Math.abs(adjustQuantityChange)}개)`)
+          console.log(`🔄 [0 설정] 물리적 재고를 0으로 설정: ${currentPhysicalStock}개 → 0개`)
         } else {
-          // 0이 아닌 값 입력 시: 차이값으로 추가/차감 처리
-          adjustQuantityChange = targetStockQuantity - currentPhysicalStock
-          if (adjustQuantityChange > 0) {
-            adjustReason = `엑셀 일괄 업로드 - 재고 ${adjustQuantityChange}개 추가 (${currentPhysicalStock}개 → ${targetStockQuantity}개)`
-            console.log(`🔄 [추가] 물리적 재고 추가: ${currentPhysicalStock}개 → ${targetStockQuantity}개 (추가: ${adjustQuantityChange}개)`)
-          } else if (adjustQuantityChange < 0) {
-            adjustReason = `엑셀 일괄 업로드 - 재고 ${Math.abs(adjustQuantityChange)}개 차감 (${currentPhysicalStock}개 → ${targetStockQuantity}개)`
-            console.log(`🔄 [차감] 물리적 재고 차감: ${currentPhysicalStock}개 → ${targetStockQuantity}개 (차감: ${Math.abs(adjustQuantityChange)}개)`)
+          // 0이 아닌 값 입력 시: 입력값만큼 상대값으로 추가/차감
+          adjustQuantityChange = stockQuantity  // 입력값 그대로 사용
+          const finalStock = currentPhysicalStock + stockQuantity
+          adjustReason = `엑셀 일괄 업로드 - 재고 ${stockQuantity > 0 ? '+' : ''}${stockQuantity}개 ${stockQuantity > 0 ? '추가' : '차감'} (${currentPhysicalStock}개 → ${finalStock}개)`
+          
+          if (stockQuantity > 0) {
+            console.log(`🔄 [상대값 추가] ${currentPhysicalStock}개 + ${stockQuantity}개 = ${finalStock}개`)
           } else {
-            adjustReason = `엑셀 일괄 업로드 - 재고 변동 없음 (${targetStockQuantity}개 유지)`
-            console.log(`🔄 [유지] 물리적 재고 변동 없음: ${targetStockQuantity}개`)
+            console.log(`🔄 [상대값 차감] ${currentPhysicalStock}개 ${stockQuantity}개 = ${finalStock}개`)
           }
         }
 
@@ -161,10 +187,10 @@ export async function POST(request: NextRequest) {
           targetOption: color && color !== '-' && size && size !== '-' ? 
             product.inventory_options?.find((opt: any) => opt.color === color && opt.size === size) : null,
           inputStockQuantity: stockQuantity,
-          targetStockQuantity,
           currentPhysicalStock,
-          quantityChange: adjustQuantityChange,
-          adjustType: targetStockQuantity === 0 ? 'ABSOLUTE_ZERO' : (adjustQuantityChange > 0 ? 'ADD' : adjustQuantityChange < 0 ? 'SUBTRACT' : 'NO_CHANGE'),
+          adjustQuantityChange,
+          finalPhysicalStock: stockQuantity === 0 ? 0 : currentPhysicalStock + stockQuantity,
+          adjustType: stockQuantity === 0 ? 'ABSOLUTE_ZERO' : (stockQuantity > 0 ? 'RELATIVE_ADD' : 'RELATIVE_SUBTRACT'),
           productStockQuantity: product.stock_quantity
         })
 
@@ -206,9 +232,11 @@ export async function POST(request: NextRequest) {
           console.log('✅ 재고 변동 이력 기록 완료')
         }
 
-        // 🎯 재고 증가 시 해당 상품의 미출고 주문이 있는지 먼저 체크
-        if (targetStockQuantity > currentPhysicalStock) {
-          console.log(`🔍 미출고 주문 존재 여부 체크: ${product.id}, ${color}, ${size}`)
+        // 🎯 재고 추가 시에만 자동 할당 실행 (양수 입력 시)
+        const shouldAutoAllocate = stockQuantity > 0
+        
+        if (shouldAutoAllocate) {
+          console.log(`🔍 [자동 할당] 재고 추가 감지 (+${stockQuantity}개), 미출고 주문 체크: ${product.id}, ${color}, ${size}`)
           
           // 해당 상품의 미출고 주문이 있는지 확인 (샘플 주문 제외)
           let checkQuery = supabase
@@ -256,7 +284,10 @@ export async function POST(request: NextRequest) {
                   productName: product.name,
                   color: (color && color !== '-') ? color : null,
                   size: (size && size !== '-') ? size : null,
-                  inboundQuantity: targetStockQuantity - currentPhysicalStock,
+                  type: 'auto_allocation',
+                  inboundQuantity: stockQuantity,  // 실제 추가된 수량
+                  previousStock: currentPhysicalStock,
+                  newStock: currentPhysicalStock + stockQuantity,
                   allocations: autoAllocationResult.allocations
                 })
               }
@@ -267,9 +298,12 @@ export async function POST(request: NextRequest) {
         }
         
         // 🎯 재고 차감 또는 0으로 설정 시 재할당 처리
-        if (targetStockQuantity < currentPhysicalStock || targetStockQuantity === 0) {
+        const shouldReallocate = stockQuantity < 0 || stockQuantity === 0
+        
+        if (shouldReallocate) {
+          const finalStock = stockQuantity === 0 ? 0 : currentPhysicalStock + stockQuantity
           console.log(`🔄 재고 차감/0설정으로 재할당 시작: ${product.id}, ${color}, ${size}`)
-          console.log(`📊 ${currentPhysicalStock}개 → ${targetStockQuantity}개 (차감: ${currentPhysicalStock - targetStockQuantity}개)`)
+          console.log(`📊 ${currentPhysicalStock}개 → ${finalStock}개 (${stockQuantity === 0 ? '0으로 설정' : `${stockQuantity}개 차감`})`)
           
           const reallocationResult = await reallocateAfterStockReduction(
             supabase, 
@@ -282,6 +316,7 @@ export async function POST(request: NextRequest) {
             console.log(`✅ 재할당 완료: ${reallocationResult.message}`)
             
             // 재할당 결과 저장 (미출고 처리된 정보 포함)
+            const finalStock = stockQuantity === 0 ? 0 : currentPhysicalStock + stockQuantity
             allocationResults.push({
               productCode,
               productName: product.name,
@@ -289,7 +324,8 @@ export async function POST(request: NextRequest) {
               size: (size && size !== '-') ? size : null,
               type: 'reallocation',
               previousStock: currentPhysicalStock,
-              newStock: targetStockQuantity,
+              newStock: finalStock,
+              changeAmount: stockQuantity,
               totalAllocated: reallocationResult.totalAllocated || 0,
               affectedOrders: reallocationResult.affectedOrders || 0,
               reallocations: reallocationResult.reallocations || []

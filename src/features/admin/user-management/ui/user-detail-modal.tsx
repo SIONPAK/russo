@@ -15,6 +15,7 @@ interface UserDetailModalProps {
   onUpdateGrade?: (userId: string, grade: 'premium' | 'general') => void
   onDormantToggle?: (userId: string, isDormant: boolean, reason?: string) => void
   onUpdateCompanyName?: (userId: string, companyName: string) => void
+  onEdit?: () => void
 }
 
 export function UserDetailModal({ 
@@ -28,7 +29,8 @@ export function UserDetailModal({
   onDelete,
   onUpdateGrade,
   onDormantToggle,
-  onUpdateCompanyName
+  onUpdateCompanyName,
+  onEdit
 }: UserDetailModalProps) {
   const [showGradeChange, setShowGradeChange] = useState(false)
   const [editingCompanyName, setEditingCompanyName] = useState(false)
@@ -92,7 +94,18 @@ export function UserDetailModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl border border-gray-100">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-gray-900">회원 상세 정보</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-gray-900">회원 상세 정보</h3>
+            {onEdit && (
+              <Button
+                size="sm"
+                onClick={onEdit}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                정보 수정
+              </Button>
+            )}
+          </div>
           <Button variant="ghost" onClick={onClose} className="text-gray-400 hover:text-gray-600">
             ✕
           </Button>

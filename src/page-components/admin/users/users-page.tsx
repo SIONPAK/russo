@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { UserList } from '@/features/admin/user-management/ui/user-list'
 import { UserDetailModal } from '@/features/admin/user-management/ui/user-detail-modal'
+import { UserEditModal } from '@/features/admin/user-management/ui/user-edit-modal'
 import { useUserManagement } from '@/features/admin/user-management/model/use-user-management'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -20,6 +21,7 @@ export function UsersPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showFilters, setShowFilters] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
 
   const {
     users,
@@ -28,6 +30,7 @@ export function UsersPage() {
     pagination,
     approveUser,
     rejectUser,
+    updateUser,
     updateCustomerGrade,
     deactivateUser,
     activateUser,
@@ -87,6 +90,14 @@ export function UsersPage() {
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage)
+  }
+
+  const handleEditUser = () => {
+    setIsEditModalOpen(true)
+  }
+
+  const handleCloseEditModal = () => {
+    setIsEditModalOpen(false)
   }
 
   const handleExportExcel = async () => {
@@ -361,6 +372,14 @@ export function UsersPage() {
         onUpdateGrade={updateCustomerGrade}
         onDormantToggle={toggleDormant}
         onUpdateCompanyName={updateCompanyName}
+        onEdit={handleEditUser}
+      />
+
+      <UserEditModal
+        user={selectedUser}
+        isOpen={isEditModalOpen}
+        onClose={handleCloseEditModal}
+        onSave={updateUser}
       />
     </div>
   )
