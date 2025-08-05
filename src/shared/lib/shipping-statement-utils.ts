@@ -167,11 +167,15 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     environment: process.env.NODE_ENV
   })
 
-  // 상품 개수에 따른 템플릿 선택
-  const templateFileName = items.length > 10 ? '루소_영수증_10건이상.xlsx' : '루소_영수증.xlsx'
+  // 배송비를 제외한 실제 상품 개수로 템플릿 선택
+  const actualProductItems = items.filter(item => item.productName !== '배송비')
+  const actualProductCount = actualProductItems.length
+  const templateFileName = actualProductCount > 10 ? '루소_영수증_10건이상.xlsx' : '루소_영수증.xlsx'
   const templatePath = path.join(process.cwd(), `public/templates/${templateFileName}`)
   console.log('📁 템플릿 선택:', {
-    itemCount: items.length,
+    totalItemCount: items.length,
+    actualProductCount,
+    hasShippingFee: items.length > actualProductCount,
     templateFileName,
     templatePath
   })
@@ -716,7 +720,11 @@ export async function generateConfirmedStatement(data: ConfirmedStatementData): 
       originalItems: processedItems.length,
       finalItems: itemsWithShipping.length,
       shippingFee: data.shipping_fee,
-      totalAmount: data.total_amount
+      totalAmount: data.total_amount,
+      itemsWithShipping: itemsWithShipping.map(item => ({
+        productName: item.productName,
+        isShipping: item.productName === '배송비'
+      }))
     })
     
     return processTemplate(
