@@ -951,11 +951,13 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           </tr>
     `
     
-    // 출고 상품 목록 (조건부 확장: 10건 이하는 9개까지, 10건 이상은 29개까지)
-    const maxItems = shippedItems.length > 10 ? 29 : 9
-    const maxTotalRows = shippedItems.length > 10 ? 30 : 10
+    // 배송비를 포함한 총 항목 수로 템플릿 선택 (배송비가 있으면 +1)
+    const hasShippingFee = shippingFee > 0 && order.tracking_number !== '미출고'
+    const totalItemCount = shippedItems.length + (hasShippingFee ? 1 : 0)
+    const maxItems = totalItemCount > 10 ? 29 : 9
+    const maxTotalRows = totalItemCount > 10 ? 30 : 10
     
-    console.log(`📄 PDF 템플릿 확장: 상품 ${shippedItems.length}개, 최대표시 ${maxItems}개, 총행수 ${maxTotalRows}행`)
+    console.log(`📄 PDF 템플릿 확장: 상품 ${shippedItems.length}개 + 배송비 ${hasShippingFee ? 1 : 0}개 = 총 ${totalItemCount}개, 최대표시 ${maxItems}개, 총행수 ${maxTotalRows}행`)
     
     let itemRowCount = 0
     for (let idx = 0; idx < shippedItems.length && idx < maxItems; idx++) {
