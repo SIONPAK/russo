@@ -40,52 +40,33 @@ export function OrdersPage() {
     refreshOrders
   } = useOrderManagement()
 
-  // 오후 3시 기준 날짜 계산 (주말 주문 월요일 처리 포함)
-  const getDateBasedOn3PM = () => {
-    // 한국 시간으로 현재 시간 가져오기
+
+
+  const [selectedDate, setSelectedDate] = useState(() => {
+    // 3PM 기준으로 날짜 설정 (working_date 기준)
     const now = new Date()
     const koreaTimeString = now.toLocaleString("en-US", {timeZone: "Asia/Seoul"})
     const koreaTime = new Date(koreaTimeString)
-    const hour = koreaTime.getHours()
-    const dayOfWeek = koreaTime.getDay() // 0=일요일, 1=월요일, ..., 6=토요일
+    const currentHour = koreaTime.getHours()
     
-    // 날짜 계산을 위한 기준 날짜 설정
-    const targetDate = new Date(koreaTime)
+    let targetDate = koreaTime
     
-    // 주말 처리 로직
-    if (dayOfWeek === 1) { // 월요일인 경우
-      // 월요일에는 주말 주문들(토~일)을 모두 표시
-      // 특별한 처리 없이 월요일 그대로 사용
-      console.log('📅 월요일 - 주말 주문 포함하여 표시')
-    } else if (dayOfWeek === 6) { // 토요일인 경우
-      if (hour >= 15) {
-        // 토요일 오후 3시 이후는 월요일로 이동
-        targetDate.setDate(targetDate.getDate() + 2) // 토요일 + 2일 = 월요일
-        console.log('📅 토요일 오후 3시 이후 - 월요일로 설정')
-      }
-    } else if (dayOfWeek === 0) { // 일요일인 경우
-      // 일요일은 항상 월요일로 이동
-      targetDate.setDate(targetDate.getDate() + 1) // 일요일 + 1일 = 월요일
-      console.log('📅 일요일 - 월요일로 설정')
-    } else {
-      // 평일 (화~금)의 경우 기존 로직 적용
-      if (hour >= 15) {
-        targetDate.setDate(targetDate.getDate() + 1)
-        console.log('📅 평일 오후 3시 이후 - 다음날로 설정')
-      }
+    // 15:00 이후면 다음날로 설정
+    if (currentHour >= 15) {
+      targetDate = new Date(koreaTime.getTime() + (24 * 60 * 60 * 1000))
     }
     
-    // YYYY-MM-DD 형식으로 반환
-    const year = targetDate.getFullYear()
-    const month = String(targetDate.getMonth() + 1).padStart(2, '0')
-    const day = String(targetDate.getDate()).padStart(2, '0')
-    const result = `${year}-${month}-${day}`
+    const result = targetDate.toISOString().split('T')[0]
+    
+    console.log('📅 selectedDate 초기값 (3PM 기준):', {
+      now: now.toISOString(),
+      koreaTime: koreaTime.toISOString(),
+      currentHour,
+      targetDate: targetDate.toISOString(),
+      result
+    })
     
     return result
-  }
-
-  const [selectedDate, setSelectedDate] = useState(() => {
-    return getDateBasedOn3PM()
   })
 
   const [sortBy, setSortBy] = useState<'company_name' | 'created_at' | 'total_amount'>('created_at')
@@ -659,12 +640,12 @@ export function OrdersPage() {
     }
   }
 
-  // 날짜 변경 시 오후 3시 기준 조회 및 자동 할당
+  // 날짜 변경 시 working_date 기준 조회 및 자동 할당
   const handleDateChange = async (date: string) => {
     setSelectedDate(date)
     updateFilters({ 
       startDate: date,
-      is_3pm_based: true,
+      endDate: date,  // 같은 날짜로 설정
       status: 'not_shipped'  // 출고완료 제외하고 조회
     })
     

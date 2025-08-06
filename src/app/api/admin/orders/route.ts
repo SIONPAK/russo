@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'all'
     const startDate = searchParams.get('startDate') || ''
     const endDate = searchParams.get('endDate') || ''
-    const is3PMBased = searchParams.get('is_3pm_based') === 'true'
     const allocationStatus = searchParams.get('allocation_status') || 'all'
     const sortBy = searchParams.get('sort_by') || 'created_at'
     const sortOrder = searchParams.get('sort_order') || 'asc'
@@ -99,39 +98,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 날짜 필터 (UTC 저장된 시간을 한국 시간 기준으로 필터링)
+    // 날짜 필터 (working_date 기준으로 필터링)
     if (startDate) {
-      if (is3PMBased) {
-        // 오후 3시 기준 조회: 프론트엔드에서 이미 UTC로 변환된 시간 사용
-        query = query.gte('created_at', startDate)
-        if (endDate) {
-          query = query.lte('created_at', endDate)
-        }
-        
-        
-      } else {
-        // 일반 날짜 필터 (00:00 ~ 23:59 한국 시간)
-        const selectedDate = new Date(startDate)
-        
-        // 한국 00:00 = UTC 15:00 (전날)
-        const startTimeUTC = new Date(Date.UTC(
-          selectedDate.getFullYear(), 
-          selectedDate.getMonth(), 
-          selectedDate.getDate() - 1, 
-          15, 0, 0
-        ))
-        
-        // 한국 23:59 = UTC 14:59 (당일)
-        const endTimeUTC = new Date(Date.UTC(
-          selectedDate.getFullYear(), 
-          selectedDate.getMonth(), 
-          selectedDate.getDate(), 
-          14, 59, 59
-        ))
-        
-        query = query.gte('created_at', startTimeUTC.toISOString())
-        query = query.lte('created_at', endTimeUTC.toISOString())
-        
+      // working_date는 DATE 타입이므로 YYYY-MM-DD 형식으로 직접 비교
+      query = query.gte('working_date', startDate)
+      if (endDate) {
+        query = query.lte('working_date', endDate)
       }
     }
 
@@ -213,30 +185,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 날짜 필터 적용 (통계에도 동일하게)
+    // 날짜 필터 적용 (통계에도 동일하게 - working_date 기준)
     if (startDate) {
-      if (is3PMBased) {
-        statsQuery = statsQuery.gte('created_at', startDate)
-        if (endDate) {
-          statsQuery = statsQuery.lte('created_at', endDate)
-        }
-      } else {
-        const selectedDate = new Date(startDate)
-        const startTimeUTC = new Date(Date.UTC(
-          selectedDate.getFullYear(), 
-          selectedDate.getMonth(), 
-          selectedDate.getDate() - 1, 
-          15, 0, 0
-        ))
-        const endTimeUTC = new Date(Date.UTC(
-          selectedDate.getFullYear(), 
-          selectedDate.getMonth(), 
-          selectedDate.getDate(), 
-          14, 59, 59
-        ))
-        
-        statsQuery = statsQuery.gte('created_at', startTimeUTC.toISOString())
-        statsQuery = statsQuery.lte('created_at', endTimeUTC.toISOString())
+      statsQuery = statsQuery.gte('working_date', startDate)
+      if (endDate) {
+        statsQuery = statsQuery.lte('working_date', endDate)
       }
     }
 

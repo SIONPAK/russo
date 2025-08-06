@@ -144,12 +144,12 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
-    // 날짜 범위 필터
+    // 날짜 범위 필터 (working_date 기준)
     if (startDate) {
-      query = query.gte('created_at', startDate)
+      query = query.gte('working_date', startDate)
     }
     if (endDate) {
-      query = query.lte('created_at', endDate)
+      query = query.lte('working_date', endDate)
     }
 
     // 페이지네이션 적용
@@ -333,6 +333,8 @@ export async function POST(request: NextRequest) {
     
     const orderNumber = `${dateStr}-${timeStr}-${randomStr}`
 
+    // working_date는 SQL 트리거에서 자동 계산됨
+
     console.log('생성할 주문 데이터:', {
       user_id: userId,
       order_number: orderNumber,
@@ -347,7 +349,7 @@ export async function POST(request: NextRequest) {
       notes: notes || null
     })
 
-    // 주문 생성
+    // 주문 생성 (working_date는 SQL 트리거에서 자동 계산)
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
