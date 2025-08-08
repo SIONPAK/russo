@@ -1026,9 +1026,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
     
     // "미출고" 건은 합계 금액도 0원 처리
     const isUnshipped = order.tracking_number === '미출고'
-    // 하단 합계: 공급가액은 상품만, 세액은 상품의 세액만 (배송비는 부가세 없음)
-    const totalSupplyAmount = isUnshipped ? 0 : statementData.amounts.shippedTotal + shippingFee
-    const totalTaxAmount = isUnshipped ? 0 : Math.floor(statementData.amounts.shippedTotal * 0.1)
+    // 배송비 분리 계산
+    const shippingSupply = shippingFee > 0 ? Math.round(shippingFee / 1.1) : 0
+    const shippingTax = shippingFee > 0 ? shippingFee - shippingSupply : 0
+    // 하단 합계: 공급가액과 세액에 배송비 분리 금액 포함
+    const totalSupplyAmount = isUnshipped ? 0 : statementData.amounts.shippedTotal + shippingSupply
+    const totalTaxAmount = isUnshipped ? 0 : Math.floor(statementData.amounts.shippedTotal * 0.1) + shippingTax
     
     htmlContent += `
           <tr class="total-row">
