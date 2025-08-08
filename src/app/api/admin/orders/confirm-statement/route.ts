@@ -128,6 +128,14 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // 🔍 디버깅: color/size 데이터 확인
+        console.log('🔍 shippedItems color/size 데이터:', shippedItems.map((item: any) => ({
+          product_name: item.product_name,
+          color: item.color,
+          size: item.size,
+          shipped_quantity: item.shipped_quantity
+        })))
+
         // 실제 출고 수량 및 금액 계산
         const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => 
           sum + item.shipped_quantity, 0

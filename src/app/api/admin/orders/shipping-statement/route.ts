@@ -974,7 +974,7 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <td class="col1 row-10 empty-cell"></td>
           <td class="col2 row-10 text-center">${idx + 1}</td>
           <td class="col3 row-10 korean-text">${item.products?.name || item.product_name}</td>
-          <td class="col4 row-10 text-center korean-text">${item.color || ''}</td>
+          <td class="col4 row-10 text-center korean-text">${item.color || ''}${item.size && item.size !== '' && item.size !== '-' ? ` / ${item.size}` : ''}</td>
           <td class="col5 row-10 text-center">${quantity}</td>
           <td class="col6 row-10 text-center">${unitPrice.toLocaleString()}</td>
           <td class="col6 row-10 text-center">${supplyAmount.toLocaleString()}</td>
@@ -985,9 +985,12 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
       itemRowCount++
     }
     
-    // 배송비 행 추가 (배송비가 있을 때만)
+    // 배송비 행 추가 (배송비가 있을 때만) - 3000원 기준으로 공급가액과 부가세로 분리
     const isOrderUnshipped = order.tracking_number === '미출고'
     if (shippingFee > 0 && !isOrderUnshipped) {
+      const shippingSupply = Math.round(shippingFee / 1.1)
+      const shippingTax = shippingFee - shippingSupply
+      
       htmlContent += `
         <tr>
           <td class="col1 row-10 empty-cell"></td>
@@ -996,8 +999,8 @@ async function generateMultipleStatementsPDF(orders: any[]): Promise<Buffer> {
           <td class="col4 row-10 text-center korean-text">-</td>
           <td class="col5 row-10 text-center">1</td>
           <td class="col6 row-10 text-center">${shippingFee.toLocaleString()}</td>
-          <td class="col6 row-10 text-center">${shippingFee.toLocaleString()}</td>
-          <td class="col6 row-10 text-center">0</td>
+          <td class="col6 row-10 text-center">${shippingSupply.toLocaleString()}</td>
+          <td class="col6 row-10 text-center">${shippingTax.toLocaleString()}</td>
           <td class="col4 row-10 empty-cell"></td>
         </tr>
       `

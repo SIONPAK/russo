@@ -209,8 +209,10 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     }} = {}
     
     items.forEach(item => {
-      const color = item.color || '기본'
-      const size = item.size || ''
+      // color와 size가 null, undefined, 빈 문자열인 경우 처리
+      const color = item.color && item.color !== 'null' && item.color !== '' ? item.color : '기본'
+      const size = item.size && item.size !== 'null' && item.size !== '' ? item.size : ''
+      
       // 색상과 사이즈를 조합한 키 생성
       const key = `${item.productName}_${color}_${size}`
       
@@ -222,19 +224,25 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
         grouped[key].totalPrice += additionalPrice
       } else {
         const totalPrice = item.totalPrice || (item.unitPrice * item.quantity)
-        const supplyAmount = totalPrice
-        // 배송비는 부가세 포함으로 분리, 상품은 원래대로
-        const taxAmount = item.productName === '배송비' ? 
-          totalPrice - Math.round(totalPrice / 1.1) : 
-          Math.floor(supplyAmount * 0.1)
+        let supplyAmount = totalPrice
+        let taxAmount = Math.floor(supplyAmount * 0.1)
+        
+        // 배송비는 3000원 기준으로 공급가액과 부가세로 분리
+        if (item.productName === '배송비') {
+          supplyAmount = Math.round(totalPrice / 1.1)
+          taxAmount = totalPrice - supplyAmount
+        }
+        
         // 수량 = 공급가액 / 단가 (0으로 나누기 방지)
         const calculatedQuantity = item.unitPrice === 0 ? 0 : totalPrice / item.unitPrice
         
         // 규격/색상 컬럼용 텍스트 생성
         let spec = color
-        if (size && size !== '' && size !== '-') {
+        if (size && size !== '' && size !== '-' && size !== 'FREE' && size !== 'null') {
           spec += ` / ${size}`
         }
+        
+        console.log('🔍 spec 생성:', { color, size, spec, productName: item.productName })
         
         grouped[key] = {
           productName: item.productName,
@@ -253,7 +261,7 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     // 합계 재계산
     Object.keys(grouped).forEach(key => {
       const item = grouped[key]
-      item.supplyAmount = item.totalPrice
+      
       // 배송비만 부가세 포함으로 분리, 상품은 원래대로
       if (item.productName === '배송비') {
         item.supplyAmount = Math.round(item.totalPrice / 1.1)
@@ -261,6 +269,7 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
         // 수량 재계산 (총가격 / 단가, 0으로 나누기 방지)
         item.totalQuantity = item.unitPrice === 0 ? 0 : item.totalPrice / item.unitPrice
       } else {
+        item.supplyAmount = item.totalPrice
         item.taxAmount = Math.floor(item.supplyAmount * 0.1)
         // 수량 재계산 (공급가액 / 단가, 0으로 나누기 방지)
         item.totalQuantity = item.unitPrice === 0 ? 0 : item.supplyAmount / item.unitPrice
@@ -396,9 +405,24 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
       }
       
       // 규격/색상 (D열) - 색상과 사이즈 조합, 중앙정렬, UTF-8 명시
+      let specText = item.spec
+      if (!specText) {
+        // spec이 없으면 color와 size를 조합해서 생성
+        if (item.productName === '배송비') {
+          specText = '-'
+        } else {
+          specText = item.color || '기본'
+          if (item.size && item.size !== '' && item.size !== '-' && item.size !== 'FREE' && item.size !== 'null') {
+            specText += ` / ${item.size}`
+          }
+        }
+      }
+      
+      console.log('🔍 Excel에 쓰는 spec:', { productName: item.productName, color: item.color, size: item.size, specText })
+      
       worksheet[`D${row}`] = {
         t: 's',
-        v: String(item.spec || item.color),
+        v: String(specText),
         s: {
           alignment: { horizontal: 'center' },
           font: { name: 'Arial Unicode MS' }
@@ -558,7 +582,7 @@ export async function generateShippingStatement(data: ShippingStatementData): Pr
       taxAmount: item.taxAmount       // API에서 계산된 값 사용
     }))
 
-    // 배송비 추가 (부가세 포함으로 분리)
+    // 배송비 추가 (3000원 기준으로 공급가액과 부가세로 분리)
     const itemsWithShipping = [...processedItems]
     if (data.shippingFee > 0) {
       const shippingSupply = Math.round(data.shippingFee / 1.1)
@@ -680,24 +704,31 @@ export async function generateConfirmedStatement(data: ConfirmedStatementData): 
       size: item.size
     })))
     
-    const processedItems = data.items.map(item => ({
-      productName: item.product_name,
-      color: item.color,
-      size: item.size,
-      quantity: item.shipped_quantity, // 출고 수량 사용
-      unitPrice: item.unit_price,
-      totalPrice: item.total_price,
-      supplyAmount: item.total_price,
-      taxAmount: Math.floor(item.total_price * 0.1)
-    }))
+    const processedItems = data.items.map(item => {
+      // color와 size가 null, undefined, 빈 문자열인 경우 처리
+      const color = item.color && item.color !== 'null' && item.color !== '' ? item.color : '기본'
+      const size = item.size && item.size !== 'null' && item.size !== '' ? item.size : ''
+      
+      return {
+        productName: item.product_name,
+        color,
+        size,
+        quantity: item.shipped_quantity, // 출고 수량 사용
+        unitPrice: item.unit_price,
+        totalPrice: item.total_price,
+        supplyAmount: item.total_price,
+        taxAmount: Math.floor(item.total_price * 0.1)
+      }
+    })
     
     console.log('🔍 확정명세서 처리된 아이템 데이터:', processedItems.map(item => ({
       productName: item.productName,
       color: item.color,
-      size: item.size
+      size: item.size,
+      spec: `${item.color}${item.size && item.size !== '' && item.size !== '-' && item.size !== 'FREE' ? ` / ${item.size}` : ''}`
     })))
 
-    // 배송비 추가 (부가세 포함으로 분리)
+    // 배송비 추가 (3000원 기준으로 공급가액과 부가세로 분리)
     const itemsWithShipping = [...processedItems]
     if (data.shipping_fee > 0) {
       const shippingSupply = Math.round(data.shipping_fee / 1.1)
