@@ -237,8 +237,8 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
         const calculatedQuantity = item.unitPrice === 0 ? 0 : totalPrice / item.unitPrice
         
         // 규격/색상 컬럼용 텍스트 생성
-        let spec = color
-        if (size && size !== '' && size !== '-' && size !== 'FREE' && size !== 'null') {
+        let spec = color || '기본'
+        if (size && size !== '' && size !== '-' && size !== 'null' && size !== 'undefined' && size !== '기본') {
           spec += ` / ${size}`
         }
         
@@ -283,7 +283,11 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   console.log('🔍 그룹화 전 원본 아이템들:', items.map(item => ({
     productName: item.productName,
     color: item.color,
-    size: item.size
+    size: item.size,
+    sizeType: typeof item.size,
+    sizeLength: item.size ? item.size.length : 0,
+    colorType: typeof item.color,
+    colorLength: item.color ? item.color.length : 0
   })))
   
   console.log('🔍 그룹화된 아이템:', groupedItems.map(item => ({
@@ -291,7 +295,9 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
     color: item.color,
     size: item.size,
     spec: item.spec,
-    quantity: item.totalQuantity
+    quantity: item.totalQuantity,
+    sizeType: typeof item.size,
+    sizeLength: item.size ? item.size.length : 0
   })))
 
   // 제목 및 병합 설정
@@ -412,7 +418,7 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
           specText = '-'
         } else {
           specText = item.color || '기본'
-          if (item.size && item.size !== '' && item.size !== '-' && item.size !== 'FREE' && item.size !== 'null') {
+          if (item.size && item.size !== '' && item.size !== '-' && item.size !== 'null' && item.size !== 'undefined' && item.size !== '기본') {
             specText += ` / ${item.size}`
           }
         }

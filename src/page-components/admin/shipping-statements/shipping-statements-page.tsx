@@ -45,6 +45,7 @@ export default function ShippingStatementsPage() {
   const [statements, setStatements] = useState<ShippingStatement[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStatements, setSelectedStatements] = useState<string[]>([])
+  const [expandedStatements, setExpandedStatements] = useState<string[]>([])
   const [filters, setFilters] = useState({
     startDate: (() => {
       const date = new Date()
@@ -300,6 +301,14 @@ export default function ShippingStatementsPage() {
   const toggleAllSelection = () => {
     setSelectedStatements(prev => 
       prev.length === statements.length ? [] : statements.map(s => s.id)
+    )
+  }
+
+  const toggleStatementExpansion = (statementId: string) => {
+    setExpandedStatements(prev => 
+      prev.includes(statementId) 
+        ? prev.filter(id => id !== statementId)
+        : [...prev, statementId]
     )
   }
 

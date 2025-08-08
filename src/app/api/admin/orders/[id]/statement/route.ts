@@ -192,6 +192,12 @@ export async function GET(
         
         console.log('🔍 아이템 수량 확인:', {
           productName: item.product_name,
+          color: item.color,
+          size: item.size,
+          colorType: typeof item.color,
+          sizeType: typeof item.size,
+          colorLength: item.color ? item.color.length : 0,
+          sizeLength: item.size ? item.size.length : 0,
           shipped_quantity: item.shipped_quantity,
           quantity: item.quantity,
           actualQuantity,
