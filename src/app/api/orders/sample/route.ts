@@ -314,9 +314,11 @@ export async function GET(request: NextRequest) {
           statusColor = 'gray'
       }
 
-      // 만료일 계산
+      // 만료일 계산 (회수완료 상태에서는 계산하지 않음)
       const outgoingDate = sample.outgoing_date ? new Date(sample.outgoing_date) : null
-              const dueDate = outgoingDate ? new Date(outgoingDate.getTime() + 21 * 24 * 60 * 60 * 1000) : null
+      const dueDate = (outgoingDate && sample.status !== 'returned' && sample.status !== 'charged') 
+        ? new Date(outgoingDate.getTime() + 21 * 24 * 60 * 60 * 1000) 
+        : null
 
       return {
         ...sample,

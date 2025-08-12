@@ -139,8 +139,13 @@ export function SamplesPage() {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState<GroupedSampleStatement | null>(null)
 
-  // D-21 날짜 계산 함수
-  const calculateDaysRemaining = (createdAt: string) => {
+  // D-21 날짜 계산 함수 (회수완료 상태에서는 계산하지 않음)
+  const calculateDaysRemaining = (createdAt: string, status: string) => {
+    // 회수완료 상태에서는 D-day 계산하지 않음
+    if (status === 'returned' || status === 'charged') {
+      return { daysRemaining: null, isOverdue: false }
+    }
+    
     const createdDate = new Date(createdAt)
     const returnDeadline = new Date(createdDate.getTime() + (21 * 24 * 60 * 60 * 1000)) // 21일 후
     const today = new Date()

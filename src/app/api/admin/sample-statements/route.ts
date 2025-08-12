@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
 
     // 샘플 데이터 처리
     const processedSamples = samplesData.map(sample => {
-      // 만료일 계산
+      // 만료일 계산 (회수완료 상태에서는 D-day 계산하지 않음)
       const outgoingDate = sample.outgoing_date ? new Date(sample.outgoing_date) : null
       const dueDate = outgoingDate ? new Date(outgoingDate.getTime() + 21 * 24 * 60 * 60 * 1000) : null
       const now = new Date()
@@ -82,7 +82,8 @@ export async function GET(request: NextRequest) {
       let daysRemaining = null
       let isOverdue = false
       
-      if (dueDate) {
+      // 회수완료 상태가 아닐 때만 D-day 계산
+      if (dueDate && sample.status !== 'returned' && sample.status !== 'charged') {
         const diffTime = dueDate.getTime() - now.getTime()
         daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
         isOverdue = daysRemaining < 0 && sample.status === 'shipped'

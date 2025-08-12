@@ -58,19 +58,20 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 샘플 데이터에 날짜 계산 추가
+    // 샘플 데이터에 날짜 계산 추가 (회수완료 상태에서는 D-day 계산하지 않음)
     const samplesWithDays = samples?.map(sample => {
       let daysRemaining = null
       let daysPassed = null
       let isOverdue = false
 
-      if (sample.outgoing_date) {
+      // 회수완료 상태가 아닐 때만 D-day 계산
+      if (sample.outgoing_date && sample.status !== 'returned' && sample.status !== 'charged') {
         const outgoingDate = new Date(sample.outgoing_date)
         const now = new Date()
         const diffTime = now.getTime() - outgoingDate.getTime()
         daysPassed = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
         daysRemaining = 21 - daysPassed
-        isOverdue = daysRemaining < 0 && sample.status === 'pending'
+        isOverdue = daysRemaining < 0 && sample.status === 'shipped'
       }
 
       return {

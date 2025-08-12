@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       const now = new Date()
       const koreaTime = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
       
-      // 현재 업무일 범위 계산 (전일 15:00 ~ 당일 14:59)
+      // 현재 업무일 범위 계산 (전일 15:00 ~ 당일 14:59, 주말 처리 포함)
       let workdayStart: Date
       let workdayEnd: Date
       
@@ -58,6 +58,34 @@ export async function POST(request: NextRequest) {
         workdayEnd = new Date(koreaTime)
         workdayEnd.setHours(14, 59, 59, 999)
       }
+      
+      // 주말 처리: 금요일 오후 3시 이후부터 다음 월요일로
+      const workdayStartDay = workdayStart.getDay()
+      const workdayEndDay = workdayEnd.getDay()
+      
+      if (workdayStartDay === 0) { // 일요일
+        // 다음 월요일로 이동
+        workdayStart.setDate(workdayStart.getDate() + 1)
+        workdayEnd.setDate(workdayEnd.getDate() + 1)
+      } else if (workdayStartDay === 6) { // 토요일
+        // 다음 월요일로 이동
+        workdayStart.setDate(workdayStart.getDate() + 2)
+        workdayEnd.setDate(workdayEnd.getDate() + 2)
+      } else if (workdayStartDay === 5) { // 금요일
+        // 금요일 오후 3시 이후면 다음 월요일로
+        if (koreaTime.getHours() >= 15) {
+          workdayStart.setDate(workdayStart.getDate() + 3) // 금요일 + 3일 = 월요일
+          workdayEnd.setDate(workdayEnd.getDate() + 3)
+        }
+      }
+
+      console.log('🔍 발주 제한 확인:', {
+        koreaTime: koreaTime.toISOString(),
+        workdayStart: workdayStart.toISOString(),
+        workdayEnd: workdayEnd.toISOString(),
+        workdayStartDay,
+        workdayEndDay
+      })
 
       // 현재 업무일 범위 내에서 해당 사용자의 발주 주문 확인
       const { data: existingOrders, error: existingOrdersError } = await supabase
@@ -98,13 +126,16 @@ export async function POST(request: NextRequest) {
       return sum + supplyAmount + vat
     }, 0)
 
+    // working_date는 트리거가 자동으로 계산하므로 수동 설정하지 않음
+    console.log('📅 발주서 working_date는 트리거가 자동 계산합니다.')
+
     // 주문 타입 결정
     let orderType = 'purchase'
     if (positiveItems.length === 0 && negativeItems.length > 0) {
       orderType = 'return_only'
     }
 
-    // 주문 생성
+    // 주문 생성 (working_date는 트리거가 자동으로 설정)
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({

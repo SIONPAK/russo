@@ -333,32 +333,8 @@ export async function POST(request: NextRequest) {
     
     const orderNumber = `${dateStr}-${timeStr}-${randomStr}`
 
-    // working_date 계산 (15:00 기준, UTC 기준으로 한국시간 계산)
-    const currentTime = new Date() // UTC 시간
-    const koreaTime = new Date(currentTime.getTime() + (9 * 60 * 60 * 1000)) // UTC + 9 = 한국시간
-    const currentHour = koreaTime.getHours()
-    
-    // UTC 기준으로 날짜 계산 (서버 저장 기준)
-    const utcYear = currentTime.getUTCFullYear()
-    const utcMonth = String(currentTime.getUTCMonth() + 1).padStart(2, '0')
-    const utcDay = String(currentTime.getUTCDate()).padStart(2, '0')
-    let workingDate = `${utcYear}-${utcMonth}-${utcDay}`
-    
-    if (currentHour >= 15) {
-      // 오후 3시 이후: 다음날 날짜 (UTC 기준)
-      const tomorrowUTC = new Date(currentTime.getTime() + (24 * 60 * 60 * 1000))
-      const tomorrowYear = tomorrowUTC.getUTCFullYear()
-      const tomorrowMonth = String(tomorrowUTC.getUTCMonth() + 1).padStart(2, '0')
-      const tomorrowDay = String(tomorrowUTC.getUTCDate()).padStart(2, '0')
-      workingDate = `${tomorrowYear}-${tomorrowMonth}-${tomorrowDay}`
-    }
-
-    console.log('📅 working_date 계산:', {
-      utcTime: currentTime.toISOString(),
-      koreaTime: koreaTime.toISOString(),
-      currentHour,
-      workingDate
-    })
+    // working_date는 트리거가 자동으로 계산하므로 수동 설정하지 않음
+    console.log('📅 working_date는 트리거가 자동 계산합니다.')
 
     console.log('생성할 주문 데이터:', {
       user_id: userId,
@@ -367,7 +343,7 @@ export async function POST(request: NextRequest) {
       total_amount: finalTotalAmount,
       shipping_fee: finalShippingFee,
       status: 'pending',
-      working_date: workingDate,
+      working_date: '트리거가 자동 계산',
       shipping_name: shippingInfo.name,
       shipping_phone: shippingInfo.phone,
       shipping_address: shippingInfo.address,
@@ -375,7 +351,7 @@ export async function POST(request: NextRequest) {
       notes: notes || null
     })
 
-    // 주문 생성
+    // 주문 생성 (working_date는 트리거가 자동으로 설정)
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -385,7 +361,6 @@ export async function POST(request: NextRequest) {
         total_amount: finalTotalAmount,
         shipping_fee: finalShippingFee,
         status: 'pending',
-        working_date: workingDate,
         shipping_name: shippingInfo.name,
         shipping_phone: shippingInfo.phone,
         shipping_address: shippingInfo.address,
