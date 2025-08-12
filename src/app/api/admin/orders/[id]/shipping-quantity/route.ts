@@ -54,6 +54,33 @@ export async function PUT(
     const results = await Promise.all(updatePromises)
     
 
+    // 🔍 현재 주문 상태 확인
+    const { data: currentOrder, error: orderStatusError } = await supabase
+      .from('orders')
+      .select('status')
+      .eq('id', id)
+      .single()
+
+    if (orderStatusError) {
+      console.error('주문 상태 조회 오류:', orderStatusError)
+      return NextResponse.json({ success: false, error: '주문 상태 조회에 실패했습니다.' }, { status: 500 })
+    }
+
+    // 🚫 이미 출고완료된 주문은 상태 변경하지 않음
+    if (currentOrder.status === 'shipped' || currentOrder.status === 'delivered' || currentOrder.status === 'completed') {
+      console.log(`⏭️ 이미 출고완료된 주문 상태 변경 스킵: ${id} (현재 상태: ${currentOrder.status})`)
+      
+      return NextResponse.json({
+        success: true,
+        message: '출고 수량이 성공적으로 업데이트되었습니다. (주문 상태는 변경되지 않음)',
+        data: {
+          updatedItems: results.length,
+          orderStatus: currentOrder.status,
+          statusChangeSkipped: true
+        }
+      })
+    }
+
     // 전체 출고 수량 확인하여 주문 상태 업데이트
     const { data: updatedOrderItems, error: itemsError } = await supabase
       .from('order_items')

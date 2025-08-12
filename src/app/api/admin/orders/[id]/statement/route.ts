@@ -115,21 +115,36 @@ export async function GET(
         }, { status: 500 })
       }
 
-      // 개별 다운로드 시에도 주문 상태를 "작업중"으로 변경
-      console.log('🔄 개별 명세서 다운로드 - 주문 상태 업데이트 시작:', { orderId: id, status: 'confirmed' })
-      const { data: updateData, error: updateError } = await supabase
+      // 🔍 현재 주문 상태 확인
+      const { data: currentOrder, error: currentError } = await supabase
         .from('orders')
-        .update({ 
-          status: 'confirmed',
-          updated_at: new Date().toISOString()
-        })
+        .select('status')
         .eq('id', id)
-        .select()
-      
-      if (updateError) {
-        console.error('❌ 주문 상태 업데이트 실패:', updateError)
+        .single()
+
+      if (currentError) {
+        console.error('❌ 현재 주문 상태 조회 실패:', currentError)
       } else {
-        console.log('✅ 주문 상태 업데이트 성공:', updateData)
+        // 🚫 이미 출고완료된 주문은 상태 변경하지 않음
+        if (['shipped', 'delivered', 'completed'].includes(currentOrder.status)) {
+          console.log(`⏭️ 이미 출고완료된 주문 상태 변경 스킵: ${id} (현재 상태: ${currentOrder.status})`)
+        } else {
+          console.log('🔄 개별 명세서 다운로드 - 주문 상태 업데이트 시작:', { orderId: id, status: 'confirmed' })
+          const { data: updateData, error: updateError } = await supabase
+            .from('orders')
+            .update({ 
+              status: 'confirmed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', id)
+            .select()
+          
+          if (updateError) {
+            console.error('❌ 주문 상태 업데이트 실패:', updateError)
+          } else {
+            console.log('✅ 주문 상태 업데이트 성공:', updateData)
+          }
+        }
       }
 
     } catch (error) {

@@ -101,25 +101,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '주문을 찾을 수 없습니다.' }, { status: 404 })
     }
     
-    // PDF 다운로드 시 주문 상태를 "작업중"으로 변경
-    console.log('🔄 주문 상태 업데이트 시작:', { orderIds, status: 'confirmed' })
-    const { data: updateData, error: updateError } = await supabase
+    // 🔍 현재 주문 상태들 확인
+    const { data: currentOrders, error: currentError } = await supabase
       .from('orders')
-      .update({ 
-        status: 'confirmed',
-        updated_at: new Date().toISOString()
-      })
+      .select('id, status')
       .in('id', orderIds)
-      .select()
-    
-    if (updateError) {
-      console.error('❌ 주문 상태 업데이트 실패:', updateError)
-      // 상태 업데이트 실패해도 다운로드는 계속 진행
+
+    if (currentError) {
+      console.error('❌ 현재 주문 상태 조회 실패:', currentError)
     } else {
-      console.log('✅ 주문 상태 업데이트 성공:', { 
-        updatedCount: updateData?.length || 0,
-        updatedOrders: updateData?.map(order => ({ id: order.id, status: order.status })) || []
-      })
+      // 🚫 이미 출고완료된 주문은 제외하고 상태 변경
+      const ordersToUpdate = currentOrders?.filter(order => 
+        !['shipped', 'delivered', 'completed'].includes(order.status)
+      ) || []
+
+      if (ordersToUpdate.length > 0) {
+        console.log('🔄 주문 상태 업데이트 시작:', { 
+          orderIds: ordersToUpdate.map(o => o.id), 
+          status: 'confirmed',
+          skippedCount: orderIds.length - ordersToUpdate.length
+        })
+        
+        const { data: updateData, error: updateError } = await supabase
+          .from('orders')
+          .update({ 
+            status: 'confirmed',
+            updated_at: new Date().toISOString()
+          })
+          .in('id', ordersToUpdate.map(o => o.id))
+          .select()
+        
+        if (updateError) {
+          console.error('❌ 주문 상태 업데이트 실패:', updateError)
+        } else {
+          console.log('✅ 주문 상태 업데이트 성공:', { 
+            updatedCount: updateData?.length || 0,
+            updatedOrders: updateData?.map(order => ({ id: order.id, status: order.status })) || []
+          })
+        }
+      } else {
+        console.log('⏭️ 모든 주문이 이미 출고완료 상태 - 상태 변경 스킵')
+      }
     }
     
     // 포맷에 따라 다른 파일 생성
@@ -229,24 +251,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '주문을 찾을 수 없습니다.' }, { status: 404 })
     }
     
-    // 개별 다운로드 시에도 주문 상태를 "작업중"으로 변경
-    console.log('🔄 개별 다운로드 - 주문 상태 업데이트 시작:', { orderId, status: 'confirmed' })
-    const { data: updateData, error: updateError } = await supabase
+    // 🔍 현재 주문 상태 확인
+    const { data: currentOrder, error: currentError } = await supabase
       .from('orders')
-      .update({ 
-        status: 'confirmed',
-        updated_at: new Date().toISOString()
-      })
+      .select('status')
       .eq('id', orderId)
-      .select()
-    
-    if (updateError) {
-      console.error('❌ 개별 다운로드 - 주문 상태 업데이트 실패:', updateError)
-      // 상태 업데이트 실패해도 다운로드는 계속 진행
+      .single()
+
+    if (currentError) {
+      console.error('❌ 현재 주문 상태 조회 실패:', currentError)
     } else {
-      console.log('✅ 개별 다운로드 - 주문 상태 업데이트 성공:', { 
-        updatedOrder: updateData?.[0] ? { id: updateData[0].id, status: updateData[0].status } : null
-      })
+      // 🚫 이미 출고완료된 주문은 상태 변경하지 않음
+      if (['shipped', 'delivered', 'completed'].includes(currentOrder.status)) {
+        console.log(`⏭️ 이미 출고완료된 주문 상태 변경 스킵: ${orderId} (현재 상태: ${currentOrder.status})`)
+      } else {
+        console.log('🔄 개별 다운로드 - 주문 상태 업데이트 시작:', { orderId, status: 'confirmed' })
+        const { data: updateData, error: updateError } = await supabase
+          .from('orders')
+          .update({ 
+            status: 'confirmed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', orderId)
+          .select()
+        
+        if (updateError) {
+          console.error('❌ 개별 다운로드 - 주문 상태 업데이트 실패:', updateError)
+        } else {
+          console.log('✅ 개별 다운로드 - 주문 상태 업데이트 성공:', { 
+            updatedOrder: updateData?.[0] ? { id: updateData[0].id, status: updateData[0].status } : null
+          })
+        }
+      }
     }
     
     // 포맷에 따라 다른 파일 생성
