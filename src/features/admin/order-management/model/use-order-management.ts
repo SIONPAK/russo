@@ -194,12 +194,13 @@ export function useOrderManagement() {
     const koreaTimeString = now.toLocaleString("en-US", {timeZone: "Asia/Seoul"})
     const koreaTime = new Date(koreaTimeString)
     const currentHour = koreaTime.getHours()
+    const currentDay = koreaTime.getDay()
     
-    let targetDate = koreaTime
+    let targetDate = new Date(koreaTime)
     
     // 15:00 이후면 다음날로 설정
     if (currentHour >= 15) {
-      targetDate = new Date(koreaTime.getTime() + (24 * 60 * 60 * 1000))
+      targetDate.setDate(targetDate.getDate() + 1)
     }
     
     // 주말 처리: 금요일 오후 3시 이후부터 다음 월요일로
@@ -211,11 +212,9 @@ export function useOrderManagement() {
     } else if (targetDay === 6) { // 토요일
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 2)
-    } else if (targetDay === 5) { // 금요일
-      // 금요일 오후 3시 이후면 다음 월요일로
-      if (currentHour >= 15) {
-        targetDate.setDate(targetDate.getDate() + 3) // 금요일 + 3일 = 월요일
-      }
+    } else if (targetDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
+      // 다음 월요일로 이동
+      targetDate.setDate(targetDate.getDate() + 3)
     }
     
     const result = targetDate.toISOString().split('T')[0]
@@ -223,6 +222,7 @@ export function useOrderManagement() {
     console.log('📅 fetchTodayOrders (3PM 기준, 주말 처리 포함):', {
       koreaTime: koreaTime.toISOString(),
       currentHour,
+      currentDay,
       targetDate: targetDate.toISOString(),
       targetDay,
       result

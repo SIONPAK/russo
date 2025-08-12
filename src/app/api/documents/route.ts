@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
             color,
             size,
             quantity,
+            shipped_quantity,
             unit_price,
             total_price
           )
@@ -91,11 +92,47 @@ export async function GET(request: NextRequest) {
 
       if (orders) {
         orders.forEach(order => {
+          // 실제 출고된 상품만 필터링
+          const shippedItems = order.order_items?.filter((item: any) => 
+            item.shipped_quantity && item.shipped_quantity > 0
+          ) || []
+          
+          // 실제 출고 금액 계산 (공급가액)
+          const shippedAmount = shippedItems.reduce((sum: number, item: any) => 
+            sum + (item.unit_price * item.shipped_quantity), 0
+          )
+          
+          // 세액 계산 (공급가액의 10%)
+          const taxAmount = Math.floor(shippedAmount * 0.1)
+          
+          // 총 출고 수량 계산 (배송비 계산용)
+          const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => 
+            sum + (item.shipped_quantity || 0), 0
+          )
+          
+          // 배송비 계산 (출고 수량 20장 미만일 때 3,000원)
+          const shippingFee = totalShippedQuantity > 0 && totalShippedQuantity < 20 ? 3000 : 0
+          
+          // 실제 총 금액 = 공급가액 + 세액 + 배송비
+          const actualTotalAmount = shippedAmount + taxAmount + shippingFee
+          
+          // 디버깅 로그
+          console.log(`🔍 [거래명세서] ${order.order_number} 금액 계산:`, {
+            orderNumber: order.order_number,
+            shippedItems: shippedItems.length,
+            shippedAmount,
+            taxAmount,
+            totalShippedQuantity,
+            shippingFee,
+            actualTotalAmount,
+            originalTotal: order.total_amount + (order.shipping_fee || 0)
+          })
+          
           allStatements.push({
             id: `shipping_${order.id}`,
             statement_number: order.order_number,
             statement_type: 'transaction',
-            total_amount: order.total_amount + (order.shipping_fee || 0),
+            total_amount: actualTotalAmount,
             status: 'issued',
             created_at: order.created_at,
             order_number: order.order_number,

@@ -31,6 +31,7 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
   const [isActive, setIsActive] = useState(true)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [deviceType, setDeviceType] = useState<'desktop' | 'mobile'>('desktop')
 
   const { uploadImage } = usePopupManagement()
 
@@ -51,6 +52,19 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
       setEndDate(nextWeek)
     }
   }, [popup])
+
+  // 디바이스 타입 감지
+  useEffect(() => {
+    const checkDeviceType = () => {
+      const isMobile = window.innerWidth <= 768
+      setDeviceType(isMobile ? 'mobile' : 'desktop')
+    }
+    
+    checkDeviceType()
+    window.addEventListener('resize', checkDeviceType)
+    
+    return () => window.removeEventListener('resize', checkDeviceType)
+  }, [])
 
   const handleImageUpload = async (file: File) => {
     try {
@@ -90,10 +104,12 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center p-6 border-b">
-          <h2 className="text-xl font-semibold">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className={`bg-white rounded-lg shadow-xl w-full max-h-[90vh] overflow-y-auto ${
+        deviceType === 'mobile' ? 'max-w-full' : 'max-w-2xl'
+      }`}>
+        <div className="flex justify-between items-center p-4 md:p-6 border-b">
+          <h2 className="text-lg md:text-xl font-semibold">
             {popup ? '팝업 수정' : '팝업 생성'}
           </h2>
           <button
@@ -104,7 +120,7 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               팝업 제목 *
@@ -143,7 +159,7 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 너비 (px) *
@@ -152,10 +168,13 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
                 type="number"
                 value={width}
                 onChange={(e) => setWidth(Number(e.target.value))}
-                min="100"
-                max="1920"
+                min={deviceType === 'mobile' ? '200' : '100'}
+                max={deviceType === 'mobile' ? '400' : '1920'}
                 required
               />
+              {deviceType === 'mobile' && (
+                <p className="text-xs text-gray-500 mt-1">모바일 권장: 200-400px</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -165,14 +184,17 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
                 type="number"
                 value={height}
                 onChange={(e) => setHeight(Number(e.target.value))}
-                min="100"
-                max="1080"
+                min={deviceType === 'mobile' ? '200' : '100'}
+                max={deviceType === 'mobile' ? '600' : '1080'}
                 required
               />
+              {deviceType === 'mobile' && (
+                <p className="text-xs text-gray-500 mt-1">모바일 권장: 200-600px</p>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 시작일 *
@@ -210,18 +232,20 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
             </label>
           </div>
 
-          <div className="flex justify-end space-x-3 pt-4">
+          <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3 pt-4">
             <Button
               type="button"
               variant="outline"
               onClick={onCancel}
               disabled={loading}
+              className="w-full sm:w-auto"
             >
               취소
             </Button>
             <Button
               type="submit"
               disabled={loading || !title.trim() || !imageUrl || uploading}
+              className="w-full sm:w-auto"
             >
               {loading ? '저장 중...' : '저장'}
             </Button>

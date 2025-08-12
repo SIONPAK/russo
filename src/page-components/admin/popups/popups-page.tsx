@@ -63,10 +63,10 @@ export function PopupsPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">팝업 관리</h1>
-        <Button onClick={handleCreate} className="flex items-center space-x-2">
+    <div className="p-4 md:p-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+        <h1 className="text-xl md:text-2xl font-bold">팝업 관리</h1>
+        <Button onClick={handleCreate} className="flex items-center space-x-2 w-full sm:w-auto">
           <Plus className="w-4 h-4" />
           <span>팝업 생성</span>
         </Button>
@@ -74,7 +74,7 @@ export function PopupsPage() {
 
       {/* 검색 */}
       <div className="mb-6">
-        <div className="relative max-w-md">
+        <div className="relative max-w-md w-full">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
             type="text"
@@ -92,19 +92,19 @@ export function PopupsPage() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   팝업 정보
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden md:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   크기
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="hidden md:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   표시 기간
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   상태
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   관리
                 </th>
               </tr>
@@ -125,7 +125,7 @@ export function PopupsPage() {
               ) : (
                 filteredPopups.map((popup) => (
                   <tr key={popup.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
+                    <td className="px-3 md:px-6 py-4">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-12 w-12">
                           <img
@@ -141,13 +141,20 @@ export function PopupsPage() {
                           <div className="text-sm text-gray-500">
                             {new Date(popup.created_at).toLocaleDateString()}
                           </div>
+                          {/* 모바일에서 추가 정보 표시 */}
+                          <div className="md:hidden text-xs text-gray-400 mt-1">
+                            {popup.width} × {popup.height}px
+                          </div>
+                          <div className="md:hidden text-xs text-gray-400">
+                            {new Date(popup.start_date).toLocaleDateString()} ~ {new Date(popup.end_date).toLocaleDateString()}
+                          </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {popup.width} × {popup.height}px
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="flex items-center">
                         <Calendar className="w-4 h-4 mr-1" />
                         <div>
@@ -169,7 +176,7 @@ export function PopupsPage() {
                         {isPopupActive(popup) ? '활성' : popup.is_active ? '대기' : '비활성'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <td className="px-3 md:px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
                         <button
                           onClick={() => handleToggleActive(popup.id, popup.is_active)}

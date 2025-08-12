@@ -59,8 +59,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 비밀번호 확인
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash)
+    // 비밀번호 확인 (해싱 주석처리)
+    // const isPasswordValid = await bcrypt.compare(password, user.password_hash)
+    const isPasswordValid = password === user.password_hash
     console.log('Password validation result:', isPasswordValid)
     
     if (!isPasswordValid) {

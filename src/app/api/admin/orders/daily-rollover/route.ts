@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     
     console.log(`📅 [이월 처리] 어제: ${yesterdayDate} → 오늘: ${todayDate}`)
     
-    // 1. 어제 날짜의 pending 상태 주문들 조회
+    // 1. 어제 날짜의 미처리 주문들 조회 (pending, confirmed)
     const { data: pendingOrders, error: fetchError } = await supabase
       .from('orders')
       .select(`
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
           company_name
         )
       `)
-      .eq('status', 'pending')
+      .in('status', ['pending', 'confirmed'])
       .eq('working_date', yesterdayDate)
     
     if (fetchError) {
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       })
     }
     
-    console.log(`🔍 [이월 처리] ${pendingOrders.length}개 pending 주문 발견`)
+    console.log(`🔍 [이월 처리] ${pendingOrders.length}개 미처리 주문 발견`)
     
     // 2. 작업일을 오늘로 업데이트
     const orderIds = pendingOrders.map(order => order.id)

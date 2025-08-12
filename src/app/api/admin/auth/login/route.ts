@@ -27,8 +27,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 비밀번호 확인
-    const isPasswordValid = await bcrypt.compare(password, admin.password_hash)
+    // 비밀번호 확인 (해싱 주석처리)
+    // const isPasswordValid = await bcrypt.compare(password, admin.password_hash)
+    const isPasswordValid = password === admin.password_hash
 
     if (!isPasswordValid) {
       return NextResponse.json(

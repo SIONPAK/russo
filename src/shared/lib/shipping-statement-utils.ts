@@ -142,7 +142,12 @@ const numberToKorean = (num: number): string => {
       while (tempPart > 0) {
         const digit = tempPart % 10
         if (digit > 0) {
-          partStr = units[digit] + tens[tensIndex] + partStr
+          // 1은 특별 처리 (일십, 일백, 일천이 아닌 십, 백, 천으로)
+          if (digit === 1 && tensIndex > 0) {
+            partStr = tens[tensIndex] + partStr
+          } else {
+            partStr = units[digit] + tens[tensIndex] + partStr
+          }
         }
         tempPart = Math.floor(tempPart / 10)
         tensIndex++
