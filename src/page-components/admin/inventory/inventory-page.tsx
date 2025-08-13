@@ -89,7 +89,7 @@ export function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [currentTab, setCurrentTab] = useState('overview') // overview, inbound, outbound, history
+  const [currentTab, setCurrentTab] = useState('overview') // overview, inbound, outbound, history, guide
 
 
   const [stats, setStats] = useState<InventoryStats>({
@@ -902,7 +902,8 @@ export function InventoryPage() {
     { id: 'overview', label: '재고 현황', icon: Package },
     { id: 'inbound', label: '입고 관리', icon: TrendingUp },
     { id: 'outbound', label: '출고 관리', icon: TrendingDown },
-    { id: 'history', label: '재고 이력', icon: History }
+    { id: 'history', label: '재고 이력', icon: History },
+    { id: 'guide', label: '사용 가이드', icon: FileText }
   ]
 
   if (loading) {
@@ -1008,6 +1009,8 @@ export function InventoryPage() {
                     fetchOutboundData()
                   } else if (tab.id === 'history') {
                     fetchStockHistory()
+                  } else if (tab.id === 'guide') {
+                    // 가이드 탭은 데이터 로드 불필요
                   }
                 }}
                 className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
@@ -1469,6 +1472,261 @@ export function InventoryPage() {
                     <p>출고 내역이 없습니다.</p>
                   </div>
                 )}
+              </div>
+            </>
+          )}
+
+          {currentTab === 'guide' && (
+            <>
+              {/* 사용 가이드 */}
+              <div className="w-full">
+                <div className="bg-white rounded-lg shadow-sm border">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                      <FileText className="h-5 w-5 mr-2 text-blue-600" />
+                      재고관리 시스템 사용 가이드
+                    </h3>
+                  </div>
+                  
+                  <div className="p-6 space-y-6">
+                    {/* 개요 */}
+                    <div>
+                      <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                        <Package className="h-4 w-4 mr-2 text-blue-600" />
+                        시스템 개요
+                      </h4>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-gray-700">
+                          재고관리 시스템은 <strong>엑셀 업로드</strong>와 <strong>개별 재고 조정</strong>을 통해 재고를 효율적으로 관리할 수 있습니다.
+                          모든 재고 조정은 <strong>상대값 처리</strong>로 이루어지며, 자동으로 미출고 주문에 재할당됩니다.
+                        </p>
+                      </div>
+                    </div>
+
+                                         {/* 엑셀 업로드 */}
+                     <div>
+                       <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                         <Upload className="h-4 w-4 mr-2 text-green-600" />
+                         엑셀 업로드
+                       </h4>
+                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                        <div>
+                          <h5 className="font-medium text-gray-800 mb-2">기능 설명</h5>
+                          <p className="text-gray-600 text-sm mb-3">
+                            엑셀 파일을 통해 여러 상품의 재고를 한 번에 추가할 수 있습니다.
+                          </p>
+                          
+                                                     <h5 className="font-medium text-gray-800 mb-2">엑셀 파일 형식</h5>
+                           <div className="bg-gray-50 border rounded-lg p-4 text-sm">
+                             <div className="grid grid-cols-4 gap-4 font-medium text-gray-700 mb-3">
+                               <div>상품코드</div>
+                               <div>색상</div>
+                               <div>사이즈</div>
+                               <div>재고수량</div>
+                             </div>
+                             <div className="grid grid-cols-4 gap-4 text-gray-600 mb-2">
+                               <div>LNN002</div>
+                               <div>블랙</div>
+                               <div>FREE</div>
+                               <div>1148</div>
+                             </div>
+                             <div className="grid grid-cols-4 gap-4 text-gray-600">
+                               <div>LNN002</div>
+                               <div>화이트</div>
+                               <div>FREE</div>
+                               <div>1142</div>
+                             </div>
+                           </div>
+                        </div>
+                        
+                        <div>
+                          <h5 className="font-medium text-gray-800 mb-2">처리 방식</h5>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                              <span className="text-gray-600">입력값: 엑셀에 입력한 수량</span>
+                            </div>
+                            <div className="flex items-center">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                              <span className="text-gray-600">처리: 기존 재고에 <strong>추가</strong></span>
+                            </div>
+                            <div className="flex items-center">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                              <span className="text-gray-600">결과: 새로운 물리재고</span>
+                            </div>
+                          </div>
+                          
+                                                     <h5 className="font-medium text-gray-800 mb-2 mt-4">예시</h5>
+                           <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm">
+                             <div className="text-gray-700 space-y-1">
+                               <div><strong>기존 재고:</strong> LNN002 블랙 FREE = 100개</div>
+                               <div><strong>엑셀 입력:</strong> 1148개</div>
+                               <div><strong>최종 재고:</strong> 100개 + 1148개 = <strong>1248개</strong></div>
+                             </div>
+                           </div>
+                        </div>
+                      </div>
+                    </div>
+
+                                         {/* 개별 재고 조정 */}
+                     <div>
+                       <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                         <Edit className="h-4 w-4 mr-2 text-purple-600" />
+                         개별 재고 조정
+                       </h4>
+                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                        <div>
+                          <h5 className="font-medium text-gray-800 mb-2">기능 설명</h5>
+                          <p className="text-gray-600 text-sm mb-3">
+                            재고관리 화면에서 개별 상품의 재고를 증량하거나 차감할 수 있습니다.
+                          </p>
+                          
+                          <h5 className="font-medium text-gray-800 mb-2">사용 방법</h5>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center">
+                              <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
+                              <span className="text-gray-600">재고관리 화면에서 "조정" 버튼 클릭</span>
+                            </div>
+                            <div className="flex items-center">
+                              <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
+                              <span className="text-gray-600">조정 수량 입력 (양수: 증량, 음수: 차감)</span>
+                            </div>
+                            <div className="flex items-center">
+                              <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
+                              <span className="text-gray-600">저장</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div>
+                                                     <h5 className="font-medium text-gray-800 mb-2">예시</h5>
+                           <div className="space-y-4">
+                             <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm">
+                               <h6 className="font-medium text-green-800 mb-2">재고 증량</h6>
+                               <div className="text-gray-700 space-y-1">
+                                 <div><strong>기존 재고:</strong> 1,145개</div>
+                                 <div><strong>조정값:</strong> +100개</div>
+                                 <div><strong>최종 재고:</strong> 1,145개 + 100개 = <strong>1,245개</strong></div>
+                               </div>
+                             </div>
+                             
+                             <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm">
+                               <h6 className="font-medium text-red-800 mb-2">재고 차감</h6>
+                               <div className="text-gray-700 space-y-1">
+                                 <div><strong>기존 재고:</strong> 1,145개</div>
+                                 <div><strong>조정값:</strong> -50개</div>
+                                 <div><strong>최종 재고:</strong> 1,145개 - 50개 = <strong>1,095개</strong></div>
+                               </div>
+                             </div>
+                           </div>
+                        </div>
+                      </div>
+                    </div>
+
+                                         {/* 재고 구조 */}
+                     <div>
+                       <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                         <BarChart3 className="h-4 w-4 mr-2 text-orange-600" />
+                         재고 구조 이해
+                       </h4>
+                       <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
+                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-orange-600 mb-1">물리재고</div>
+                            <div className="text-sm text-gray-600">실제 보유 재고</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-red-600 mb-1">할당재고</div>
+                            <div className="text-sm text-gray-600">주문에 할당된 재고</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-green-600 mb-1">가용재고</div>
+                            <div className="text-sm text-gray-600">실제 판매 가능한 재고</div>
+                          </div>
+                        </div>
+                                                 <div className="mt-4 p-4 bg-white rounded border">
+                           <div className="text-center font-medium text-gray-800">
+                             가용재고 = 물리재고 - 할당재고
+                           </div>
+                         </div>
+                      </div>
+                    </div>
+
+                                         {/* 자동 재할당 */}
+                     <div>
+                       <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                         <RefreshCw className="h-4 w-4 mr-2 text-indigo-600" />
+                         자동 재할당 시스템
+                       </h4>
+                       <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-6">
+                                                 <h5 className="font-medium text-indigo-800 mb-3">재할당이 발생하는 경우</h5>
+                         <div className="space-y-3 text-sm mb-6">
+                           <div className="flex items-center">
+                             <div className="w-2 h-2 bg-indigo-500 rounded-full mr-3"></div>
+                             <span className="text-gray-700">재고 추가 시 (엑셀 업로드 또는 개별 조정)</span>
+                           </div>
+                           <div className="flex items-center">
+                             <div className="w-2 h-2 bg-indigo-500 rounded-full mr-3"></div>
+                             <span className="text-gray-700">재고 차감 시 (개별 조정)</span>
+                           </div>
+                         </div>
+                         
+                                                  <h5 className="font-medium text-indigo-800 mb-3">재할당 규칙</h5>
+                         <div className="space-y-3 text-sm">
+                           <div className="flex items-center">
+                             <div className="w-2 h-2 bg-indigo-500 rounded-full mr-3"></div>
+                             <span className="text-gray-700"><strong>우선순위:</strong> 주문 시간순 (오래된 주문 우선)</span>
+                           </div>
+                         </div>
+                      </div>
+                    </div>
+
+                                         {/* 주의사항 */}
+                     <div>
+                       <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                         <AlertTriangle className="h-4 w-4 mr-2 text-yellow-600" />
+                         주의사항
+                       </h4>
+                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                                 <div>
+                           <h5 className="font-medium text-yellow-800 mb-3">엑셀 업로드</h5>
+                           <div className="space-y-3 text-sm">
+                             <div className="flex items-center">
+                               <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
+                               <span className="text-gray-700">파일 형식: .xlsx, .xls</span>
+                             </div>
+                             <div className="flex items-center">
+                               <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
+                               <span className="text-gray-700">필수 컬럼: 상품코드, 색상, 사이즈, 재고수량</span>
+                             </div>
+                             <div className="flex items-center">
+                               <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
+                               <span className="text-gray-700">입력값은 <strong>추가</strong>되는 값 (절대값 아님)</span>
+                             </div>
+                           </div>
+                         </div>
+                         
+                         <div>
+                           <h5 className="font-medium text-yellow-800 mb-3">개별 조정</h5>
+                           <div className="space-y-3 text-sm">
+                             <div className="flex items-center">
+                               <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
+                               <span className="text-gray-700">양수: 재고 증량</span>
+                             </div>
+                             <div className="flex items-center">
+                               <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
+                               <span className="text-gray-700">음수: 재고 차감</span>
+                             </div>
+                             <div className="flex items-center">
+                               <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
+                               <span className="text-gray-700">0: 재고를 0으로 설정</span>
+                             </div>
+                           </div>
+                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </>
           )}

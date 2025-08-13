@@ -122,15 +122,15 @@ export async function POST(request: NextRequest) {
                 .eq('id', item.id)
             )
 
-            // 2. 물리적 재고 차감 (새로운 RPC 함수 사용)
+            // 2. 출고 처리 (물리재고 차감 + allocated_stock 초기화 + 재할당)
             updatePromises.push(
               supabase
-                .rpc('adjust_physical_stock', {
+                .rpc('process_shipment', {
                   p_product_id: item.product_id,
                   p_color: item.color,
                   p_size: item.size,
-                  p_quantity_change: -shippableQuantity, // 음수로 차감
-                  p_reason: `벌크 출고 처리 - 주문번호: ${order.order_number}`
+                  p_shipped_quantity: shippableQuantity,
+                  p_order_number: order.order_number
                 })
             )
 

@@ -22,15 +22,29 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, image_url, width, height, start_date, end_date, is_active } = await request.json()
+    const { 
+      title, 
+      image_url, 
+      mobile_image_url, 
+      width, 
+      height, 
+      mobile_width, 
+      mobile_height, 
+      start_date, 
+      end_date, 
+      is_active 
+    } = await request.json()
 
     const { data, error } = await supabase
       .from('popups')
       .insert({
         title,
         image_url,
+        mobile_image_url,
         width,
         height,
+        mobile_width,
+        mobile_height,
         start_date,
         end_date,
         is_active: is_active || true

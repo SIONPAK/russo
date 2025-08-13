@@ -12,8 +12,11 @@ interface PopupModalProps {
   onSave: (data: {
     title: string
     image_url: string
+    mobile_image_url?: string
     width: number
     height: number
+    mobile_width?: number
+    mobile_height?: number
     start_date: string
     end_date: string
     is_active: boolean
@@ -24,13 +27,17 @@ interface PopupModalProps {
 export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
   const [title, setTitle] = useState('')
   const [imageUrl, setImageUrl] = useState('')
+  const [mobileImageUrl, setMobileImageUrl] = useState('')
   const [width, setWidth] = useState(400)
   const [height, setHeight] = useState(300)
+  const [mobileWidth, setMobileWidth] = useState(300)
+  const [mobileHeight, setMobileHeight] = useState(400)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [mobileUploading, setMobileUploading] = useState(false)
   const [deviceType, setDeviceType] = useState<'desktop' | 'mobile'>('desktop')
 
   const { uploadImage } = usePopupManagement()
@@ -39,8 +46,11 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
     if (popup) {
       setTitle(popup.title)
       setImageUrl(popup.image_url)
+      setMobileImageUrl(popup.mobile_image_url || '')
       setWidth(popup.width)
       setHeight(popup.height)
+      setMobileWidth(popup.mobile_width || 300)
+      setMobileHeight(popup.mobile_height || 400)
       setStartDate(popup.start_date.split('T')[0])
       setEndDate(popup.end_date.split('T')[0])
       setIsActive(popup.is_active)
@@ -79,6 +89,19 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
     }
   }
 
+  const handleMobileImageUpload = async (file: File) => {
+    try {
+      setMobileUploading(true)
+      const url = await uploadImage(file)
+      setMobileImageUrl(url)
+    } catch (error) {
+      console.error('모바일 이미지 업로드 실패:', error)
+      alert('모바일 이미지 업로드에 실패했습니다.')
+    } finally {
+      setMobileUploading(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim() || !imageUrl || !startDate || !endDate) return
@@ -88,8 +111,11 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
       await onSave({
         title: title.trim(),
         image_url: imageUrl,
+        mobile_image_url: mobileImageUrl,
         width,
         height,
+        mobile_width: mobileWidth,
+        mobile_height: mobileHeight,
         start_date: new Date(startDate).toISOString(),
         end_date: new Date(endDate).toISOString(),
         is_active: isActive
@@ -136,14 +162,14 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              팝업 이미지 *
+              데스크탑 팝업 이미지 *
             </label>
             <div className="space-y-3">
               {imageUrl && (
                 <div className="border rounded-lg p-4">
                   <img
                     src={imageUrl}
-                    alt="팝업 미리보기"
+                    alt="데스크탑 팝업 미리보기"
                     className="max-w-full h-auto max-h-48 mx-auto"
                   />
                 </div>
@@ -153,44 +179,103 @@ export function PopupModal({ popup, onSave, onCancel }: PopupModalProps) {
                 onFileSelect={handleImageUpload}
                 disabled={uploading}
                 className="w-full"
-                label={uploading ? '업로드 중...' : '이미지 업로드'}
-                description="JPG, PNG, WebP 파일만 가능"
+                label={uploading ? '업로드 중...' : '데스크탑 이미지 업로드'}
+                description="JPG, PNG, WebP 파일만 가능 (권장: 300x500px)"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                너비 (px) *
-              </label>
-              <Input
-                type="number"
-                value={width}
-                onChange={(e) => setWidth(Number(e.target.value))}
-                min={deviceType === 'mobile' ? '200' : '100'}
-                max={deviceType === 'mobile' ? '400' : '1920'}
-                required
-              />
-              {deviceType === 'mobile' && (
-                <p className="text-xs text-gray-500 mt-1">모바일 권장: 200-400px</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              모바일 팝업 이미지 (선택사항)
+            </label>
+            <div className="space-y-3">
+              {mobileImageUrl && (
+                <div className="border rounded-lg p-4">
+                  <img
+                    src={mobileImageUrl}
+                    alt="모바일 팝업 미리보기"
+                    className="max-w-full h-auto max-h-48 mx-auto"
+                  />
+                </div>
               )}
+              <FileUpload
+                accept="image/*"
+                onFileSelect={handleMobileImageUpload}
+                disabled={mobileUploading}
+                className="w-full"
+                label={mobileUploading ? '업로드 중...' : '모바일 이미지 업로드'}
+                description="JPG, PNG, WebP 파일만 가능 (권장: 300x400px)"
+              />
+              <p className="text-xs text-gray-500">
+                모바일 이미지를 설정하지 않으면 데스크탑 이미지가 사용됩니다.
+              </p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                높이 (px) *
-              </label>
-              <Input
-                type="number"
-                value={height}
-                onChange={(e) => setHeight(Number(e.target.value))}
-                min={deviceType === 'mobile' ? '200' : '100'}
-                max={deviceType === 'mobile' ? '600' : '1080'}
-                required
-              />
-              {deviceType === 'mobile' && (
-                <p className="text-xs text-gray-500 mt-1">모바일 권장: 200-600px</p>
-              )}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">데스크탑 크기 설정</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  너비 (px) *
+                </label>
+                <Input
+                  type="number"
+                  value={width}
+                  onChange={(e) => setWidth(Number(e.target.value))}
+                  min="100"
+                  max="1920"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">권장: 300-600px</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  높이 (px) *
+                </label>
+                <Input
+                  type="number"
+                  value={height}
+                  onChange={(e) => setHeight(Number(e.target.value))}
+                  min="100"
+                  max="1080"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">권장: 200-800px</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">모바일 크기 설정 (선택사항)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  너비 (px)
+                </label>
+                <Input
+                  type="number"
+                  value={mobileWidth}
+                  onChange={(e) => setMobileWidth(Number(e.target.value))}
+                  min="200"
+                  max="400"
+                />
+                <p className="text-xs text-gray-500 mt-1">권장: 250-350px</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  높이 (px)
+                </label>
+                <Input
+                  type="number"
+                  value={mobileHeight}
+                  onChange={(e) => setMobileHeight(Number(e.target.value))}
+                  min="200"
+                  max="600"
+                />
+                <p className="text-xs text-gray-500 mt-1">권장: 350-500px</p>
+              </div>
             </div>
           </div>
 

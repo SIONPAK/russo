@@ -7,8 +7,11 @@ export interface Popup {
   id: string
   title: string
   image_url: string
+  mobile_image_url?: string
   width: number
   height: number
+  mobile_width?: number
+  mobile_height?: number
   start_date: string
   end_date: string
   is_active: boolean

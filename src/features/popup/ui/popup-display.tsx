@@ -70,13 +70,13 @@ export function PopupDisplay() {
         
         const position = dragPositions[popup.id] || defaultPosition
 
-        // 모바일에서는 화면 크기에 맞게 조정
+        // 모바일에서는 모바일 전용 크기 사용, 없으면 데스크탑 크기 사용
         const popupWidth = isMobile 
-          ? Math.min(popup.width, window.innerWidth - 40) // 좌우 여백 20px씩
+          ? Math.min(popup.mobile_width || popup.width, window.innerWidth - 40) // 좌우 여백 20px씩
           : popup.width + 10
         
         const popupHeight = isMobile
-          ? Math.min(popup.height + 40, window.innerHeight - 40) // 상하 여백 20px씩
+          ? Math.min((popup.mobile_height || popup.height) + 40, window.innerHeight - 40) // 상하 여백 20px씩
           : popup.height + 40
 
         return (
@@ -103,10 +103,10 @@ export function PopupDisplay() {
             {/* 팝업 이미지 */}
             <div 
               className="w-full overflow-hidden"
-              style={{ height: isMobile ? `${popup.height}px` : `${popup.height + 10}px` }}
+              style={{ height: isMobile ? `${popup.mobile_height || popup.height}px` : `${popup.height + 10}px` }}
             >
               <img
-                src={popup.image_url}
+                src={isMobile && popup.mobile_image_url ? popup.mobile_image_url : popup.image_url}
                 alt={popup.title}
                 className="w-full h-full object-contain"
                 draggable={false}

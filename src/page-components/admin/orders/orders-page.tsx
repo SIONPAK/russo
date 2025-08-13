@@ -43,7 +43,7 @@ export function OrdersPage() {
 
 
   const [selectedDate, setSelectedDate] = useState(() => {
-    // 3PM 기준으로 날짜 설정 (working_date 기준, 주말 처리 포함)
+    // 현재 업무일 계산 (전일 15:00 ~ 당일 14:59 기준)
     const now = new Date()
     const koreaTimeString = now.toLocaleString("en-US", {timeZone: "Asia/Seoul"})
     const koreaTime = new Date(koreaTimeString)
@@ -52,10 +52,13 @@ export function OrdersPage() {
     
     let targetDate = new Date(koreaTime)
     
-    // 15:00 이후면 다음날로 설정
+    // 15:00 이전이면 전일 15:00 이후 주문들을 보여줌 (당일 업무일)
+    // 15:00 이후면 당일 15:00 이후 주문들을 보여줌 (익일 업무일)
     if (currentHour >= 15) {
+      // 15:00 이후면 다음날 업무일로 설정
       targetDate.setDate(targetDate.getDate() + 1)
     }
+    // 15:00 이전이면 당일 업무일 (변경 없음)
     
     // 주말 처리: 금요일 오후 3시 이후부터 다음 월요일로
     const targetDay = targetDate.getDay()
@@ -73,14 +76,15 @@ export function OrdersPage() {
     
     const result = targetDate.toISOString().split('T')[0]
     
-    console.log('📅 selectedDate 초기값 (3PM 기준, 주말 처리 포함):', {
+    console.log('📅 selectedDate 초기값 (업무일 기준):', {
       now: now.toISOString(),
       koreaTime: koreaTime.toISOString(),
       currentHour,
       currentDay,
       targetDate: targetDate.toISOString(),
       targetDay,
-      result
+      result,
+      explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일'
     })
     
     return result

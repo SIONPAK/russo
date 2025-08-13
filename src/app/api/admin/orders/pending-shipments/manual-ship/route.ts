@@ -69,14 +69,14 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 🎯 물리적 재고 차감 (실제 출고 처리)
+    // 🎯 출고 처리 (물리재고 차감 + allocated_stock 초기화 + 재할당)
     const { data: stockResult, error: stockError } = await supabase
-      .rpc('adjust_physical_stock', {
+      .rpc('process_shipment', {
         p_product_id: orderItem.product_id,
         p_color: orderItem.color,
         p_size: orderItem.size,
-        p_quantity_change: -quantity, // 음수로 차감
-        p_reason: `미출고 수동 처리 - 주문번호: ${orderItem.order_id}`
+        p_shipped_quantity: quantity,
+        p_order_number: orderItem.order_id
       })
 
     if (stockError) {
@@ -96,7 +96,8 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    console.log(`✅ 물리적 재고 차감 완료: ${orderItem.product_name} (${orderItem.color}/${orderItem.size}) ${quantity}개`)
+    console.log(`✅ 출고 처리 완료: ${orderItem.product_name} (${orderItem.color}/${orderItem.size}) ${quantity}개`)
+    console.log(`📊 재고 변동: ${stockResult.previous_physical_stock}개 → ${stockResult.new_physical_stock}개`)
 
     // 재고 변동 이력 기록
     const movementData = {

@@ -348,13 +348,13 @@ export async function PATCH(
     if (color && size) {
       console.log(`🔄 옵션별 재고 조정 시작 (${color}/${size})`)
       
-      // 🔄 물리적 재고 조정 RPC 사용
+      // 🔄 물리적 재고 조정 RPC 사용 (상대값 추가)
       const { data: adjustResult, error: adjustError } = await supabase
-        .rpc('adjust_physical_stock', {
+        .rpc('add_physical_stock', {
           p_product_id: productId,
           p_color: color,
           p_size: size,
-          p_quantity_change: finalAdjustment,
+          p_additional_stock: finalAdjustment,
           p_reason: `관리자 재고 ${absolute_value !== undefined ? '설정' : '조정'} (${color}/${size}) - ${reason || '수동 재고 조정'}`
         })
 
@@ -367,99 +367,12 @@ export async function PATCH(
       }
 
       console.log(`✅ 물리적 재고 조정 완료: ${productId} (${color}/${size}) ${finalAdjustment > 0 ? '+' : ''}${finalAdjustment}`)
-
-      // 🔄 재고 조정 후 가용 재고 업데이트 (물리적 재고 기준으로 재계산)
-      const { data: updatedProduct, error: refetchError } = await supabase
-        .from('products')
-        .select('inventory_options')
-        .eq('id', productId)
-        .single()
-
-      if (refetchError || !updatedProduct) {
-        console.error('❌ 업데이트된 상품 조회 실패:', refetchError)
-      } else {
-        // 🎯 재고 증가 시에는 자동 할당 후 가용 재고를 계산해야 함
-        if (finalAdjustment > 0) {
-          // 재고 증가 시: 자동 할당 후 가용 재고 계산
-          console.log(`🔄 재고 증가 시 자동 할당 후 가용 재고 계산 예정`)
-        } else {
-          // 가용 재고 = 물리적 재고로 설정 (재할당 전)
-          const updatedOptions = updatedProduct.inventory_options.map((option: any) => {
-            if (option.color === color && option.size === size) {
-              return {
-                ...option,
-                stock_quantity: option.physical_stock || 0  // 가용 재고 = 물리적 재고
-              }
-            }
-            return option
-          })
-
-          const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-
-          await supabase
-            .from('products')
-            .update({
-              inventory_options: updatedOptions,
-              stock_quantity: totalStock,
-              updated_at: getKoreaTime()
-            })
-            .eq('id', productId)
-            
-          console.log(`✅ 가용 재고 업데이트 완료: ${productId} (${color}/${size})`)
-        }
-      }
-
-      // 📝 재고 변동 이력 기록
-      const { error: movementError } = await supabase
-        .from('stock_movements')
-        .insert({
-          product_id: productId,
-          movement_type: 'adjustment',
-          quantity: finalAdjustment,
-          color: color,
-          size: size,
-          notes: `관리자 재고 ${absolute_value !== undefined ? '설정' : '조정'} (${color}/${size}) - ${reason || '수동 재고 조정'}`,
-          created_at: getKoreaTime()
-        })
-
-      if (movementError) {
-        console.error('❌ 재고 변동 이력 기록 실패:', movementError)
-      } else {
-        console.log('✅ 재고 변동 이력 기록 완료')
-      }
-
-      // 🎯 재고 증가 시 자동 할당 처리
-      if (finalAdjustment > 0) {
-        console.log(`🔄 재고 증가로 자동 할당 시작 - 상품: ${productId}, 색상: ${color}, 사이즈: ${size}, 증가량: ${finalAdjustment}`)
-        
-        // 잠시 대기 후 자동 할당 (데이터 동기화)
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        allocationResults = await autoAllocateToUnshippedOrders(supabase, productId, color, size)
-        console.log(`🔄 자동 할당 결과:`, allocationResults)
-        
-        // 🎯 자동 할당 후 가용 재고 업데이트
-        console.log(`🔄 자동 할당 후 가용 재고 업데이트 시작`)
-        
-        const { data: finalProduct, error: finalError } = await supabase
-          .from('products')
-          .select('inventory_options')
-          .eq('id', productId)
-          .single()
-
-        if (finalError || !finalProduct) {
-          console.error('❌ 최종 상품 조회 실패:', finalError)
-        } else {
-          // 할당된 재고 계산 (미출고 수량 = 주문 수량 - 출고 수량)
-          const { data: orderItems, error: allocatedError } = await supabase
-            .from('order_items')
-            .select(`
-              quantity,
-              shipped_quantity,
-              orders!order_items_order_id_fkey (
-                status
-              )
-            `)
+      
+      // 📝 재고 변동 이력은 add_physical_stock 함수에서 자동 기록됨
+      console.log('✅ 재고 변동 이력 기록 완료')
+      
+      // 🎯 재할당은 add_physical_stock 함수에서 자동 처리됨
+      console.log('✅ 재할당 처리 완료')
             .eq('product_id', productId)
             .eq('color', color)
             .eq('size', size)
@@ -535,13 +448,13 @@ export async function PATCH(
     } else {
       console.log(`🔄 전체 재고 조정 시작`)
       
-      // 일반 재고 조정 - 새로운 구조 사용
+      // 전체 재고 조정 - 새로운 구조 사용
       const { data: adjustResult, error: adjustError } = await supabase
-        .rpc('adjust_physical_stock', {
+        .rpc('add_physical_stock', {
           p_product_id: productId,
           p_color: null,
           p_size: null,
-          p_quantity_change: finalAdjustment,
+          p_additional_stock: finalAdjustment,
           p_reason: `관리자 재고 ${absolute_value !== undefined ? '설정' : '조정'} - ${reason || '수동 재고 조정'}`
         })
 

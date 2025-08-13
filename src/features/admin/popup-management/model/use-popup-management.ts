@@ -7,8 +7,11 @@ export interface Popup {
   id: string
   title: string
   image_url: string
+  mobile_image_url?: string
   width: number
   height: number
+  mobile_width?: number
+  mobile_height?: number
   start_date: string
   end_date: string
   is_active: boolean
@@ -40,8 +43,11 @@ export function usePopupManagement() {
   const createPopup = async (data: {
     title: string
     image_url: string
+    mobile_image_url?: string
     width: number
     height: number
+    mobile_width?: number
+    mobile_height?: number
     start_date: string
     end_date: string
     is_active?: boolean
@@ -55,8 +61,11 @@ export function usePopupManagement() {
         body: JSON.stringify({
           title: data.title,
           image_url: data.image_url,
+          mobile_image_url: data.mobile_image_url,
           width: data.width,
           height: data.height,
+          mobile_width: data.mobile_width,
+          mobile_height: data.mobile_height,
           start_date: data.start_date,
           end_date: data.end_date,
           is_active: data.is_active || true,
@@ -79,8 +88,11 @@ export function usePopupManagement() {
   const updatePopup = async (id: string, data: {
     title: string
     image_url: string
+    mobile_image_url?: string
     width: number
     height: number
+    mobile_width?: number
+    mobile_height?: number
     start_date: string
     end_date: string
     is_active?: boolean
