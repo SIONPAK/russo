@@ -373,6 +373,39 @@ export async function PATCH(
       
       // 🎯 재할당은 add_physical_stock 함수에서 자동 처리됨
       console.log('✅ 재할당 처리 완료')
+
+      // 🎯 재고 증가 시 자동 할당 후 가용 재고 업데이트
+      if (finalAdjustment > 0) {
+        console.log(`🔄 재고 증가로 자동 할당 시작 - 상품: ${productId}, 색상: ${color}, 사이즈: ${size}, 증가량: ${finalAdjustment}`)
+        
+        // 잠시 대기 후 자동 할당 (데이터 동기화)
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        allocationResults = await autoAllocateToUnshippedOrders(supabase, productId, color, size)
+        console.log(`🔄 자동 할당 결과:`, allocationResults)
+        
+        // 🎯 자동 할당 후 가용 재고 업데이트
+        console.log(`🔄 자동 할당 후 가용 재고 업데이트 시작`)
+        
+        const { data: finalProduct, error: finalError } = await supabase
+          .from('products')
+          .select('inventory_options')
+          .eq('id', productId)
+          .single()
+
+        if (finalError || !finalProduct) {
+          console.error('❌ 최종 상품 조회 실패:', finalError)
+        } else {
+          // 할당된 재고 계산 (미출고 수량 = 주문 수량 - 출고 수량)
+          const { data: orderItems, error: allocatedError } = await supabase
+            .from('order_items')
+            .select(`
+              quantity,
+              shipped_quantity,
+              orders!order_items_order_id_fkey (
+                status
+              )
+            `)
             .eq('product_id', productId)
             .eq('color', color)
             .eq('size', size)
