@@ -953,7 +953,7 @@ async function reallocateAfterStockReduction(supabase: any, productId: string, c
 
 async function autoAllocateToUnshippedOrders(supabase: any, productId: string, color?: string, size?: string) {
   try {
-    console.log(`🔄 자동 할당 시작 - 상품: ${productId}, 색상: ${color}, 사이즈: ${size}`)
+    console.log(`🔄 autoAllocateToUnshippedOrders 함수 시작 - 상품: ${productId}, 색상: ${color}, 사이즈: ${size}`)
     
     // 1. 해당 상품의 미출고 주문 아이템 조회 (시간순)
     let orderItemsQuery = supabase
@@ -979,8 +979,8 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
         )
       `)
       .eq('product_id', productId)
-      .not('orders.status', 'in', '(shipped,delivered,cancelled,returned,refunded)')
-      .order('created_at', { ascending: true, foreignTable: 'orders' }) // 🔧 수정: 주문 시간순 정렬
+      .in('orders.status', ['pending', 'processing', 'confirmed', 'allocated'])
+      .order('created_at', { ascending: true, foreignTable: 'orders' })
 
     // 색상/사이즈 옵션이 있는 경우 필터링
     if (color && size) {
@@ -1001,7 +1001,7 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
 
     if (!orderItems || orderItems.length === 0) {
       console.log('📋 해당 상품의 주문이 없습니다.')
-      return { success: true, message: '해당 상품의 주문이 없습니다.', allocations: [] }
+      return { success: true, message: '해당 상품의 주문이 없습니다.', reallocations: [], totalAllocated: 0, remainingStock: 0, affectedOrders: 0 }
     }
 
     // JavaScript에서 실제 미출고 수량이 있는 아이템만 필터링 후 시간순 재정렬
@@ -1011,27 +1011,20 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
         return shippedQuantity < item.quantity
       })
       .sort((a: any, b: any) => {
-        // 🔧 수정: 필터링 후 시간순으로 재정렬
         return new Date(a.orders.created_at).getTime() - new Date(b.orders.created_at).getTime()
       })
 
     console.log(`📊 미출고 주문 필터링 결과: ${unshippedItems.length}건`)
     
-    // 시간순 정렬 디버깅 로그
-    console.log(`📅 시간순 정렬 확인:`)
-    unshippedItems.forEach((item: any, index: number) => {
-      console.log(`  ${index + 1}. ${item.orders.order_number} (${item.orders.users.company_name}): ${item.orders.created_at}`)
-    })
-
     if (unshippedItems.length === 0) {
       console.log('📋 미출고 주문이 없습니다.')
-      return { success: true, message: '미출고 주문이 없습니다.', allocations: [] }
+      return { success: true, message: '미출고 주문이 없습니다.', reallocations: [], totalAllocated: 0, remainingStock: 0, affectedOrders: 0 }
     }
 
     // 2. 현재 재고 확인
     const { data: currentProduct, error: productError } = await supabase
       .from('products')
-      .select('stock_quantity, inventory_options')
+      .select('physical_stock, allocated_stock, stock_quantity, inventory_options')
       .eq('id', productId)
       .single()
 
@@ -1046,20 +1039,22 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       const targetOption = currentProduct.inventory_options.find((opt: any) => 
         opt.color === color && opt.size === size
       )
-      availableStock = targetOption ? targetOption.stock_quantity : 0
-      console.log(`📦 옵션별 재고 (${color}/${size}): ${availableStock}`)
+      if (targetOption) {
+        availableStock = (targetOption.physical_stock || 0) - (targetOption.allocated_stock || 0)
+        console.log(`📦 옵션별 재고 (${color}/${size}): 물리적 ${targetOption.physical_stock}, 할당 ${targetOption.allocated_stock}, 가용 ${availableStock}`)
+      }
     } else {
-      availableStock = currentProduct.stock_quantity || 0
-      console.log(`📦 전체 재고: ${availableStock}`)
+      availableStock = (currentProduct.physical_stock || 0) - (currentProduct.allocated_stock || 0)
+      console.log(`📦 전체 재고: 물리적 ${currentProduct.physical_stock}, 할당 ${currentProduct.allocated_stock}, 가용 ${availableStock}`)
     }
 
     if (availableStock <= 0) {
       console.log('❌ 할당할 재고가 없습니다.')
-      return { success: true, message: '할당할 재고가 없습니다.', allocations: [] }
+      return { success: true, message: '할당할 재고가 없습니다.', reallocations: [], totalAllocated: 0, remainingStock: 0, affectedOrders: 0 }
     }
 
     // 3. 재고 할당
-    const allocations = []
+    const reallocations = []
     let remainingStock = availableStock
     
     console.log(`🔄 재고 할당 시작 - 총 ${unshippedItems.length}개 주문 처리`)
@@ -1105,7 +1100,7 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
             created_at: getKoreaTime()
           })
 
-        allocations.push({
+        reallocations.push({
           orderId: item.order_id,
           orderNumber: item.orders.order_number,
           companyName: item.orders.users.company_name,
@@ -1123,105 +1118,39 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       }
     }
 
-    // 4. 재고 차감
-    const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.allocatedQuantity, 0)
+    // 4. 재고 차감 및 allocated_stock 업데이트
+    const totalAllocated = reallocations.reduce((sum, alloc) => sum + alloc.allocatedQuantity, 0)
     
     if (totalAllocated > 0) {
       console.log(`🔄 재고 차감: ${totalAllocated}개`)
       
-      if (currentProduct.inventory_options && Array.isArray(currentProduct.inventory_options) && color && size) {
-        // 현재 할당된 재고 계산 (미출고 수량)
-        const { data: orderItems, error: allocatedError } = await supabase
-          .from('order_items')
-          .select(`
-            quantity,
-            shipped_quantity,
-            orders!order_items_order_id_fkey (
-              status
-            )
-          `)
-          .eq('product_id', productId)
-          .eq('color', color)
-          .eq('size', size)
+      // add_physical_stock RPC 호출로 재고 차감
+      const { data: stockResult, error: stockError } = await supabase.rpc('add_physical_stock', {
+        p_product_id: productId,
+        p_color: color || null,
+        p_size: size || null,
+        p_additional_stock: -totalAllocated,
+        p_reason: '자동 할당 후 재고 차감'
+      })
 
-        const currentAllocated = orderItems?.reduce((sum: number, item: any) => {
-          const order = Array.isArray(item.orders) ? item.orders[0] : item.orders
-          const isPendingOrder = order && ['pending', 'confirmed', 'processing', 'allocated'].includes(order.status)
-          
-          if (isPendingOrder) {
-            const pendingQuantity = item.quantity - (item.shipped_quantity || 0)
-            return sum + Math.max(0, pendingQuantity)
-          }
-          return sum
-        }, 0) || 0
-
-        const updatedOptions = currentProduct.inventory_options.map((option: any) => {
-          if (option.color === color && option.size === size) {
-            return {
-              ...option,
-              allocated_stock: currentAllocated,  // 🎯 할당된 재고 업데이트
-              stock_quantity: option.stock_quantity - totalAllocated
-            }
-          }
-          return option
-        })
-
-        const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
-
-        await supabase
-          .from('products')
-          .update({
-            inventory_options: updatedOptions,
-            stock_quantity: totalStock,
-            updated_at: getKoreaTime()
-          })
-          .eq('id', productId)
-      } else {
-        // 전체 재고의 경우 모든 옵션의 allocated_stock 업데이트
-        const { data: allocatedItems, error: allocatedError } = await supabase
-          .from('order_items')
-          .select('color, size, shipped_quantity')
-          .eq('product_id', productId)
-          .not('shipped_quantity', 'is', null)
-          .gt('shipped_quantity', 0)
-
-        const optionAllocations = new Map()
-        
-        if (allocatedItems) {
-          allocatedItems.forEach((item: any) => {
-            const key = `${item.color}-${item.size}`
-            const allocated = optionAllocations.get(key) || 0
-            optionAllocations.set(key, allocated + (item.shipped_quantity || 0))
-          })
-        }
-
-        const updatedOptions = currentProduct.inventory_options.map((option: any) => {
-          const key = `${option.color}-${option.size}`
-          const allocatedForOption = optionAllocations.get(key) || 0
-          
-          return {
-            ...option,
-            allocated_stock: allocatedForOption  // 🎯 할당된 재고 업데이트
-          }
-        })
-
-        await supabase
-          .from('products')
-          .update({
-            inventory_options: updatedOptions,
-            stock_quantity: currentProduct.stock_quantity - totalAllocated,
-            updated_at: getKoreaTime()
-          })
-          .eq('id', productId)
+      if (stockError) {
+        console.error('❌ 재고 차감 실패:', stockError)
+        return { success: false, error: '재고 차감 중 오류가 발생했습니다.' }
       }
+
+      console.log(`✅ 재고 차감 완료: ${totalAllocated}개`)
     }
 
-    console.log(`🎯 자동 할당 완료: ${totalAllocated}개 할당, ${allocations.length}개 주문 처리`)
+    console.log(`🎯 자동 할당 완료: ${totalAllocated}개 할당, ${reallocations.length}개 주문 처리`)
+    console.log(`🔄 autoAllocateToUnshippedOrders 함수 종료`)
 
     return { 
       success: true, 
-      message: `${totalAllocated}개 재고가 ${allocations.length}개 주문에 할당되었습니다.`, 
-      allocations 
+      message: `재고 차감 후 전체 재할당 완료: ${totalAllocated}개 할당, ${reallocations.length}개 주문 처리`, 
+      reallocations,
+      totalAllocated,
+      remainingStock,
+      affectedOrders: reallocations.length
     }
 
   } catch (error) {

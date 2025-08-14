@@ -73,22 +73,44 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // 해당 입고/출고 이후에 발생한 모든 재고 변동량 계산
-        let totalChangesAfter = 0
-        const { data: laterMovements } = await supabase
-          .from('stock_movements')
-          .select('quantity')
-          .eq('product_id', movement.product_id)
-          .eq('color', movement.color || null)
-          .eq('size', movement.size || null)
-          .gt('created_at', movement.created_at)
+        // 해당 입고/출고 시점의 재고 계산
+        let stockAfterThisMovement = 0
+        
+        if (movement.quantity > 0) {
+          // 입고의 경우: 해당 입고 이전의 모든 변동량을 계산
+          const { data: previousMovements } = await supabase
+            .from('stock_movements')
+            .select('quantity')
+            .eq('product_id', movement.product_id)
+            .eq('color', movement.color || null)
+            .eq('size', movement.size || null)
+            .lt('created_at', movement.created_at)
 
-        if (laterMovements) {
-          totalChangesAfter = laterMovements.reduce((sum, mv) => sum + (mv.quantity || 0), 0)
+          let previousStock = 0
+          if (previousMovements) {
+            previousStock = previousMovements.reduce((sum, mv) => sum + (mv.quantity || 0), 0)
+          }
+          
+          // 입고 후 재고 = 이전 재고 + 현재 입고량
+          stockAfterThisMovement = Math.max(0, previousStock + movement.quantity)
+        } else {
+          // 출고의 경우: 해당 출고 이전의 모든 변동량을 계산
+          const { data: previousMovements } = await supabase
+            .from('stock_movements')
+            .select('quantity')
+            .eq('product_id', movement.product_id)
+            .eq('color', movement.color || null)
+            .eq('size', movement.size || null)
+            .lt('created_at', movement.created_at)
+
+          let previousStock = 0
+          if (previousMovements) {
+            previousStock = previousMovements.reduce((sum, mv) => sum + (mv.quantity || 0), 0)
+          }
+          
+          // 출고 후 재고 = 이전 재고 + 현재 출고량 (음수)
+          stockAfterThisMovement = Math.max(0, previousStock + movement.quantity)
         }
-
-        // 해당 입고/출고 시점의 재고 = 현재 재고 - 이후 변동량 + 해당 변동량
-        const stockAfterThisMovement = currentStock - totalChangesAfter
         
         const enrichedMovement = {
           ...movement,
