@@ -87,34 +87,67 @@ export async function DELETE(
 
     // 할당된 재고 복원 (RPC 사용)
     for (const item of orderItems || []) {
-      if (item.product_id && item.shipped_quantity && item.shipped_quantity > 0) {
+      if (item.product_id) {
         try {
-          console.log('🔄 [발주 취소] 재고 복원 시작:', {
-            productId: item.product_id,
-            color: item.color,
-            size: item.size,
-            restoreQuantity: item.shipped_quantity
-          })
-
-          // RPC를 사용해서 재고 복원
-          const { error: restoreError } = await supabase
-            .rpc('adjust_physical_stock', {
-              p_product_id: item.product_id,
-              p_color: item.color,
-              p_size: item.size,
-              p_quantity_change: item.shipped_quantity, // 양수로 복원
-              p_reason: `발주 취소로 인한 재고 복원 (주문번호: ${order.order_number})`
-            })
-
-          if (restoreError) {
-            console.error('재고 복원 실패:', restoreError)
-          } else {
-            console.log('✅ [발주 취소] 재고 복원 완료:', {
+          // 출고된 수량 복원 (shipped_quantity > 0인 경우)
+          if (item.shipped_quantity && item.shipped_quantity > 0) {
+            console.log('🔄 [발주 취소] 출고 재고 복원 시작:', {
               productId: item.product_id,
               color: item.color,
               size: item.size,
               restoreQuantity: item.shipped_quantity
             })
+
+            const { error: restoreError } = await supabase
+              .rpc('adjust_physical_stock', {
+                p_product_id: item.product_id,
+                p_color: item.color,
+                p_size: item.size,
+                p_quantity_change: item.shipped_quantity, // 양수로 복원
+                p_reason: `발주 취소로 인한 출고 재고 복원 (주문번호: ${order.order_number})`
+              })
+
+            if (restoreError) {
+              console.error('출고 재고 복원 실패:', restoreError)
+            } else {
+              console.log('✅ [발주 취소] 출고 재고 복원 완료:', {
+                productId: item.product_id,
+                color: item.color,
+                size: item.size,
+                restoreQuantity: item.shipped_quantity
+              })
+            }
+          }
+
+          // 할당된 수량 해제 (allocated_quantity > 0인 경우)
+          if (item.allocated_quantity && item.allocated_quantity > 0) {
+            console.log('🔄 [발주 취소] 할당 해제 시작:', {
+              productId: item.product_id,
+              color: item.color,
+              size: item.size,
+              allocatedQuantity: item.allocated_quantity
+            })
+
+            // 할당된 수량만큼 allocated_stock에서 차감
+            const { error: deallocateError } = await supabase
+              .rpc('deallocate_stock', {
+                p_product_id: item.product_id,
+                p_color: item.color,
+                p_size: item.size,
+                p_quantity: item.allocated_quantity,
+                p_reason: `발주 취소로 인한 할당 해제 (주문번호: ${order.order_number})`
+              })
+
+            if (deallocateError) {
+              console.error('할당 해제 실패:', deallocateError)
+            } else {
+              console.log('✅ [발주 취소] 할당 해제 완료:', {
+                productId: item.product_id,
+                color: item.color,
+                size: item.size,
+                allocatedQuantity: item.allocated_quantity
+              })
+            }
           }
 
         } catch (restoreError) {

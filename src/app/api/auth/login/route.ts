@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { userId, password } = body
 
-    console.log('Login attempt for userId:', userId)
+
 
     // 필수 필드 검증
     if (!userId || !password) {
@@ -28,12 +28,12 @@ export async function POST(request: NextRequest) {
       .eq('username', userId)
       .single()
 
-    console.log('Admin user check:', { adminUser, adminError })
+
 
     if (!adminError && adminUser) {
       user = adminUser
       userType = 'admin'
-      console.log('Found admin user:', user.username)
+
     } else {
       // 관리자가 아니면 일반 사용자 테이블에서 확인
       const { data: customerUser, error: customerError } = await supabase
@@ -42,17 +42,17 @@ export async function POST(request: NextRequest) {
         .eq('user_id', userId)
         .single()
 
-      console.log('Customer user check:', { customerUser, customerError })
+
 
       if (!customerError && customerUser) {
         user = customerUser
         userType = 'customer'
-        console.log('Found customer user:', user.user_id)
+
       }
     }
 
     if (!user) {
-      console.log('No user found for userId:', userId)
+
       return NextResponse.json(
         { success: false, message: '아이디 또는 비밀번호가 올바르지 않습니다.' },
         { status: 401 }
@@ -61,7 +61,6 @@ export async function POST(request: NextRequest) {
 
     // 비밀번호 확인
     const isPasswordValid = await bcrypt.compare(password, user.password_hash)
-    console.log('Password validation result:', isPasswordValid)
     
     if (!isPasswordValid) {
       return NextResponse.json(

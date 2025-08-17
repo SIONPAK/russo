@@ -45,8 +45,8 @@ export function OrdersPage() {
   const [selectedDate, setSelectedDate] = useState(() => {
     // 현재 업무일 계산 (전일 15:00 ~ 당일 14:59 기준)
     const now = new Date()
-    const koreaTimeString = now.toLocaleString("en-US", {timeZone: "Asia/Seoul"})
-    const koreaTime = new Date(koreaTimeString)
+    // 한국 시간으로 변환 (UTC+9)
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
     const currentHour = koreaTime.getHours()
     const currentDay = koreaTime.getDay()
     
@@ -94,6 +94,15 @@ export function OrdersPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [isStatementDropdownOpen, setIsStatementDropdownOpen] = useState(false) // 명세서 드롭다운 상태
   const [editingItem, setEditingItem] = useState<{orderId: string, itemId: string} | null>(null)
+  
+  // 페이지 로드 시 날짜 기준으로 주문 조회
+  useEffect(() => {
+    updateFilters({ 
+      startDate: selectedDate,
+      endDate: selectedDate,
+      status: 'not_shipped'
+    })
+  }, [selectedDate])
   
   // 다운로드 진행 상태 관리
   const [downloadingPDF, setDownloadingPDF] = useState(false)
@@ -926,7 +935,7 @@ export function OrdersPage() {
         <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
           <h2 className="text-lg font-semibold text-blue-900 mb-2">📋 새로운 주문 관리 플로우</h2>
           <div className="text-sm text-blue-800 space-y-1">
-            <p><strong>⏰ 오후 3시 기준 운영:</strong> 현재 {new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false })} - 오후 3시 이후 주문은 다음날 처리</p>
+            <p><strong>⏰ 오후 3시 기준 운영:</strong> 현재 {new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false })} (한국시간) - 오후 3시 이후 주문은 다음날 처리</p>
             <p><strong>📅 주말 주문 처리:</strong> 토요일 오후 3시 이후 및 일요일 주문은 월요일에 일괄 처리</p>
             <p><strong>🔄 자동 재고 할당:</strong> 페이지 로드 시 미출고 주문 자동 할당 처리</p>
             <p><strong>1. 확정전 명세서 다운로드</strong> - 엑셀 템플릿 파일 다운로드</p>

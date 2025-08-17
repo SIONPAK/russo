@@ -80,10 +80,50 @@ export function OrderManagementPage() {
   const [isShippingModalOpen, setIsShippingModalOpen] = useState(false)
   const [isProductModalOpen, setIsProductModalOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date()
+    const now = new Date()
     // 한국 시간(UTC+9)으로 변환
-    const koreaTime = new Date(today.getTime() + (9 * 60 * 60 * 1000))
-    return koreaTime.toISOString().split('T')[0]
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const currentHour = koreaTime.getHours()
+    const currentDay = koreaTime.getDay()
+    
+    let targetDate = new Date(koreaTime)
+    
+    // 15:00 이전이면 전일 15:00 이후 주문들을 보여줌 (당일 업무일)
+    // 15:00 이후면 당일 15:00 이후 주문들을 보여줌 (익일 업무일)
+    if (currentHour >= 15) {
+      // 15:00 이후면 다음날 업무일로 설정
+      targetDate.setDate(targetDate.getDate() + 1)
+    }
+    // 15:00 이전이면 당일 업무일 (변경 없음)
+    
+    // 주말 처리: 금요일 오후 3시 이후부터 다음 월요일로
+    const targetDay = targetDate.getDay()
+    
+    if (targetDay === 0) { // 일요일
+      // 다음 월요일로 이동
+      targetDate.setDate(targetDate.getDate() + 1)
+    } else if (targetDay === 6) { // 토요일
+      // 다음 월요일로 이동
+      targetDate.setDate(targetDate.getDate() + 2)
+    } else if (targetDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
+      // 다음 월요일로 이동
+      targetDate.setDate(targetDate.getDate() + 3)
+    }
+    
+    const result = targetDate.toISOString().split('T')[0]
+    
+    console.log('📅 발주관리 selectedDate 초기값 (업무일 기준):', {
+      now: now.toISOString(),
+      koreaTime: koreaTime.toISOString(),
+      currentHour,
+      currentDay,
+      targetDate: targetDate.toISOString(),
+      targetDay,
+      result,
+      explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일'
+    })
+    
+    return result
   })
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [isLoadingOrders, setIsLoadingOrders] = useState(false)
@@ -617,6 +657,13 @@ export function OrderManagementPage() {
       return
     }
 
+    // 수정 모드 상태 확인
+    console.log('💾 [저장 시작] 현재 모드:', {
+      editingOrderId,
+      isEditMode: !!editingOrderId,
+      timestamp: new Date().toISOString()
+    })
+
     if (orderItems.length === 0) {
       showError('발주 상품을 추가해주세요.')
       return
@@ -635,6 +682,17 @@ export function OrderManagementPage() {
       if (invalidItems.length > 0) {
         console.error('❌ 유효하지 않은 상품 ID가 있는 아이템들:', invalidItems)
         showError(`상품 정보가 올바르지 않습니다. 상품을 다시 선택해주세요.`)
+        return
+      }
+
+      // 컬러/사이즈 선택 검증
+      const itemsWithoutOptions = orderItems.filter(item => 
+        !item.color || item.color === '' || !item.size || item.size === ''
+      )
+      if (itemsWithoutOptions.length > 0) {
+        console.error('❌ 컬러/사이즈가 선택되지 않은 아이템들:', itemsWithoutOptions)
+        showError(`모든 상품의 컬러와 사이즈를 선택해주세요.`)
+        setIsSaving(false)
         return
       }
 
@@ -667,6 +725,12 @@ export function OrderManagementPage() {
       let response
       if (editingOrderId) {
         // 수정 모드: 기존 발주서 업데이트
+        console.log('🔄 [프론트엔드] 발주서 수정 요청:', {
+          editingOrderId,
+          method: 'PUT',
+          timestamp: new Date().toISOString()
+        })
+        
         response = await fetch(`/api/orders/purchase/${editingOrderId}`, {
           method: 'PUT',
           headers: {
@@ -676,6 +740,11 @@ export function OrderManagementPage() {
         })
       } else {
         // 새 발주서 생성
+        console.log('🆕 [프론트엔드] 발주서 생성 요청:', {
+          method: 'POST',
+          timestamp: new Date().toISOString()
+        })
+        
         response = await fetch('/api/orders/purchase', {
           method: 'POST',
           headers: {
@@ -686,6 +755,13 @@ export function OrderManagementPage() {
       }
 
       const result = await response.json()
+
+      console.log('📡 [프론트엔드] API 응답:', {
+        isEdit: !!editingOrderId,
+        success: result.success,
+        responseData: result.data,
+        timestamp: new Date().toISOString()
+      })
 
       if (result.success) {
         showSuccess(editingOrderId ? '발주서가 수정되었습니다.' : '발주서가 저장되었습니다.')
@@ -748,52 +824,58 @@ export function OrderManagementPage() {
     }
   }
 
-  // 업무일 기준 수정 가능 시간 확인 함수
+  // 업무일 기준 수정 가능 시간 확인 함수 (주말 포함)
   const isEditableTime = (orderDate: string) => {
-    // 정확한 한국 시간 계산 (Asia/Seoul 시간대 사용)
     const now = new Date()
-    const koreaTime = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const orderTime = new Date(orderDate)
+    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
     
-    // 현재 업무일 범위 계산
-    let businessDayStart: Date
-    let businessDayEnd: Date
+    const currentHour = koreaTime.getHours()
     
-    if (koreaTime.getHours() >= 15) {
-      // 현재 시각이 15시 이후면 새로운 업무일 (당일 15:00 ~ 익일 14:59)
-      businessDayStart = new Date(koreaTime)
-      businessDayStart.setHours(15, 0, 0, 0)
-      
-      businessDayEnd = new Date(koreaTime)
-      businessDayEnd.setDate(businessDayEnd.getDate() + 1)
-      businessDayEnd.setHours(14, 59, 59, 999)
-    } else {
-      // 현재 시각이 15시 이전이면 현재 업무일 (전일 15:00 ~ 당일 14:59)
-      businessDayStart = new Date(koreaTime)
-      businessDayStart.setDate(businessDayStart.getDate() - 1)
-      businessDayStart.setHours(15, 0, 0, 0)
-      
-      businessDayEnd = new Date(koreaTime)
-      businessDayEnd.setHours(14, 59, 59, 999)
+    // 현재 업무일 계산
+    let currentWorkingDate = new Date(koreaTime)
+    
+    if (currentHour >= 15) {
+      currentWorkingDate.setDate(currentWorkingDate.getDate() + 1)
     }
     
-    // 주문 생성 시간을 한국 시간으로 변환
-    const orderTime = new Date(orderDate)
-    const orderKoreaTime = new Date(orderTime.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+    // 주말 처리
+    const workingDay = currentWorkingDate.getDay()
     
-    // 주문이 현재 업무일 범위에 있는지 확인
-    const isWithinBusinessDay = orderKoreaTime >= businessDayStart && orderKoreaTime <= businessDayEnd
+    if (workingDay === 0) { // 일요일
+      currentWorkingDate.setDate(currentWorkingDate.getDate() + 1)
+    } else if (workingDay === 6) { // 토요일
+      currentWorkingDate.setDate(currentWorkingDate.getDate() + 2)
+    }
     
-    console.log('🕐 [삭제 시간 확인]', {
+    // 주문의 working_date 계산
+    let orderWorkingDate = new Date(orderKoreaTime)
+    const orderHour = orderKoreaTime.getHours()
+    
+    if (orderHour >= 15) {
+      orderWorkingDate.setDate(orderWorkingDate.getDate() + 1)
+    }
+    
+    // 주문 주말 처리
+    const orderWorkingDay = orderWorkingDate.getDay()
+    
+    if (orderWorkingDay === 0) { // 일요일
+      orderWorkingDate.setDate(orderWorkingDate.getDate() + 1)
+    } else if (orderWorkingDay === 6) { // 토요일
+      orderWorkingDate.setDate(orderWorkingDate.getDate() + 2)
+    }
+    
+    const isSameWorkingDate = currentWorkingDate.toDateString() === orderWorkingDate.toDateString()
+    
+    console.log('🕐 [발주서 수정 가능 여부]', {
       orderDate,
-      koreaTimeNow: koreaTime.toISOString().replace('T', ' ').substring(0, 19),
-      orderKoreaTime: orderKoreaTime.toISOString().replace('T', ' ').substring(0, 19),
-      businessDayStart: businessDayStart.toISOString().replace('T', ' ').substring(0, 19),
-      businessDayEnd: businessDayEnd.toISOString().replace('T', ' ').substring(0, 19),
-      koreaCurrentHour: koreaTime.getHours(),
-      isWithinBusinessDay
+      currentWorkingDate: currentWorkingDate.toDateString(),
+      orderWorkingDate: orderWorkingDate.toDateString(),
+      isSameWorkingDate
     })
     
-    return isWithinBusinessDay
+    return isSameWorkingDate
   }
 
   // 발주서 삭제

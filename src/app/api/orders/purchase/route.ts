@@ -7,11 +7,28 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     
+    console.log('🆕 [발주서 생성] 시작:', {
+      timestamp: new Date().toISOString(),
+      userAgent: request.headers.get('user-agent')?.substring(0, 100)
+    })
+    
     const body = await request.json()
     const { items, shipping_address_id, shipping_address, shipping_postal_code, shipping_name, shipping_phone, user_id } = body
 
     if (!items || items.length === 0) {
       return NextResponse.json({ success: false, message: '발주 상품이 없습니다.' }, { status: 400 })
+    }
+
+    // 컬러/사이즈 선택 검증
+    const itemsWithoutOptions = items.filter((item: any) => 
+      !item.color || item.color === '' || !item.size || item.size === ''
+    )
+    if (itemsWithoutOptions.length > 0) {
+      console.error('❌ 컬러/사이즈가 선택되지 않은 아이템들:', itemsWithoutOptions)
+      return NextResponse.json({ 
+        success: false, 
+        message: '모든 상품의 컬러와 사이즈를 선택해주세요.' 
+      }, { status: 400 })
     }
 
     // 사용자 정보 조회 (user_id가 있는 경우)
@@ -35,7 +52,7 @@ export async function POST(request: NextRequest) {
     // 하루 1건 제한 확인 (양수 항목이 있는 경우만 - 반품은 제한 없음)
     if (positiveItems.length > 0 && user_id) {
       const now = new Date()
-      const koreaTime = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+      const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
       
       // 현재 업무일 범위 계산 (전일 15:00 ~ 당일 14:59, 주말 처리 포함)
       let workdayStart: Date
@@ -59,36 +76,71 @@ export async function POST(request: NextRequest) {
         workdayEnd.setHours(14, 59, 59, 999)
       }
       
-      // 주말 처리: 금요일 오후 3시 이후부터 다음 월요일로
-      const workdayStartDay = workdayStart.getDay()
-      const workdayEndDay = workdayEnd.getDay()
+      // 주말 처리: 금요일 15시부터 일요일까지는 하나의 업무일로 처리
+      const currentDay = koreaTime.getDay()
+      const currentHour = koreaTime.getHours()
       
-      if (workdayStartDay === 0) { // 일요일
-        // 다음 월요일로 이동
-        workdayStart.setDate(workdayStart.getDate() + 1)
-        workdayEnd.setDate(workdayEnd.getDate() + 1)
-      } else if (workdayStartDay === 6) { // 토요일
-        // 다음 월요일로 이동
-        workdayStart.setDate(workdayStart.getDate() + 2)
-        workdayEnd.setDate(workdayEnd.getDate() + 2)
-      } else if (workdayStartDay === 5) { // 금요일
-        // 금요일 오후 3시 이후면 다음 월요일로
-        if (koreaTime.getHours() >= 15) {
-          workdayStart.setDate(workdayStart.getDate() + 3) // 금요일 + 3일 = 월요일
-          workdayEnd.setDate(workdayEnd.getDate() + 3)
-        }
+      // 금요일 15시 이후부터 일요일까지인 경우
+      if ((currentDay === 5 && currentHour >= 15) || currentDay === 6 || currentDay === 0) {
+        // 금요일 15:00를 시작으로 설정
+        workdayStart = new Date(koreaTime)
+        workdayStart.setDate(workdayStart.getDate() - (currentDay === 0 ? 2 : currentDay === 6 ? 1 : 0))
+        workdayStart.setHours(15, 0, 0, 0)
+        
+        // 일요일 23:59를 끝으로 설정
+        workdayEnd = new Date(koreaTime)
+        workdayEnd.setDate(workdayEnd.getDate() + (currentDay === 5 ? 2 : currentDay === 6 ? 1 : 0))
+        workdayEnd.setHours(23, 59, 59, 999)
       }
 
       console.log('🔍 발주 제한 확인:', {
         koreaTime: koreaTime.toISOString(),
         workdayStart: workdayStart.toISOString(),
         workdayEnd: workdayEnd.toISOString(),
-        workdayStartDay,
-        workdayEndDay
+        currentDay,
+        currentHour
       })
 
-      // 현재 업무일 범위 내에서 해당 사용자의 발주 주문 확인
-      const { data: existingOrders, error: existingOrdersError } = await supabase
+      // 예상 working_date 계산 (트리거와 동일한 로직)
+      const expectedWorkingDate = (() => {
+        const now = new Date()
+        const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+        let workingDate = new Date(koreaTime)
+        
+        // 15시 이후면 다음날로 설정
+        if (koreaTime.getHours() >= 15) {
+          workingDate.setDate(workingDate.getDate() + 1)
+        }
+        
+        // 요일 확인
+        const dayOfWeek = workingDate.getDay()
+        
+        // 토요일(6)이면 월요일로
+        if (dayOfWeek === 6) {
+          workingDate.setDate(workingDate.getDate() + 2)
+        }
+        // 일요일(0)이면 월요일로
+        else if (dayOfWeek === 0) {
+          workingDate.setDate(workingDate.getDate() + 1)
+        }
+        // 금요일(5)이고 현재가 15시 이후면 월요일로
+        else if (dayOfWeek === 5 && koreaTime.getHours() >= 15) {
+          // 금요일 15시 이후 주문은 월요일이 working_date
+          workingDate.setDate(workingDate.getDate() + 3)
+        }
+        
+        return workingDate.toISOString().split('T')[0]
+      })()
+
+      console.log('🔍 발주 제한 확인:', {
+        koreaTime: koreaTime.toISOString(),
+        workdayStart: workdayStart.toISOString(),
+        workdayEnd: workdayEnd.toISOString(),
+        expectedWorkingDate
+      })
+
+      // 방법 1: created_at 기준으로 중복 확인 (기존 로직)
+      const { data: existingOrdersByCreatedAt, error: existingOrdersError } = await supabase
         .from('orders')
         .select('id, order_number, created_at, order_type')
         .eq('user_id', user_id)
@@ -101,13 +153,34 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, message: '기존 주문 조회에 실패했습니다.' }, { status: 500 })
       }
 
-      // 발주 주문이 이미 있는지 확인 (반품 전용 주문은 제외)
-      const purchaseOrders = existingOrders?.filter(order => order.order_type !== 'return_only') || []
+      // 방법 2: working_date 기준으로도 중복 확인 (추가 보안)
+      const { data: existingOrdersByWorkingDate, error: workingDateError } = await supabase
+        .from('orders')
+        .select('id, order_number, working_date, order_type')
+        .eq('user_id', user_id)
+        .in('order_type', ['purchase', 'mixed'])
+        .eq('working_date', expectedWorkingDate)
+
+      if (workingDateError) {
+        console.error('working_date 기준 주문 조회 오류:', workingDateError)
+        return NextResponse.json({ success: false, message: '주문 조회에 실패했습니다.' }, { status: 500 })
+      }
+
+      // 두 방법 모두로 중복 확인
+      const purchaseOrdersByCreatedAt = existingOrdersByCreatedAt?.filter(order => order.order_type !== 'return_only') || []
+      const purchaseOrdersByWorkingDate = existingOrdersByWorkingDate?.filter(order => order.order_type !== 'return_only') || []
       
-      if (purchaseOrders.length > 0) {
-        const existingOrder = purchaseOrders[0]
+      if (purchaseOrdersByCreatedAt.length > 0 || purchaseOrdersByWorkingDate.length > 0) {
+        const existingOrder = purchaseOrdersByCreatedAt[0] || purchaseOrdersByWorkingDate[0]
         const orderTime = new Date(existingOrder.created_at)
         const orderKoreaTime = new Date(orderTime.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+        
+        console.log('❌ 중복 발주 감지:', {
+          byCreatedAt: purchaseOrdersByCreatedAt.length,
+          byWorkingDate: purchaseOrdersByWorkingDate.length,
+          existingOrder: existingOrder.order_number,
+          expectedWorkingDate
+        })
         
         return NextResponse.json({
           success: false,
@@ -126,8 +199,39 @@ export async function POST(request: NextRequest) {
       return sum + supplyAmount + vat
     }, 0)
 
-    // working_date는 트리거가 자동으로 계산하므로 수동 설정하지 않음
-    console.log('📅 발주서 working_date는 트리거가 자동 계산합니다.')
+    // working_date 계산 (주말 고려)
+    const calculateWorkingDate = () => {
+      const now = new Date()
+      const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+      let workingDate = new Date(koreaTime)
+      
+      // 15시 이후면 다음날로 설정
+      if (koreaTime.getHours() >= 15) {
+        workingDate.setDate(workingDate.getDate() + 1)
+      }
+      
+      // 요일 확인
+      const dayOfWeek = workingDate.getDay()
+      
+      // 토요일(6)이면 월요일로
+      if (dayOfWeek === 6) {
+        workingDate.setDate(workingDate.getDate() + 2)
+      }
+      // 일요일(0)이면 월요일로
+      else if (dayOfWeek === 0) {
+        workingDate.setDate(workingDate.getDate() + 1)
+      }
+      // 금요일(5)이고 현재가 15시 이후면 월요일로
+      else if (dayOfWeek === 5 && koreaTime.getHours() >= 15) {
+        // 금요일 15시 이후 주문은 월요일이 working_date
+        workingDate.setDate(workingDate.getDate() + 3)
+      }
+      
+      return workingDate.toISOString().split('T')[0]
+    }
+
+    const calculatedWorkingDate = calculateWorkingDate()
+    console.log('📅 계산된 working_date:', calculatedWorkingDate)
 
     // 주문 타입 결정
     let orderType = 'purchase'
@@ -135,7 +239,7 @@ export async function POST(request: NextRequest) {
       orderType = 'return_only'
     }
 
-    // 주문 생성 (working_date는 트리거가 자동으로 설정)
+    // 주문 생성 (working_date 직접 설정)
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -147,7 +251,8 @@ export async function POST(request: NextRequest) {
         shipping_name: shipping_name,
         shipping_phone: shipping_phone,
         status: 'pending',
-        order_type: orderType
+        order_type: orderType,
+        working_date: calculatedWorkingDate
       })
       .select()
       .single()
@@ -366,9 +471,19 @@ export async function POST(request: NextRequest) {
 
     console.log(`🔄 발주 주문 상태 업데이트 완료 - 상태: ${finalStatus}`)
 
-    return NextResponse.json({ success: true, data: order })
+    console.log('✅ [발주서 생성] 완료:', {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      success: true,
+      timestamp: new Date().toISOString()
+    })
+
+    return NextResponse.json({ 
+      success: true, 
+      data: { ...order, isEdit: false }
+    })
   } catch (error) {
-    console.error('발주서 생성 오류:', error)
+    console.error('❌ [발주서 생성] 오류:', error)
     return NextResponse.json({ success: false, message: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 }

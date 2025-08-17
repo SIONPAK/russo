@@ -9,11 +9,28 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id: orderId } = await params
     const supabase = await createClient()
 
+    console.log('🔄 [발주서 수정] 시작:', {
+      orderId,
+      timestamp: new Date().toISOString()
+    })
+
     const body = await request.json()
     const { items, shipping_address_id, shipping_address, shipping_postal_code, shipping_name, shipping_phone } = body
 
     if (!items || items.length === 0) {
       return NextResponse.json({ success: false, message: '발주 상품이 없습니다.' }, { status: 400 })
+    }
+
+    // 컬러/사이즈 선택 검증
+    const itemsWithoutOptions = items.filter((item: any) => 
+      !item.color || item.color === '' || !item.size || item.size === ''
+    )
+    if (itemsWithoutOptions.length > 0) {
+      console.error('❌ 컬러/사이즈가 선택되지 않은 아이템들:', itemsWithoutOptions)
+      return NextResponse.json({ 
+        success: false, 
+        message: '모든 상품의 컬러와 사이즈를 선택해주세요.' 
+      }, { status: 400 })
     }
 
     // 기존 주문 확인
@@ -27,51 +44,77 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, message: '발주서를 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    // 업무일 기준 당일 생성된 발주서만 수정 가능 (전일 15:00 ~ 당일 14:59)
+    // 업무일 기준 수정 가능 여부 확인 (주말 포함)
     const now = new Date()
-    const koreaTime = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
     const orderTime = new Date(existingOrder.created_at)
-    const orderKoreaTime = new Date(orderTime.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
     
-    // 현재 업무일 범위 계산
-    let workdayStart: Date
-    let workdayEnd: Date
+    const currentDay = koreaTime.getDay() // 0: 일요일, 1: 월요일, ..., 5: 금요일, 6: 토요일
+    const currentHour = koreaTime.getHours()
+    const orderDay = orderKoreaTime.getDay()
     
-    if (koreaTime.getHours() >= 15) {
-      // 현재 시각이 15시 이후면 새로운 업무일 (당일 15:00 ~ 익일 14:59)
-      workdayStart = new Date(koreaTime)
-      workdayStart.setHours(15, 0, 0, 0)
-      
-      workdayEnd = new Date(koreaTime)
-      workdayEnd.setDate(workdayEnd.getDate() + 1)
-      workdayEnd.setHours(14, 59, 59, 999)
-    } else {
-      // 현재 시각이 15시 이전이면 현재 업무일 (전일 15:00 ~ 당일 14:59)
-      workdayStart = new Date(koreaTime)
-      workdayStart.setDate(workdayStart.getDate() - 1)
-      workdayStart.setHours(15, 0, 0, 0)
-      
-      workdayEnd = new Date(koreaTime)
-      workdayEnd.setHours(14, 59, 59, 999)
+    console.log('📅 [발주서 수정] 날짜 확인:', {
+      currentTime: koreaTime.toISOString(),
+      currentDay,
+      currentHour,
+      orderTime: orderKoreaTime.toISOString(),
+      orderDay,
+      existingOrderId: existingOrder.id
+    })
+    
+    // 현재 업무일 계산
+    let currentWorkingDate = new Date(koreaTime)
+    
+    // 15:00 이전이면 전일 15:00 이후가 현재 업무일
+    // 15:00 이후면 당일 15:00 이후가 현재 업무일
+    if (currentHour >= 15) {
+      // 15:00 이후면 다음날 업무일로 설정
+      currentWorkingDate.setDate(currentWorkingDate.getDate() + 1)
     }
     
-    // 주문이 현재 업무일 범위에 있는지 확인
-    const isCurrentWorkday = orderKoreaTime >= workdayStart && orderKoreaTime <= workdayEnd
+    // 주말 처리: 금요일 15:00 이후부터 다음 월요일로
+    const workingDay = currentWorkingDate.getDay()
     
-    if (!isCurrentWorkday) {
-      return NextResponse.json({
-        success: false,
-        message: `당일 생성된 발주서만 수정할 수 있습니다. (업무일 기준: ${workdayStart.toLocaleDateString('ko-KR')} 15:00 ~ ${workdayEnd.toLocaleDateString('ko-KR')} 14:59)`
-      }, { status: 400 })
+    if (workingDay === 0) { // 일요일
+      // 다음 월요일로 이동
+      currentWorkingDate.setDate(currentWorkingDate.getDate() + 1)
+    } else if (workingDay === 6) { // 토요일
+      // 다음 월요일로 이동
+      currentWorkingDate.setDate(currentWorkingDate.getDate() + 2)
     }
     
-    // 현재 업무일의 수정 마감시간 (당일 14:59)
-    const editCutoffTime = new Date(workdayEnd)
+    // 주문의 working_date 계산
+    let orderWorkingDate = new Date(orderKoreaTime)
+    const orderHour = orderKoreaTime.getHours()
     
-    if (koreaTime > editCutoffTime) {
+    if (orderHour >= 15) {
+      orderWorkingDate.setDate(orderWorkingDate.getDate() + 1)
+    }
+    
+    // 주문 주말 처리
+    const orderWorkingDay = orderWorkingDate.getDay()
+    
+    if (orderWorkingDay === 0) { // 일요일
+      orderWorkingDate.setDate(orderWorkingDate.getDate() + 1)
+    } else if (orderWorkingDay === 6) { // 토요일
+      orderWorkingDate.setDate(orderWorkingDate.getDate() + 2)
+    }
+    
+    const currentWorkingDateStr = currentWorkingDate.toDateString()
+    const orderWorkingDateStr = orderWorkingDate.toDateString()
+    
+    console.log('📅 [발주서 수정] 업무일 비교:', {
+      currentWorkingDate: currentWorkingDateStr,
+      orderWorkingDate: orderWorkingDateStr,
+      isSameWorkingDate: currentWorkingDateStr === orderWorkingDateStr
+    })
+    
+    // 같은 업무일이 아니면 수정 불가
+    if (currentWorkingDateStr !== orderWorkingDateStr) {
       return NextResponse.json({
         success: false,
-        message: `업무일 기준 오후 3시 이후에는 발주서를 수정할 수 없습니다. (현재 시각: ${koreaTime.toLocaleString('ko-KR')})`
+        message: `업무일 기준으로 당일 생성된 발주서만 수정할 수 있습니다. (주문 업무일: ${orderWorkingDate.toLocaleDateString('ko-KR')}, 현재 업무일: ${currentWorkingDate.toLocaleDateString('ko-KR')})`
       }, { status: 400 })
     }
 
@@ -414,9 +457,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log(`🔄 [수정] 주문 상태 업데이트 완료 - 타입: ${orderType}, 상태: ${updatedOrderStatus}`)
 
-    return NextResponse.json({ success: true, message: '발주서가 수정되었습니다.' })
+    console.log('✅ [발주서 수정] 완료:', {
+      orderId,
+      success: true,
+      timestamp: new Date().toISOString()
+    })
+
+    return NextResponse.json({ 
+      success: true, 
+      message: '발주서가 수정되었습니다.',
+      data: { orderId, isEdit: true }
+    })
   } catch (error) {
-    console.error('발주서 수정 오류:', error)
+    console.error('❌ [발주서 수정] 오류:', error)
     return NextResponse.json({ success: false, message: '서버 오류가 발생했습니다.' }, { status: 500 })
   }
 } 

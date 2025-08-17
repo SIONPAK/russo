@@ -9,23 +9,51 @@ export async function GET(request: NextRequest) {
     
     console.log('🔄 [주문 이월] 매일 자정 pending 주문 이월 처리 시작')
     
-    // 한국 시간 기준으로 어제 날짜 계산
+    // 한국 시간 기준으로 날짜 계산
     const now = new Date()
     const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
-    const yesterday = new Date(koreaTime.getTime() - (24 * 60 * 60 * 1000))
+    const yesterday = new Date(koreaTime)
+    yesterday.setDate(yesterday.getDate() - 1)
     
-    // 한국시간으로 날짜 문자열 직접 생성
-    const yesterdayYear = yesterday.getFullYear()
-    const yesterdayMonth = String(yesterday.getMonth() + 1).padStart(2, '0')
-    const yesterdayDay = String(yesterday.getDate()).padStart(2, '0')
-    const yesterdayDate = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`
+    // 어제와 오늘 날짜 문자열 생성
+    const yesterdayDate = yesterday.toISOString().split('T')[0]
+    const todayDate = koreaTime.toISOString().split('T')[0]
     
-    const todayYear = koreaTime.getFullYear()
-    const todayMonth = String(koreaTime.getMonth() + 1).padStart(2, '0')
-    const todayDay = String(koreaTime.getDate()).padStart(2, '0')
-    const todayDate = `${todayYear}-${todayMonth}-${todayDay}`
+    // 주말 체크 - 금요일 주문은 이월하지 않음 (월요일까지 유효)
+    const yesterdayDayOfWeek = yesterday.getDay()
+    const todayDayOfWeek = koreaTime.getDay()
+    
+    // 토요일(6) 또는 일요일(0)이면 이월 처리 안함
+    if (todayDayOfWeek === 0 || todayDayOfWeek === 6) {
+      console.log('📅 [이월 처리] 주말은 이월 처리하지 않습니다.')
+      return NextResponse.json({
+        success: true,
+        message: '주말은 이월 처리하지 않습니다.',
+        data: {
+          yesterdayDate,
+          todayDate,
+          rolledOverCount: 0,
+          isWeekend: true
+        }
+      })
+    }
     
     console.log(`📅 [이월 처리] 어제: ${yesterdayDate} → 오늘: ${todayDate}`)
+    
+    // 금요일 주문은 제외 (월요일까지 유효)
+    if (yesterdayDayOfWeek === 5) {
+      console.log('📅 [이월 처리] 금요일 주문은 월요일까지 유효하므로 이월하지 않습니다.')
+      return NextResponse.json({
+        success: true,
+        message: '금요일 주문은 월요일까지 유효하므로 이월하지 않습니다.',
+        data: {
+          yesterdayDate,
+          todayDate,
+          rolledOverCount: 0,
+          isFriday: true
+        }
+      })
+    }
     
     // 1. 어제 날짜의 미처리 주문들 조회 (pending, confirmed)
     const { data: pendingOrders, error: fetchError } = await supabase
