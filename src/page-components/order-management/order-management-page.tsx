@@ -64,6 +64,46 @@ interface PurchaseOrder {
   return_statement_status?: string // 반품명세서 상태
 }
 
+// 한국 공휴일 확인 함수
+const isKoreanHoliday = (date: Date) => {
+  const year = date.getFullYear()
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  
+  // 고정 공휴일
+  if (month === 1 && day === 1) return true // 신정
+  if (month === 3 && day === 1) return true // 3·1절
+  if (month === 5 && day === 5) return true // 어린이날
+  if (month === 6 && day === 6) return true // 현충일
+  if (month === 8 && day === 15) return true // 광복절
+  if (month === 10 && day === 3) return true // 개천절
+  if (month === 10 && day === 9) return true // 한글날
+  if (month === 12 && day === 25) return true // 성탄절
+  
+  // 2025년 음력 공휴일 (양력 날짜로 변환)
+  if (year === 2025) {
+    // 설날 연휴 (음력 12월 29일, 1월 1일, 1월 2일) = 2025년 1월 28일, 29일, 30일
+    if (month === 1 && (day === 28 || day === 29 || day === 30)) return true
+    
+    // 부처님오신날 (음력 4월 8일) = 2025년 5월 5일 (어린이날과 겹침)
+    // if (month === 5 && day === 5) return true // 이미 어린이날로 처리됨
+    
+    // 추석 연휴 (음력 8월 14일, 15일, 16일) = 2025년 10월 5일, 6일, 7일
+    if (month === 10 && (day === 5 || day === 6 || day === 7)) return true
+  }
+  
+  // 2026년 음력 공휴일도 필요시 추가
+  if (year === 2026) {
+    // 설날 연휴 = 2026년 2월 16일, 17일, 18일
+    if (month === 2 && (day === 16 || day === 17 || day === 18)) return true
+    
+    // 부처님오신날 = 2026년 5월 24일
+    if (month === 5 && day === 24) return true
+  }
+  
+  return false
+}
+
 export function OrderManagementPage() {
   const { user, isAuthenticated } = useAuthStore()
   const searchParams = useSearchParams()
@@ -81,8 +121,8 @@ export function OrderManagementPage() {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date()
-    // 한국 시간(UTC+9)으로 변환
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    // 한국 시간(UTC+9)으로 변환 - 더 정확한 방법 사용
+    const koreaTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Seoul"}))
     const currentHour = koreaTime.getHours()
     const currentDay = koreaTime.getDay()
     
@@ -113,14 +153,21 @@ export function OrderManagementPage() {
     const result = targetDate.toISOString().split('T')[0]
     
     console.log('📅 발주관리 selectedDate 초기값 (업무일 기준):', {
-      now: now.toISOString(),
+      utcNow: now.toISOString(),
       koreaTime: koreaTime.toISOString(),
+      koreaTimeFormatted: koreaTime.toLocaleString('ko-KR'),
+      koreaTimeManual: new Date(now.getTime() + (9 * 60 * 60 * 1000)).toISOString(),
+      realKoreaTime: new Date().toLocaleString("ko-KR", {timeZone: "Asia/Seoul"}),
       currentHour,
       currentDay,
+      currentDayName: ['일', '월', '화', '수', '목', '금', '토'][currentDay],
       targetDate: targetDate.toISOString(),
       targetDay,
+      targetDayName: ['일', '월', '화', '수', '목', '금', '토'][targetDay],
       result,
-      explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일'
+      explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일',
+      isAfter3PM: currentHour >= 15,
+      actualCurrentTime: new Date().toLocaleString("ko-KR", {timeZone: "Asia/Seoul"})
     })
     
     return result
@@ -824,7 +871,7 @@ export function OrderManagementPage() {
     }
   }
 
-  // 업무일 기준 수정 가능 시간 확인 함수 (주말 포함)
+  // 업무일 기준 수정 가능 시간 확인 함수 (주말 및 공휴일 포함)
   const isEditableTime = (orderDate: string) => {
     const now = new Date()
     const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
@@ -832,6 +879,7 @@ export function OrderManagementPage() {
     const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
     
     const currentHour = koreaTime.getHours()
+    const currentDay = koreaTime.getDay()
     
     // 현재 업무일 계산
     let currentWorkingDate = new Date(koreaTime)
@@ -840,39 +888,55 @@ export function OrderManagementPage() {
       currentWorkingDate.setDate(currentWorkingDate.getDate() + 1)
     }
     
-    // 주말 처리
-    const workingDay = currentWorkingDate.getDay()
+    // 주말 및 공휴일 처리
+    let workingDay = currentWorkingDate.getDay()
     
-    if (workingDay === 0) { // 일요일
+    // 주말이거나 공휴일이면 다음 영업일로 이동
+    while (workingDay === 0 || workingDay === 6 || isKoreanHoliday(currentWorkingDate)) {
       currentWorkingDate.setDate(currentWorkingDate.getDate() + 1)
-    } else if (workingDay === 6) { // 토요일
-      currentWorkingDate.setDate(currentWorkingDate.getDate() + 2)
+      workingDay = currentWorkingDate.getDay()
     }
     
     // 주문의 working_date 계산
     let orderWorkingDate = new Date(orderKoreaTime)
     const orderHour = orderKoreaTime.getHours()
+    const orderDay = orderKoreaTime.getDay()
     
     if (orderHour >= 15) {
       orderWorkingDate.setDate(orderWorkingDate.getDate() + 1)
     }
     
-    // 주문 주말 처리
-    const orderWorkingDay = orderWorkingDate.getDay()
+    // 주문 주말 및 공휴일 처리
+    let orderWorkingDay = orderWorkingDate.getDay()
     
-    if (orderWorkingDay === 0) { // 일요일
+    while (orderWorkingDay === 0 || orderWorkingDay === 6 || isKoreanHoliday(orderWorkingDate)) {
       orderWorkingDate.setDate(orderWorkingDate.getDate() + 1)
-    } else if (orderWorkingDay === 6) { // 토요일
-      orderWorkingDate.setDate(orderWorkingDate.getDate() + 2)
+      orderWorkingDay = orderWorkingDate.getDay()
     }
     
     const isSameWorkingDate = currentWorkingDate.toDateString() === orderWorkingDate.toDateString()
     
+    // 공휴일 확인 로그 추가
+    const orderDateObj = new Date(orderKoreaTime)
+    const isOrderDayHoliday = isKoreanHoliday(orderDateObj)
+    const isPreviousFridayHoliday = (() => {
+      const friday = new Date(orderKoreaTime)
+      // 주문일에서 금요일 찾기
+      const daysSinceFriday = (orderDay + 2) % 7 // 금요일=5, 계산을 위한 보정
+      friday.setDate(friday.getDate() - daysSinceFriday)
+      return isKoreanHoliday(friday)
+    })()
+    
     console.log('🕐 [발주서 수정 가능 여부]', {
       orderDate,
+      orderDay: ['일', '월', '화', '수', '목', '금', '토'][orderDay],
+      currentDay: ['일', '월', '화', '수', '목', '금', '토'][currentDay],
       currentWorkingDate: currentWorkingDate.toDateString(),
       orderWorkingDate: orderWorkingDate.toDateString(),
-      isSameWorkingDate
+      isOrderDayHoliday,
+      isPreviousFridayHoliday,
+      isSameWorkingDate,
+      holidayExtension: isPreviousFridayHoliday ? '금요일 공휴일로 인한 연장' : ''
     })
     
     return isSameWorkingDate
