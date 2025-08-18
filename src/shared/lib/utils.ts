@@ -148,6 +148,12 @@ export function getKoreaTime(): string {
   return koreaTime.toISOString()
 }
 
+// 한국시간 Date 객체 반환 (일관된 방식) - 새로 추가
+export function getKoreaTimeDate(): Date {
+  const now = new Date()
+  return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+}
+
 export function getKoreaDate(): string {
   const koreaTime = new Date(Date.now() + (9 * 60 * 60 * 1000)) // UTC + 9시간
   return koreaTime.toISOString().split('T')[0]

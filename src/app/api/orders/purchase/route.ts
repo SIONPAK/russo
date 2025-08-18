@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     // 하루 1건 제한 확인 (양수 항목이 있는 경우만 - 반품은 제한 없음)
     if (positiveItems.length > 0 && user_id) {
       const now = new Date()
-      const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+      const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
       
       // 현재 업무일 범위 계산 (전일 15:00 ~ 당일 14:59, 주말 처리 포함)
       let workdayStart: Date
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       // 예상 working_date 계산 (트리거와 동일한 로직)
       const expectedWorkingDate = (() => {
         const now = new Date()
-        const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+        const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
         let workingDate = new Date(koreaTime)
         
         // 15시 이후면 다음날로 설정
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
     // working_date 계산 (주말 고려)
     const calculateWorkingDate = () => {
       const now = new Date()
-      const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+      const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
       let workingDate = new Date(koreaTime)
       
       // 15시 이후면 다음날로 설정

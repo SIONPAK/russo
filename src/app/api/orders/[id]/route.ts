@@ -26,9 +26,9 @@ export async function DELETE(
 
     // 💡 올바른 삭제 시간 제한 로직
     const now = new Date()
-    const koreaTime = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     const orderTime = new Date(order.created_at)
-    const orderKoreaTime = new Date(orderTime.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+    const orderKoreaTime = new Date(orderTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     
     // 당일 15:00 기준점 계산
     const todayThreePM = new Date(koreaTime)

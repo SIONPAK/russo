@@ -46,9 +46,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // 업무일 기준 수정 가능 여부 확인 (주말 포함)
     const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     const orderTime = new Date(existingOrder.created_at)
-    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
+    const orderKoreaTime = new Date(orderTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     
     const currentDay = koreaTime.getDay() // 0: 일요일, 1: 월요일, ..., 5: 금요일, 6: 토요일
     const currentHour = koreaTime.getHours()

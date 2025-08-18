@@ -46,7 +46,7 @@ export function OrdersPage() {
     // 현재 업무일 계산 (전일 15:00 ~ 당일 14:59 기준)
     const now = new Date()
     // 한국 시간으로 변환 (UTC+9)
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     const currentHour = koreaTime.getHours()
     const currentDay = koreaTime.getDay()
     

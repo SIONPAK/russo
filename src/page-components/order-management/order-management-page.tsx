@@ -874,9 +874,9 @@ export function OrderManagementPage() {
   // 업무일 기준 수정 가능 시간 확인 함수 (주말 및 공휴일 포함)
   const isEditableTime = (orderDate: string) => {
     const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     const orderTime = new Date(orderDate)
-    const orderKoreaTime = new Date(orderTime.getTime() + (9 * 60 * 60 * 1000))
+    const orderKoreaTime = new Date(orderTime.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     
     const currentHour = koreaTime.getHours()
     const currentDay = koreaTime.getDay()

@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     
     // 한국 시간 기준으로 날짜 계산
     const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     const yesterday = new Date(koreaTime)
     yesterday.setDate(yesterday.getDate() - 1)
     
