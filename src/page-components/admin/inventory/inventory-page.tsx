@@ -1127,7 +1127,12 @@ export function InventoryPage() {
                                   <div className="flex items-center">
                                     {product.images?.[0] && (
                                       <img 
-                                        src={product.images[0].image_url} 
+                                        src={(() => {
+                                          // 대표이미지(is_main: true) 찾기
+                                          const mainImage = product.images.find((img: any) => img.is_main)
+                                          // 대표이미지가 있으면 그것을, 없으면 첫 번째 이미지 사용
+                                          return mainImage ? mainImage.image_url : product.images[0].image_url
+                                        })()} 
                                         alt={product.name}
                                         className="w-12 h-12 rounded-lg object-cover mr-4"
                                       />
@@ -1189,7 +1194,12 @@ export function InventoryPage() {
                                 <div className="flex items-center">
                                   {product.images?.[0] && (
                                     <img 
-                                      src={product.images[0].image_url} 
+                                      src={(() => {
+                                        // 대표이미지(is_main: true) 찾기
+                                        const mainImage = product.images.find((img: any) => img.is_main)
+                                        // 대표이미지가 있으면 그것을, 없으면 첫 번째 이미지 사용
+                                        return mainImage ? mainImage.image_url : product.images[0].image_url
+                                      })()} 
                                       alt={product.name}
                                       className="w-12 h-12 rounded-lg object-cover mr-4"
                                     />

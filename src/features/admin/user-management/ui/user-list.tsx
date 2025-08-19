@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { User } from '@/shared/types'
@@ -23,7 +23,7 @@ interface UserListProps {
   onReject: (userId: string, reason: string) => void
 }
 
-export function UserList({ users, loading = false, onUserSelect, onApprove, onReject }: UserListProps) {
+const UserListComponent = ({ users, loading = false, onUserSelect, onApprove, onReject }: UserListProps) => {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
@@ -264,4 +264,7 @@ export function UserList({ users, loading = false, onUserSelect, onApprove, onRe
       )}
     </>
   )
-} 
+}
+
+// React.memo로 최적화
+export const UserList = memo(UserListComponent) 

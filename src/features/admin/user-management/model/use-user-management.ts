@@ -1,9 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { User, PaginatedResponse } from '@/shared/types'
 import { showSuccess, showError } from '@/shared/lib/toast'
 import { getKoreaDate } from '@/shared/lib/utils'
+
+// debounce 훅
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [value, delay])
+
+  return debouncedValue
+}
 
 interface UseUserManagementOptions {
   page?: number
@@ -57,6 +74,9 @@ export function useUserManagement(options: UseUserManagementOptions = {}) {
     sortOrder = 'desc'
   } = options
 
+  // 검색어는 500ms 디바운스 적용
+  const debouncedSearch = useDebounce(search, 500)
+
   const fetchUsers = async (currentPage?: number) => {
     try {
       setLoading(true)
@@ -68,7 +88,7 @@ export function useUserManagement(options: UseUserManagementOptions = {}) {
         sortOrder
       })
 
-      if (search) params.append('search', search)
+      if (debouncedSearch) params.append('search', debouncedSearch)
       if (status) params.append('status', status)
       if (grade) params.append('grade', grade)
       if (dateFrom) params.append('dateFrom', dateFrom)
@@ -98,7 +118,7 @@ export function useUserManagement(options: UseUserManagementOptions = {}) {
 
   useEffect(() => {
     fetchUsers()
-  }, [page, limit, search, status, grade, dateFrom, dateTo, sortBy, sortOrder])
+  }, [page, limit, debouncedSearch, status, grade, dateFrom, dateTo, sortBy, sortOrder])
 
   const approveUser = async (userId: string, notes?: string) => {
     try {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { UserList } from '@/features/admin/user-management/ui/user-list'
 import { UserDetailModal } from '@/features/admin/user-management/ui/user-detail-modal'
 import { UserEditModal } from '@/features/admin/user-management/ui/user-edit-modal'
@@ -54,43 +54,43 @@ export function UsersPage() {
     sortOrder
   })
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault()
     setPage(1) // 검색 시 첫 페이지로
-  }
+  }, [])
 
-  const handleStatusFilter = (newStatus: string) => {
+  const handleStatusFilter = useCallback((newStatus: string) => {
     setStatus(newStatus)
     setPage(1) // 필터 변경 시 첫 페이지로
-  }
+  }, [])
 
-  const handleGradeFilter = (newGrade: string) => {
+  const handleGradeFilter = useCallback((newGrade: string) => {
     setGrade(newGrade)
     setPage(1)
-  }
+  }, [])
 
-  const handleDateFromChange = (newDateFrom: string) => {
+  const handleDateFromChange = useCallback((newDateFrom: string) => {
     setDateFrom(newDateFrom)
     setPage(1)
-  }
+  }, [])
 
-  const handleDateToChange = (newDateTo: string) => {
+  const handleDateToChange = useCallback((newDateTo: string) => {
     setDateTo(newDateTo)
     setPage(1)
-  }
+  }, [])
 
-  const handleResetFilters = () => {
+  const handleResetFilters = useCallback(() => {
     setSearch('')
     setStatus('')
     setGrade('')
     setDateFrom('')
     setDateTo('')
     setPage(1)
-  }
+  }, [])
 
-  const handlePageChange = (newPage: number) => {
+  const handlePageChange = useCallback((newPage: number) => {
     setPage(newPage)
-  }
+  }, [])
 
   const handleEditUser = () => {
     setIsEditModalOpen(true)
