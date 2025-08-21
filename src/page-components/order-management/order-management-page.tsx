@@ -136,16 +136,14 @@ export function OrderManagementPage() {
     }
     // 15:00 이전이면 당일 업무일 (변경 없음)
     
-    // 주말 처리: 금요일 오후 3시 이후부터 다음 월요일로
-    const targetDay = targetDate.getDay()
-    
-    if (targetDay === 0) { // 일요일
+    // 주말 처리: 원래 요일(currentDay)을 기준으로 판단
+    if (currentDay === 0) { // 일요일
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 1)
-    } else if (targetDay === 6) { // 토요일
+    } else if (currentDay === 6) { // 토요일
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 2)
-    } else if (targetDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
+    } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 3)
     }
@@ -153,21 +151,13 @@ export function OrderManagementPage() {
     const result = targetDate.toISOString().split('T')[0]
     
     console.log('📅 발주관리 selectedDate 초기값 (업무일 기준):', {
-      utcNow: now.toISOString(),
+      now: now.toISOString(),
       koreaTime: koreaTime.toISOString(),
-      koreaTimeFormatted: koreaTime.toLocaleString('ko-KR'),
-      koreaTimeManual: new Date(now.getTime() + (9 * 60 * 60 * 1000)).toISOString(),
-      realKoreaTime: new Date().toLocaleString("ko-KR", {timeZone: "Asia/Seoul"}),
       currentHour,
       currentDay,
-      currentDayName: ['일', '월', '화', '수', '목', '금', '토'][currentDay],
       targetDate: targetDate.toISOString(),
-      targetDay,
-      targetDayName: ['일', '월', '화', '수', '목', '금', '토'][targetDay],
       result,
-      explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일',
-      isAfter3PM: currentHour >= 15,
-      actualCurrentTime: new Date().toLocaleString("ko-KR", {timeZone: "Asia/Seoul"})
+      explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일'
     })
     
     return result

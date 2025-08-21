@@ -73,15 +73,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       currentWorkingDate.setDate(currentWorkingDate.getDate() + 1)
     }
     
-    // 주말 처리: 금요일 15:00 이후부터 다음 월요일로
-    const workingDay = currentWorkingDate.getDay()
-    
-    if (workingDay === 0) { // 일요일
+    // 주말 처리: 원래 요일(currentDay)을 기준으로 판단
+    if (currentDay === 0) { // 일요일
       // 다음 월요일로 이동
       currentWorkingDate.setDate(currentWorkingDate.getDate() + 1)
-    } else if (workingDay === 6) { // 토요일
+    } else if (currentDay === 6) { // 토요일
       // 다음 월요일로 이동
       currentWorkingDate.setDate(currentWorkingDate.getDate() + 2)
+    } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
+      // 다음 월요일로 이동
+      currentWorkingDate.setDate(currentWorkingDate.getDate() + 3)
     }
     
     // 주문의 working_date 계산
@@ -92,13 +93,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       orderWorkingDate.setDate(orderWorkingDate.getDate() + 1)
     }
     
-    // 주문 주말 처리
-    const orderWorkingDay = orderWorkingDate.getDay()
-    
-    if (orderWorkingDay === 0) { // 일요일
+    // 주문 주말 처리: 원래 요일(orderDay)을 기준으로 판단
+    if (orderDay === 0) { // 일요일
       orderWorkingDate.setDate(orderWorkingDate.getDate() + 1)
-    } else if (orderWorkingDay === 6) { // 토요일
+    } else if (orderDay === 6) { // 토요일
       orderWorkingDate.setDate(orderWorkingDate.getDate() + 2)
+    } else if (orderDay === 5 && orderHour >= 15) { // 금요일 오후 3시 이후
+      orderWorkingDate.setDate(orderWorkingDate.getDate() + 3)
     }
     
     const currentWorkingDateStr = currentWorkingDate.toDateString()

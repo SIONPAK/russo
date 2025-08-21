@@ -106,25 +106,22 @@ export async function POST(request: NextRequest) {
         const now = new Date()
         const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
         let workingDate = new Date(koreaTime)
+        const originalDayOfWeek = koreaTime.getDay() // 원래 요일 저장
         
         // 15시 이후면 다음날로 설정
         if (koreaTime.getHours() >= 15) {
           workingDate.setDate(workingDate.getDate() + 1)
         }
         
-        // 요일 확인
-        const dayOfWeek = workingDate.getDay()
-        
-        // 토요일(6)이면 월요일로
-        if (dayOfWeek === 6) {
+        // 원래 요일을 기준으로 주말 처리
+        if (originalDayOfWeek === 6) { // 토요일
           workingDate.setDate(workingDate.getDate() + 2)
         }
-        // 일요일(0)이면 월요일로
-        else if (dayOfWeek === 0) {
+        else if (originalDayOfWeek === 0) { // 일요일
           workingDate.setDate(workingDate.getDate() + 1)
         }
         // 금요일(5)이고 현재가 15시 이후면 월요일로
-        else if (dayOfWeek === 5 && koreaTime.getHours() >= 15) {
+        else if (originalDayOfWeek === 5 && koreaTime.getHours() >= 15) {
           // 금요일 15시 이후 주문은 월요일이 working_date
           workingDate.setDate(workingDate.getDate() + 3)
         }

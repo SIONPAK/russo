@@ -60,16 +60,14 @@ export function OrdersPage() {
     }
     // 15:00 이전이면 당일 업무일 (변경 없음)
     
-    // 주말 처리: 금요일 오후 3시 이후부터 다음 월요일로
-    const targetDay = targetDate.getDay()
-    
-    if (targetDay === 0) { // 일요일
+    // 주말 처리: 원래 요일(currentDay)을 기준으로 판단
+    if (currentDay === 0) { // 일요일
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 1)
-    } else if (targetDay === 6) { // 토요일
+    } else if (currentDay === 6) { // 토요일
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 2)
-    } else if (targetDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
+    } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 3)
     }
@@ -82,7 +80,6 @@ export function OrdersPage() {
       currentHour,
       currentDay,
       targetDate: targetDate.toISOString(),
-      targetDay,
       result,
       explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일'
     })

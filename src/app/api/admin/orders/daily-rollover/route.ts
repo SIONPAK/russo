@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import { getKoreaTime, getKoreaDate } from '@/shared/lib/utils'
 
-// GET - 매일 자정에 pending 주문들을 다음날로 이월 (Vercel Cron Job)
+// GET - 매일 한국시간 자정 5분 후에 pending 주문들을 다음날로 이월 (Vercel Cron Job: UTC 15:05 = KST 00:05)
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     
-    console.log('🔄 [주문 이월] 매일 자정 pending 주문 이월 처리 시작')
+    console.log('🔄 [주문 이월] 매일 한국시간 자정 이후 pending 주문 이월 처리 시작')
+    console.log(`🕐 [실행시간] UTC: ${new Date().toISOString()}, 한국시간: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`)
     
     // 한국 시간 기준으로 날짜 계산
     const now = new Date()
