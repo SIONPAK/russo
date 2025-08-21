@@ -806,7 +806,39 @@ export function OrderManagementPage() {
         setEditingOrderId(null) // 수정 모드 해제
         clearOrderItemsFromStorage()
         setActiveTab('list')
-        fetchPurchaseOrders(selectedDate)
+        
+        // 최신 업무일 계산 후 주문 목록 조회
+        const now = new Date()
+        const koreaTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Seoul"}))
+        const currentHour = koreaTime.getHours()
+        const currentDay = koreaTime.getDay()
+        
+        let targetDate = new Date(koreaTime)
+        
+        if (currentHour >= 15) {
+          targetDate.setDate(targetDate.getDate() + 1)
+        }
+        
+        // 주말 처리: 원래 요일(currentDay)을 기준으로 판단
+        if (currentDay === 0) { // 일요일
+          targetDate.setDate(targetDate.getDate() + 1)
+        } else if (currentDay === 6) { // 토요일
+          targetDate.setDate(targetDate.getDate() + 2)
+        } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
+          targetDate.setDate(targetDate.getDate() + 3)
+        }
+        
+        const latestSelectedDate = targetDate.toISOString().split('T')[0]
+        
+        console.log('🔄 발주서 생성 후 최신 업무일로 목록 조회:', {
+          originalSelectedDate: selectedDate,
+          latestSelectedDate,
+          currentHour,
+          currentDay
+        })
+        
+        setSelectedDate(latestSelectedDate)
+        fetchPurchaseOrders(latestSelectedDate)
       } else {
         showError(result.message || '발주서 저장에 실패했습니다.')
       }
