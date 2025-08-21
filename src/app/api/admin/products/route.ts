@@ -187,9 +187,9 @@ export async function POST(request: NextRequest) {
     // 새로운 재고 구조를 위한 inventory_options 변환
     const convertedInventoryOptions = body.inventory_options.map(opt => ({
       ...opt,
-      physical_stock: opt.stock_quantity, // 물리적 재고로 설정
+      physical_stock: Number(opt.stock_quantity) || 0, // 물리적 재고 (0이어도 반드시 포함)
       allocated_stock: 0, // 할당된 재고는 0으로 초기화
-      stock_quantity: opt.stock_quantity // 가용재고 = 물리적재고 - 할당재고
+      stock_quantity: Number(opt.stock_quantity) || 0 // 가용재고 = 물리적재고 - 할당재고
     }))
 
     // 총 재고량 계산

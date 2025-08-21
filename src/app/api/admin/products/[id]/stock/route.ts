@@ -424,7 +424,7 @@ export async function PATCH(
           console.log(`📊 총 할당된 재고: ${totalAllocated}개`)
 
           // 가용 재고 = 물리적 재고 - 할당된 재고
-          const updatedOptions = finalProduct.inventory_options.map((option: any) => {
+          const updatedOptions = (finalProduct.inventory_options || []).map((option: any) => {
             if (option.color === color && option.size === size) {
               const physicalStock = option.physical_stock || 0
               const availableStock = Math.max(0, physicalStock - totalAllocated)
@@ -610,7 +610,7 @@ export async function PATCH(
           }
 
           // 가용 재고 = 물리적 재고 - 할당된 재고
-          const updatedOptions = finalProduct.inventory_options.map((option: any) => {
+          const updatedOptions = (finalProduct.inventory_options || []).map((option: any) => {
             const key = `${option.color}-${option.size}`
             const allocatedForOption = optionAllocations.get(key) || 0
             const physicalStock = option.physical_stock || 0
