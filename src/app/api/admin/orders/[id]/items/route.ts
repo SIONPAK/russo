@@ -622,15 +622,50 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       return { success: true, message: '미출고 주문이 없습니다.', allocations: [] }
     }
 
+    // 🔍 디버깅: 쿼리 결과 확인
+    console.log('🔍 쿼리 결과 검증:', {
+      totalItems: unshippedItems.length,
+      sampleItem: unshippedItems[0] ? {
+        id: unshippedItems[0].id,
+        hasOrders: !!unshippedItems[0].orders,
+        ordersCreatedAt: unshippedItems[0].orders?.created_at,
+        orderStatus: unshippedItems[0].orders?.status
+      } : null
+    })
+
+    // 🔍 데이터 무결성 확인
+    const invalidItems = unshippedItems.filter((item: any) => !item.orders || !item.orders.created_at)
+    if (invalidItems.length > 0) {
+      console.warn(`⚠️ 잘못된 데이터 ${invalidItems.length}개 발견:`, invalidItems.map((item: any) => ({
+        id: item.id,
+        order_id: item.order_id,
+        hasOrders: !!item.orders,
+        createdAt: item.orders?.created_at
+      })))
+    }
+
     // 실제 미출고 수량이 있는 아이템만 필터링 후 시간순 재정렬
     const itemsWithUnshipped = unshippedItems
       .filter((item: any) => {
         const unshippedQuantity = item.quantity - (item.shipped_quantity || 0)
-        return unshippedQuantity > 0
+        return unshippedQuantity > 0 && item.orders && item.orders.created_at // orders와 created_at이 존재하는지 확인
       })
       .sort((a: any, b: any) => {
-        // 🔧 수정: 필터링 후 시간순으로 재정렬
-        return new Date(a.orders.created_at).getTime() - new Date(b.orders.created_at).getTime()
+        try {
+          // 🔧 수정: null 체크 후 시간순으로 재정렬
+          const dateA = a.orders?.created_at
+          const dateB = b.orders?.created_at
+          
+          // null 체크
+          if (!dateA && !dateB) return 0
+          if (!dateA) return 1 // A가 null이면 뒤로
+          if (!dateB) return -1 // B가 null이면 A를 앞으로
+          
+          return new Date(dateA).getTime() - new Date(dateB).getTime()
+        } catch (sortError) {
+          console.error('❌ 정렬 중 오류:', sortError, { a, b })
+          return 0
+        }
       })
 
     console.log(`📋 미출고 아이템 ${itemsWithUnshipped.length}개 발견`)
@@ -638,7 +673,10 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
     // 시간순 정렬 디버깅 로그
     console.log(`📅 시간순 정렬 확인:`)
     itemsWithUnshipped.forEach((item: any, index: number) => {
-      console.log(`  ${index + 1}. ${item.orders.order_number} (${item.orders.users?.company_name}): ${item.orders.created_at}`)
+      const orderNumber = item.orders?.order_number || 'Unknown'
+      const companyName = item.orders?.users?.company_name || 'Unknown'
+      const createdAt = item.orders?.created_at || 'Unknown'
+      console.log(`  ${index + 1}. ${orderNumber} (${companyName}): ${createdAt}`)
     })
 
     if (itemsWithUnshipped.length === 0) {
