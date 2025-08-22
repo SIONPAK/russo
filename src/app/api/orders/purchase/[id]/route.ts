@@ -392,11 +392,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       console.log(`ℹ️ [수정] 반품 아이템 없음 - 반품명세서 생성 건너뜀`)
     }
 
-    // 💡 자동 재고 재할당 처리 (전체 시스템 자동 할당)
+    // 💡 자동 재고 재할당 처리 (내부 API 호출)
     console.log('🔄 [수정] 자동 재고 재할당 호출')
     
     try {
-      const autoAllocationResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/orders/auto-allocation`, {
+      const autoAllocationResponse = await fetch('/api/admin/orders/auto-allocation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
