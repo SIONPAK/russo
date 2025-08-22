@@ -3,7 +3,7 @@ import { createClient } from '@/shared/lib/supabase'
 import { getKoreaTime } from '@/shared/lib/utils'
 import { executeBatchQuery } from '@/shared/lib/batch-utils'
 
-// GET - 마일리지 목록 조회
+// GET - 마일리지 목록 조회 (성능 최적화)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -20,20 +20,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit
     const supabase = createClient()
 
-    // 검색시 매칭되는 사용자 ID들 (카운트 쿼리에서도 사용)
-    let userIds: string[] = []
-    
-    if (search) {
-      // JOIN된 테이블에서 검색할 때는 별도 처리가 필요
-      // 먼저 검색 조건에 맞는 사용자들을 찾고, 그 사용자들의 마일리지를 조회
-      const { data: matchingUsers } = await supabase
-        .from('users')
-        .select('id')
-        .ilike('company_name', `%${search}%`)
-      
-      userIds = matchingUsers?.map(user => user.id) || []
-    }
-
+    // 🚀 성능 최적화: 단일 쿼리로 검색 및 조회
     let query = supabase
       .from('mileage')
       .select(`
@@ -63,14 +50,9 @@ export async function GET(request: NextRequest) {
       query = query.eq('source', source)
     }
     
+    // 🚀 개선된 검색 로직: 별도 쿼리 없이 직접 검색
     if (search) {
-      if (userIds.length > 0) {
-        // 회사명으로 검색된 사용자들의 마일리지 또는 설명에서 검색
-        query = query.or(`description.ilike.%${search}%,user_id.in.(${userIds.join(',')})`)
-      } else {
-        // 회사명 매칭이 없으면 설명에서만 검색
-        query = query.ilike('description', `%${search}%`)
-      }
+      query = query.or(`description.ilike.%${search}%,users.company_name.ilike.%${search}%`)
     }
     
     if (dateFrom) {
@@ -88,52 +70,21 @@ export async function GET(request: NextRequest) {
 
     const { data: mileages, error } = await query
 
-    // 전체 개수 조회를 위한 배치 처리
+    // 🚀 성능 최적화: 카운트 쿼리 간소화
     let countQuery = supabase
       .from('mileage')
-      .select('id')
+      .select('id', { count: 'exact', head: true })
 
-    // 동일한 필터 적용
-    if (userId) {
-      countQuery = countQuery.eq('user_id', userId)
-    }
-    
-    if (type && type !== 'all') {
-      countQuery = countQuery.eq('type', type)
-    }
-    
-    if (status && status !== 'all') {
-      countQuery = countQuery.eq('status', status)
-    }
-    
-    if (source && source !== 'all') {
-      countQuery = countQuery.eq('source', source)
-    }
-    
-    if (search) {
-      // 검색 조건을 동일하게 적용
-      if (userIds && userIds.length > 0) {
-        countQuery = countQuery.or(`description.ilike.%${search}%,user_id.in.(${userIds.join(',')})`)
-      } else {
-        countQuery = countQuery.ilike('description', `%${search}%`)
-      }
-    }
-    
-    if (dateFrom) {
-      countQuery = countQuery.gte('created_at', dateFrom)
-    }
-    
-    if (dateTo) {
-      countQuery = countQuery.lte('created_at', dateTo + 'T23:59:59')
-    }
+    // 동일한 필터 적용 (간소화)
+    if (userId) countQuery = countQuery.eq('user_id', userId)
+    if (type && type !== 'all') countQuery = countQuery.eq('type', type)
+    if (status && status !== 'all') countQuery = countQuery.eq('status', status)
+    if (source && source !== 'all') countQuery = countQuery.eq('source', source)
+    if (search) countQuery = countQuery.or(`description.ilike.%${search}%,users.company_name.ilike.%${search}%`)
+    if (dateFrom) countQuery = countQuery.gte('created_at', dateFrom)
+    if (dateTo) countQuery = countQuery.lte('created_at', dateTo + 'T23:59:59')
 
-    // 배치 처리로 전체 개수 조회
-    const countResult = await executeBatchQuery(
-      countQuery.order('created_at', { ascending: false }),
-      '마일리지 개수'
-    )
-
-    const count = countResult.error ? 0 : countResult.totalCount
+    const { count } = await countQuery
 
     if (error) {
       console.error('Mileage fetch error:', error)

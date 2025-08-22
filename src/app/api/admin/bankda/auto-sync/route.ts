@@ -452,11 +452,28 @@ function extractCompanyName(bkjukyo: string): string[] {
   return uniqueCandidates;
 }
 
-// 텍스트 정규화 함수
+// 회사명 정규화 함수 (법인 형태 통일)
+function normalizeCompanyName(companyName: string): string {
+  if (!companyName) return '';
+  
+  let normalized = companyName.trim();
+  
+  // 법인 형태 정규화 (순서 중요)
+  normalized = normalized
+    .replace(/^\(주\)\s*/, '')           // (주) 제거
+    .replace(/^주\)\s*/, '')             // 주) 제거  
+    .replace(/^주식회사\s*/, '')          // 주식회사 제거
+    .replace(/^㈜\s*/, '')               // ㈜ 제거
+    .replace(/\s*(주)$/, '')             // 끝의 (주) 제거
+    .replace(/\s*주식회사$/, '')          // 끝의 주식회사 제거
+    .replace(/[^\w가-힣]/g, '')          // 특수문자 제거
+    .trim();
+    
+  return normalized;
+}
+
 function normalizeText(text: string): string {
   return text
-    .toLowerCase()
-    .replace(/\s+/g, '')
     .replace(/[^\w가-힣]/g, '')
     .trim();
 }
@@ -482,14 +499,20 @@ async function findMatchingCompany(supabase: any, extractedNames: string[]): Pro
     
     console.log(`🔍 매칭 대상 회사 수: ${allCompanies.length}개`);
     
-    // 1. 정확한 매칭 시도
+    // 1. 정확한 매칭 시도 (법인 형태 정규화 적용)
     for (const extractedName of extractedNames) {
       const normalizedExtracted = normalizeText(extractedName);
+      const companyNormalizedExtracted = normalizeCompanyName(extractedName);
       
-      // 정확한 매칭
+      // 정확한 매칭 (원본, 텍스트 정규화, 법인명 정규화)
       const exactMatch = allCompanies.find((company: any) => {
         const companyName = company.company_name;
-        return companyName === extractedName || normalizeText(companyName) === normalizedExtracted;
+        const normalizedCompany = normalizeText(companyName);
+        const companyNormalizedCompany = normalizeCompanyName(companyName);
+        
+        return companyName === extractedName || 
+               normalizedCompany === normalizedExtracted ||
+               companyNormalizedCompany === companyNormalizedExtracted;
       });
 
       if (exactMatch) {
@@ -666,30 +689,42 @@ async function findMatchingCompany(supabase: any, extractedNames: string[]): Pro
         }
       }
       
-      // 🎯 포함 관계 우선 체크 (띠띠모어 → 부산띠띠모어 같은 케이스)
+      // 🎯 포함 관계 우선 체크 (법인명 정규화 적용)
       for (const company of allCompanies) {
         const companyName = company.company_name;
+        const normalizedCompany = normalizeCompanyName(companyName);
+        const normalizedExtracted = normalizeCompanyName(extractedName);
         
         // 입금자명이 회사명에 완전히 포함되는 경우 (3글자 이상)
         if (extractedName.length >= 3 && companyName.includes(extractedName)) {
-          console.log(`✅ 포함 관계 매칭 성공: "${extractedName}" → "${companyName}" (포함관계)`);
+          console.log(`✅ 포함 관계 매칭 성공: "${extractedName}" → "${companyName}" (원본 포함)`);
+          return companyName;
+        }
+        
+        // 법인명 정규화 후 포함 관계 체크
+        if (normalizedExtracted.length >= 3 && normalizedCompany.includes(normalizedExtracted)) {
+          console.log(`✅ 포함 관계 매칭 성공: "${extractedName}" → "${companyName}" (정규화 후 포함)`);
           return companyName;
         }
       }
       
       const normalizedExtracted = normalizeText(extractedName);
+      const companyNormalizedExtracted = normalizeCompanyName(extractedName);
       
       for (const company of allCompanies) {
         const companyName = company.company_name;
         const normalizedCompany = normalizeText(companyName);
+        const companyNormalizedCompany = normalizeCompanyName(companyName);
         
-        // 유사도 계산
-        const similarity = calculateSimilarity(normalizedExtracted, normalizedCompany);
+        // 유사도 계산 (텍스트 정규화와 법인명 정규화 모두 적용)
+        const textSimilarity = calculateSimilarity(normalizedExtracted, normalizedCompany);
+        const companySimilarity = calculateSimilarity(companyNormalizedExtracted, companyNormalizedCompany);
+        const maxSimilarity = Math.max(textSimilarity, companySimilarity);
         
-        if (similarity > highestSimilarity && similarity > 0.75) { // 75% 이상 유사도 (개인이름 필터링으로 보완)
-          highestSimilarity = similarity;
+        if (maxSimilarity > highestSimilarity && maxSimilarity > 0.75) { // 75% 이상 유사도
+          highestSimilarity = maxSimilarity;
           bestMatch = company;
-          console.log(`   유사도 매칭 후보: "${companyName}" (유사도: ${(similarity * 100).toFixed(1)}%)`);
+          console.log(`   유사도 매칭 후보: "${companyName}" (유사도: ${(maxSimilarity * 100).toFixed(1)}%) [텍스트: ${(textSimilarity * 100).toFixed(1)}%, 법인명: ${(companySimilarity * 100).toFixed(1)}%]`);
         }
       }
     }
