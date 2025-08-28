@@ -79,6 +79,13 @@ const menuItems = [
     children: []
   },
   {
+    title: '일평균주문량(ADU)',
+    shortTitle: 'ADU',
+    icon: TrendingUp,
+    href: '/admin/adu',
+    children: []
+  },
+  {
     title: '출고내역조회',
     shortTitle: '출고내역',
     icon: Archive,
