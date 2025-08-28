@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/shared/lib/supabase'
 import { getKoreaTime } from '@/shared/lib/utils'
+import bcrypt from 'bcryptjs'
 
 // GET - 특정 사용자 조회
 export async function GET(
@@ -62,7 +63,8 @@ export async function PUT(
       recipient_phone,
       approval_status,
       is_active,
-      customer_grade
+      customer_grade,
+      password
     } = body
 
     // 이메일 중복 검사 (자신 제외)
@@ -99,23 +101,38 @@ export async function PUT(
       }
     }
 
+    // 업데이트할 데이터 준비
+    let updateData: any = {
+      email,
+      company_name,
+      business_number,
+      representative_name,
+      phone,
+      address,
+      postal_code,
+      recipient_name,
+      recipient_phone,
+      approval_status,
+      is_active,
+      customer_grade,
+      updated_at: getKoreaTime()
+    }
+
+    // 비밀번호 변경이 요청된 경우
+    if (body.newPassword) {
+      const hashedPassword = await bcrypt.hash(body.newPassword, 12)
+      updateData.password_hash = hashedPassword
+      
+      console.log('🔐 관리자가 회원 비밀번호를 변경했습니다:', {
+        userId: id,
+        adminAction: true,
+        timestamp: getKoreaTime()
+      })
+    }
+
     const { data: user, error } = await supabase
       .from('users')
-      .update({
-        email,
-        company_name,
-        business_number,
-        representative_name,
-        phone,
-        address,
-        postal_code,
-        recipient_name,
-        recipient_phone,
-        approval_status,
-        is_active,
-        customer_grade,
-        updated_at: getKoreaTime()
-      })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single()

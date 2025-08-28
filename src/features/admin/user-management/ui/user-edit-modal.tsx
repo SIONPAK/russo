@@ -20,6 +20,9 @@ export function UserEditModal({
   const [formData, setFormData] = useState<Partial<User>>({})
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPasswordSection, setShowPasswordSection] = useState(false)
 
   useEffect(() => {
     if (user && isOpen) {
@@ -86,6 +89,21 @@ export function UserEditModal({
       newErrors.recipient_phone = '수령인 연락처 형식이 올바르지 않습니다. (예: 010-1234-5678)'
     }
 
+    // 비밀번호 변경이 요청된 경우 유효성 검사
+    if (showPasswordSection) {
+      if (!newPassword.trim()) {
+        newErrors.newPassword = '새 비밀번호를 입력해주세요.'
+      } else if (newPassword.length < 6) {
+        newErrors.newPassword = '비밀번호는 6자 이상이어야 합니다.'
+      }
+
+      if (!confirmPassword.trim()) {
+        newErrors.confirmPassword = '비밀번호 확인을 입력해주세요.'
+      } else if (newPassword !== confirmPassword) {
+        newErrors.confirmPassword = '비밀번호가 일치하지 않습니다.'
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -103,7 +121,22 @@ export function UserEditModal({
 
     try {
       setSaving(true)
-      await onSave(user.id, formData)
+      
+      // 기본 사용자 정보 업데이트
+      let updateData: any = { ...formData }
+      
+      // 비밀번호 변경이 요청된 경우 포함
+      if (showPasswordSection && newPassword) {
+        updateData.newPassword = newPassword
+      }
+      
+      await onSave(user.id, updateData)
+      
+      // 상태 초기화
+      setNewPassword('')
+      setConfirmPassword('')
+      setShowPasswordSection(false)
+      
       onClose()
     } catch (error) {
       console.error('저장 실패:', error)
@@ -115,6 +148,9 @@ export function UserEditModal({
   const handleCancel = () => {
     setFormData({})
     setErrors({})
+    setNewPassword('')
+    setConfirmPassword('')
+    setShowPasswordSection(false)
     onClose()
   }
 
@@ -297,6 +333,87 @@ export function UserEditModal({
                   {errors.recipient_phone && <p className="text-red-500 text-xs mt-1">{errors.recipient_phone}</p>}
                 </div>
               </div>
+            </div>
+
+            {/* 비밀번호 변경 섹션 */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-md font-medium text-gray-900">비밀번호 변경</h4>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowPasswordSection(!showPasswordSection)
+                    if (!showPasswordSection) {
+                      setNewPassword('')
+                      setConfirmPassword('')
+                      setErrors(prev => ({
+                        ...prev,
+                        newPassword: '',
+                        confirmPassword: ''
+                      }))
+                    }
+                  }}
+                  className={showPasswordSection ? 'bg-red-50 text-red-600 border-red-200' : ''}
+                >
+                  {showPasswordSection ? '취소' : '비밀번호 변경'}
+                </Button>
+              </div>
+
+              {showPasswordSection && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      새 비밀번호 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value)
+                        if (errors.newPassword) {
+                          setErrors(prev => ({ ...prev, newPassword: '' }))
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        errors.newPassword ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="새 비밀번호를 입력하세요 (6자 이상)"
+                    />
+                    {errors.newPassword && <p className="text-red-500 text-xs mt-1">{errors.newPassword}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      비밀번호 확인 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value)
+                        if (errors.confirmPassword) {
+                          setErrors(prev => ({ ...prev, confirmPassword: '' }))
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        errors.confirmPassword ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="비밀번호를 다시 입력하세요"
+                    />
+                    {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+                  </div>
+                </div>
+              )}
+
+              {showPasswordSection && (
+                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-xs text-yellow-800">
+                    ⚠️ <strong>주의:</strong> 비밀번호를 변경하면 해당 회원은 새로운 비밀번호로 로그인해야 합니다.
+                  </p>
+                </div>
+              )}
             </div>
           </form>
         </div>
