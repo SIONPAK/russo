@@ -52,39 +52,6 @@ export function ADUPage() {
     }
   }
 
-  // 엑셀 다운로드
-  const handleExcelDownload = async () => {
-    try {
-      const params = new URLSearchParams({
-        search: searchTerm,
-        sortBy,
-        sortOrder
-      })
-      
-      const response = await fetch(`/api/admin/adu/export?${params}`, {
-        method: 'POST'
-      })
-      
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `ADU_분석_${new Date().toISOString().split('T')[0]}.xlsx`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
-        alert('엑셀 파일이 다운로드되었습니다.')
-      } else {
-        alert('엑셀 다운로드에 실패했습니다.')
-      }
-    } catch (error) {
-      console.error('엑셀 다운로드 오류:', error)
-      alert('엑셀 다운로드 중 오류가 발생했습니다.')
-    }
-  }
-
   // 정렬 처리
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -112,10 +79,6 @@ export function ADUPage() {
             제품별 옵션별 일평균주문량을 분석하여 재고 관리 및 구매 계획에 활용하세요.
           </p>
         </div>
-        <Button onClick={handleExcelDownload} className="flex items-center gap-2">
-          <Download className="w-4 h-4" />
-          엑셀 다운로드
-        </Button>
       </div>
 
       {/* 필터 및 검색 */}
