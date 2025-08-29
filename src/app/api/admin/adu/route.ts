@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     const productIds = products.map(p => p.id)
 
     // 2. 주문 아이템 데이터 조회 (각 기간별로)
-    const [data7, data30, data60, data180] = await Promise.all([
+    const [orderData7, orderData30, orderData60, orderData180] = await Promise.all([
       // 7일 데이터 (최근 7일)
       supabase
         .from('order_items')
@@ -109,19 +109,65 @@ export async function GET(request: NextRequest) {
         .gte('orders.created_at', date180.toISOString())
     ])
 
-    if (data7.error || data30.error || data60.error || data180.error) {
-      console.error('주문 데이터 조회 오류:', { data7: data7.error, data30: data30.error, data60: data60.error, data180: data180.error })
+    // 3. 차감 명세서 데이터 조회 (각 기간별로)
+    const [deductionData7, deductionData30, deductionData60, deductionData180] = await Promise.all([
+      // 7일 데이터 (최근 7일)
+      supabase
+        .from('deduction_statements')
+        .select('items, created_at')
+        .gte('created_at', date7.toISOString())
+        .eq('status', 'completed'),
+      
+      // 30일 데이터 (최근 30일)
+      supabase
+        .from('deduction_statements')
+        .select('items, created_at')
+        .gte('created_at', date30.toISOString())
+        .eq('status', 'completed'),
+      
+      // 60일 데이터 (최근 60일)
+      supabase
+        .from('deduction_statements')
+        .select('items, created_at')
+        .gte('created_at', date60.toISOString())
+        .eq('status', 'completed'),
+      
+      // 180일 데이터 (최근 180일)
+      supabase
+        .from('deduction_statements')
+        .select('items, created_at')
+        .gte('created_at', date180.toISOString())
+        .eq('status', 'completed')
+    ])
+
+    if (orderData7.error || orderData30.error || orderData60.error || orderData180.error) {
+      console.error('주문 데이터 조회 오류:', { orderData7: orderData7.error, orderData30: orderData30.error, orderData60: orderData60.error, orderData180: orderData180.error })
       return NextResponse.json({
         success: false,
         error: '주문 데이터 조회 중 오류가 발생했습니다.'
       }, { status: 500 })
     }
 
+    if (deductionData7.error || deductionData30.error || deductionData60.error || deductionData180.error) {
+      console.error('차감 명세서 데이터 조회 오류:', { deductionData7: deductionData7.error, deductionData30: deductionData30.error, deductionData60: deductionData60.error, deductionData180: deductionData180.error })
+      return NextResponse.json({
+        success: false,
+        error: '차감 명세서 데이터 조회 중 오류가 발생했습니다.'
+      }, { status: 500 })
+    }
+
     console.log('📊 기간별 주문 데이터 개수:', {
-      '7일': data7.data?.length || 0,
-      '30일': data30.data?.length || 0,
-      '60일': data60.data?.length || 0,
-      '180일': data180.data?.length || 0
+      '7일': orderData7.data?.length || 0,
+      '30일': orderData30.data?.length || 0,
+      '60일': orderData60.data?.length || 0,
+      '180일': orderData180.data?.length || 0
+    })
+
+    console.log('📊 기간별 차감 명세서 데이터 개수:', {
+      '7일': deductionData7.data?.length || 0,
+      '30일': deductionData30.data?.length || 0,
+      '60일': deductionData60.data?.length || 0,
+      '180일': deductionData180.data?.length || 0
     })
 
     // 3. 데이터 집계 및 ADU 계산
@@ -131,7 +177,7 @@ export async function GET(request: NextRequest) {
     products.forEach(product => {
       // 해당 상품의 모든 주문 아이템에서 고유한 색상/사이즈 조합 찾기
       const allItems = [
-        ...(data180.data || []).filter(item => item.product_id === product.id)
+        ...(orderData180.data || []).filter(item => item.product_id === product.id)
       ]
       
       const uniqueOptions = new Set<string>()
@@ -177,10 +223,42 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    aggregateData(data7.data, '7', date7)
-    aggregateData(data30.data, '30', date30)
-    aggregateData(data60.data, '60', date60)
-    aggregateData(data180.data, '180', date180)
+    aggregateData(orderData7.data, '7', date7)
+    aggregateData(orderData30.data, '30', date30)
+    aggregateData(orderData60.data, '60', date60)
+    aggregateData(orderData180.data, '180', date180)
+
+    // 차감 명세서 데이터 집계
+    const aggregateDeductionData = (data: any[], period: string, startDate: Date) => {
+      if (!data) return
+      
+      data.forEach(statement => {
+        if (!statement.items || !Array.isArray(statement.items)) return
+        
+        statement.items.forEach((item: any) => {
+          if (!item.product_name || !item.color || !item.size || !statement.created_at) return
+          
+          // product_name으로 상품 ID 찾기
+          const product = products.find(p => p.name === item.product_name)
+          if (!product) return
+          
+          // 차감 명세서 생성일이 해당 기간에 포함되는지 확인
+          const statementDate = new Date(statement.created_at)
+          if (statementDate >= startDate && statementDate <= now) {
+            const key = `${product.id}|${item.color}|${item.size}`
+            if (aduMap.has(key)) {
+              const existing = aduMap.get(key)
+              existing[`total${period}`] += item.deduction_quantity || 0
+            }
+          }
+        })
+      })
+    }
+
+    aggregateDeductionData(deductionData7.data, '7', date7)
+    aggregateDeductionData(deductionData30.data, '30', date30)
+    aggregateDeductionData(deductionData60.data, '60', date60)
+    aggregateDeductionData(deductionData180.data, '180', date180)
 
     // ADU 계산 및 결과 변환
     let aduData = Array.from(aduMap.values())
