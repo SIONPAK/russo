@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     console.log('출고처리 시작:', { orderIds })
 
-    // 주문 정보 조회
+    // 주문 정보 조회 (order_items 포함)
     const { data: orders, error: orderError } = await supabase
       .from('orders')
       .select(`
@@ -26,6 +26,16 @@ export async function POST(request: NextRequest) {
           id,
           company_name,
           representative_name
+        ),
+        order_items (
+          id,
+          product_id,
+          product_name,
+          color,
+          size,
+          quantity,
+          shipped_quantity,
+          allocated_quantity
         )
       `)
       .in('id', orderIds)
@@ -92,8 +102,12 @@ export async function POST(request: NextRequest) {
         if (!isUnshipped && order.order_items) {
           for (const item of order.order_items) {
             const shippedQuantity = item.shipped_quantity || 0
+            const allocatedQuantity = item.allocated_quantity || 0
             
             if (shippedQuantity > 0) {
+              console.log(`🔄 출고 처리 시작: ${item.product_name} (${item.color}/${item.size}) - 출고: ${shippedQuantity}개, 할당: ${allocatedQuantity}개`)
+              
+              // 1. 물리재고 차감 (process_shipment)
               const { data: stockResult, error: stockError } = await supabase
                 .rpc('process_shipment', {
                   p_product_id: item.product_id,
@@ -104,11 +118,26 @@ export async function POST(request: NextRequest) {
                 })
 
               if (stockError) {
-                console.error('출고 처리 실패:', stockError)
+                console.error('❌ 출고 처리 실패:', stockError)
                 // 출고 처리 실패해도 주문은 출고 처리 계속 진행
               } else {
                 console.log(`✅ 출고 처리 완료: ${item.product_name} (${item.color}/${item.size}) ${shippedQuantity}개`)
                 console.log(`📊 재고 변동: ${stockResult.previous_physical_stock}개 → ${stockResult.new_physical_stock}개`)
+              }
+
+              // 2. allocated_quantity를 0으로 초기화
+              const { error: allocationError } = await supabase
+                .from('order_items')
+                .update({ 
+                  allocated_quantity: 0,
+                  updated_at: currentTime
+                })
+                .eq('id', item.id)
+
+              if (allocationError) {
+                console.error('❌ 할당량 초기화 실패:', allocationError)
+              } else {
+                console.log(`✅ 할당량 초기화 완료: ${item.product_name} (${item.color}/${item.size}) - ${allocatedQuantity}개 → 0개`)
               }
             }
           }

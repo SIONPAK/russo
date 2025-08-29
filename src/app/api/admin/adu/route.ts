@@ -12,24 +12,24 @@ export async function GET(request: NextRequest) {
     
     const supabase = createClient()
     
-    // 날짜 계산 (한국 시간 기준)
+    // 날짜 계산 (UTC 기준으로 계산)
     const now = new Date()
-    const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
     
-    const date7 = new Date(koreaTime)
+    // UTC 기준으로 계산 (데이터베이스가 UTC로 저장되어 있음)
+    const date7 = new Date(now)
     date7.setDate(date7.getDate() - 7)
     
-    const date30 = new Date(koreaTime)
+    const date30 = new Date(now)
     date30.setDate(date30.getDate() - 30)
     
-    const date60 = new Date(koreaTime)
+    const date60 = new Date(now)
     date60.setDate(date60.getDate() - 60)
     
-    const date180 = new Date(koreaTime)
+    const date180 = new Date(now)
     date180.setDate(date180.getDate() - 180)
 
     console.log('🔍 ADU 계산 기간:', {
-      현재시간: koreaTime.toISOString(),
+      현재시간: now.toISOString(),
       '7일전': date7.toISOString(),
       '30일전': date30.toISOString(),
       '60일전': date60.toISOString(),
@@ -80,28 +80,28 @@ export async function GET(request: NextRequest) {
 
     // 2. 주문 아이템 데이터 조회 (각 기간별로)
     const [data7, data30, data60, data180] = await Promise.all([
-      // 7일 데이터
+      // 7일 데이터 (최근 7일)
       supabase
         .from('order_items')
         .select('product_id, color, size, quantity, orders!order_items_order_id_fkey(created_at)')
         .in('product_id', productIds)
         .gte('orders.created_at', date7.toISOString()),
       
-      // 30일 데이터
+      // 30일 데이터 (최근 30일)
       supabase
         .from('order_items')
         .select('product_id, color, size, quantity, orders!order_items_order_id_fkey(created_at)')
         .in('product_id', productIds)
         .gte('orders.created_at', date30.toISOString()),
       
-      // 60일 데이터
+      // 60일 데이터 (최근 60일)
       supabase
         .from('order_items')
         .select('product_id, color, size, quantity, orders!order_items_order_id_fkey(created_at)')
         .in('product_id', productIds)
         .gte('orders.created_at', date60.toISOString()),
       
-      // 180일 데이터
+      // 180일 데이터 (최근 180일)
       supabase
         .from('order_items')
         .select('product_id, color, size, quantity, orders!order_items_order_id_fkey(created_at)')
@@ -116,6 +116,13 @@ export async function GET(request: NextRequest) {
         error: '주문 데이터 조회 중 오류가 발생했습니다.'
       }, { status: 500 })
     }
+
+    console.log('📊 기간별 주문 데이터 개수:', {
+      '7일': data7.data?.length || 0,
+      '30일': data30.data?.length || 0,
+      '60일': data60.data?.length || 0,
+      '180일': data180.data?.length || 0
+    })
 
     // 3. 데이터 집계 및 ADU 계산
     const aduMap = new Map<string, any>()
@@ -151,25 +158,29 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // 각 기간별 데이터 집계
-    const aggregateData = (data: any[], period: string) => {
+    // 각 기간별 데이터 집계 (날짜 필터링 포함)
+    const aggregateData = (data: any[], period: string, startDate: Date) => {
       if (!data) return
       
       data.forEach(item => {
-        if (!item.color || !item.size) return
+        if (!item.color || !item.size || !item.orders?.created_at) return
         
-        const key = `${item.product_id}|${item.color}|${item.size}`
-        if (aduMap.has(key)) {
-          const existing = aduMap.get(key)
-          existing[`total${period}`] += item.quantity || 0
+        // 주문 생성일이 해당 기간에 포함되는지 확인
+        const orderDate = new Date(item.orders.created_at)
+        if (orderDate >= startDate && orderDate <= now) {
+          const key = `${item.product_id}|${item.color}|${item.size}`
+          if (aduMap.has(key)) {
+            const existing = aduMap.get(key)
+            existing[`total${period}`] += item.quantity || 0
+          }
         }
       })
     }
 
-    aggregateData(data7.data, '7')
-    aggregateData(data30.data, '30')
-    aggregateData(data60.data, '60')
-    aggregateData(data180.data, '180')
+    aggregateData(data7.data, '7', date7)
+    aggregateData(data30.data, '30', date30)
+    aggregateData(data60.data, '60', date60)
+    aggregateData(data180.data, '180', date180)
 
     // ADU 계산 및 결과 변환
     let aduData = Array.from(aduMap.values())
