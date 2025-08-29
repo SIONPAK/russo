@@ -214,8 +214,8 @@ export function useOrderManagement() {
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 2)
     } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
-      // 다음 월요일로 이동
-      targetDate.setDate(targetDate.getDate() + 3)
+      // 다음 월요일로 이동 (이미 +1 했으므로 +2만 추가)
+      targetDate.setDate(targetDate.getDate() + 2)
     }
     
     const result = targetDate.toISOString().split('T')[0]

@@ -122,8 +122,8 @@ export async function POST(request: NextRequest) {
         }
         // 금요일(5)이고 현재가 15시 이후면 월요일로
         else if (originalDayOfWeek === 5 && koreaTime.getHours() >= 15) {
-          // 금요일 15시 이후 주문은 월요일이 working_date
-          workingDate.setDate(workingDate.getDate() + 3)
+          // 금요일 15시 이후 주문은 월요일이 working_date (이미 +1 했으므로 +2만 추가)
+          workingDate.setDate(workingDate.getDate() + 2)
         }
         
         return workingDate.toISOString().split('T')[0]

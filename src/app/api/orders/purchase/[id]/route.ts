@@ -81,8 +81,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // 다음 월요일로 이동
       currentWorkingDate.setDate(currentWorkingDate.getDate() + 2)
     } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
-      // 다음 월요일로 이동
-      currentWorkingDate.setDate(currentWorkingDate.getDate() + 3)
+      // 다음 월요일로 이동 (이미 +1 했으므로 +2만 추가)
+      currentWorkingDate.setDate(currentWorkingDate.getDate() + 2)
     }
     
     // 주문의 working_date 계산
@@ -99,7 +99,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     } else if (orderDay === 6) { // 토요일
       orderWorkingDate.setDate(orderWorkingDate.getDate() + 2)
     } else if (orderDay === 5 && orderHour >= 15) { // 금요일 오후 3시 이후
-      orderWorkingDate.setDate(orderWorkingDate.getDate() + 3)
+      orderWorkingDate.setDate(orderWorkingDate.getDate() + 2)
     }
     
     const currentWorkingDateStr = currentWorkingDate.toDateString()
