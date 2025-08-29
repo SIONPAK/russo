@@ -424,84 +424,9 @@ export async function PATCH(request: NextRequest) {
 
     console.log(`✅ 샘플 상태 업데이트 완료: ${updatedSamples.length}개`)
 
-    // 🎯 액션별 재고 처리 (새로운 재고 관리 시스템 사용)
-    if (action === 'mark_shipped') {
-      // 출고 시 재고 차감
-      console.log('📉 출고 시 재고 차감 처리...')
-      
-      for (const sample of updatedSamples) {
-        try {
-          // 색상/사이즈 정보 파싱
-          const parseOptions = (options: string) => {
-            const colorMatch = options.match(/색상:\s*([^,]+)/);
-            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
-            return {
-              color: colorMatch ? colorMatch[1].trim() : null,
-              size: sizeMatch ? sizeMatch[1].trim() : null
-            };
-          };
-
-          const { color, size } = parseOptions(sample.product_options || '');
-
-          // 🎯 새로운 재고 관리 시스템으로 재고 차감
-          const { data: stockResult, error: stockError } = await supabase
-            .rpc('adjust_physical_stock', {
-              p_product_id: sample.product_id,
-              p_color: color,
-              p_size: size,
-              p_quantity_change: -sample.quantity, // 음수로 차감
-              p_reason: `샘플 출고 - ${sample.sample_number}`
-            })
-
-          if (stockError || !stockResult) {
-            console.error('❌ 샘플 출고 재고 차감 실패:', stockError)
-          } else {
-            console.log(`✅ 샘플 출고 재고 차감 완료: ${sample.sample_number}`)
-          }
-        } catch (stockError) {
-          console.error(`샘플 ${sample.sample_number} 재고 차감 실패:`, stockError)
-        }
-      }
-    }
-
-    if (action === 'mark_returned') {
-      // 회수 시 재고 복원
-      console.log('📈 회수 시 재고 복원 처리...')
-      
-      for (const sample of updatedSamples) {
-        try {
-          // 색상/사이즈 정보 파싱
-          const parseOptions = (options: string) => {
-            const colorMatch = options.match(/색상:\s*([^,]+)/);
-            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
-            return {
-              color: colorMatch ? colorMatch[1].trim() : null,
-              size: sizeMatch ? sizeMatch[1].trim() : null
-            };
-          };
-
-          const { color, size } = parseOptions(sample.product_options || '');
-
-          // 🎯 새로운 재고 관리 시스템으로 재고 복원
-          const { data: stockResult, error: stockError } = await supabase
-            .rpc('adjust_physical_stock', {
-              p_product_id: sample.product_id,
-              p_color: color,
-              p_size: size,
-              p_quantity_change: sample.quantity, // 양수로 복원
-              p_reason: `샘플 회수 - ${sample.sample_number}`
-            })
-
-          if (stockError || !stockResult) {
-            console.error('❌ 샘플 회수 재고 복원 실패:', stockError)
-          } else {
-            console.log(`✅ 샘플 회수 재고 복원 완료: ${sample.sample_number}`)
-          }
-        } catch (stockError) {
-          console.error(`샘플 ${sample.sample_number} 재고 복원 실패:`, stockError)
-        }
-      }
-    }
+    // 💡 샘플은 재고 연동하지 않음 (재고 차감 및 이력 기록 제거)
+    // 샘플 출고/회수는 팀장님이 별도 수동 관리
+    console.log('📝 샘플 상태 변경 완료 - 재고 차감 없음')
 
     console.log(`🎉 샘플 일괄 업데이트 완료: ${updatedSamples.length}개`)
 

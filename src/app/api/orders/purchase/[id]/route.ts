@@ -396,7 +396,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     console.log('🔄 [수정] 자동 재고 재할당 호출')
     
     try {
-      const autoAllocationResponse = await fetch('/api/admin/orders/auto-allocation', {
+      // 서버 사이드에서 내부 API 호출 시 절대 URL 사용
+      const autoAllocationResponse = await fetch('https://luso.kr/api/admin/orders/auto-allocation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
