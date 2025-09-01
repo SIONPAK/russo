@@ -75,32 +75,37 @@ export async function POST(request: NextRequest) {
               p_size: item.size
             })
 
-          if (!stockError && availableStock >= unshippedQuantity) {
-            console.log(`✅ [자동 할당] 재고 충분, 할당 시작:`, {
+          if (!stockError && availableStock > 0) {
+            // 할당 가능한 수량 계산 (가용 재고와 미출고 수량 중 작은 값)
+            const allocatableQuantity = Math.min(availableStock, unshippedQuantity)
+            
+            console.log(`✅ [자동 할당] 재고 할당 시작:`, {
               orderNumber: order.order_number,
               productName: item.product_name,
               color: item.color,
               size: item.size,
               unshippedQuantity,
-              availableStock
+              availableStock,
+              allocatableQuantity
             })
 
             // 재고 할당
             const { data: allocationResult, error: allocationError } = await supabase
               .rpc('allocate_stock', {
                 p_product_id: item.product_id,
-                p_quantity: unshippedQuantity,
+                p_quantity: allocatableQuantity,
                 p_color: item.color,
                 p_size: item.size
               })
 
             if (!allocationError && allocationResult) {
-              // 출고 수량 업데이트
+              // 출고 수량 업데이트 (기존 출고수량 + 할당수량)
+              const newShippedQuantity = (item.shipped_quantity || 0) + allocatableQuantity
               const { error: updateError } = await supabase
                 .from('order_items')
                 .update({
-                  shipped_quantity: item.quantity, // 전량 할당
-                  allocated_quantity: ((item as any).allocated_quantity || 0) + unshippedQuantity
+                  shipped_quantity: newShippedQuantity,
+                  allocated_quantity: ((item as any).allocated_quantity || 0) + allocatableQuantity
                 })
                 .eq('id', item.id)
 
@@ -111,7 +116,9 @@ export async function POST(request: NextRequest) {
                   productName: item.product_name,
                   color: item.color,
                   size: item.size,
-                  allocatedQuantity: unshippedQuantity
+                  allocatedQuantity: allocatableQuantity,
+                  newShippedQuantity,
+                  remainingUnshipped: unshippedQuantity - allocatableQuantity
                 })
               } else {
                 console.error(`❌ [자동 할당] 출고 수량 업데이트 실패:`, updateError)

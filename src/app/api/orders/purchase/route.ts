@@ -52,78 +52,29 @@ export async function POST(request: NextRequest) {
     // 하루 1건 제한 확인 (양수 항목이 있는 경우만 - 반품은 제한 없음)
     if (positiveItems.length > 0 && user_id) {
       const now = new Date()
-      const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+      const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
       
-      // 현재 업무일 범위 계산 (전일 15:00 ~ 당일 14:59, 주말 처리 포함)
-      let workdayStart: Date
-      let workdayEnd: Date
-      
-      if (koreaTime.getHours() >= 15) {
-        // 현재 시각이 15시 이후면 새로운 업무일 (당일 15:00 ~ 익일 14:59)
-        workdayStart = new Date(koreaTime)
-        workdayStart.setHours(15, 0, 0, 0)
-        
-        workdayEnd = new Date(koreaTime)
-        workdayEnd.setDate(workdayEnd.getDate() + 1)
-        workdayEnd.setHours(14, 59, 59, 999)
-      } else {
-        // 현재 시각이 15시 이전이면 현재 업무일 (전일 15:00 ~ 당일 14:59)
-        workdayStart = new Date(koreaTime)
-        workdayStart.setDate(workdayStart.getDate() - 1)
-        workdayStart.setHours(15, 0, 0, 0)
-        
-        workdayEnd = new Date(koreaTime)
-        workdayEnd.setHours(14, 59, 59, 999)
-      }
-      
-      // 주말 처리: 금요일 15시부터 일요일까지는 하나의 업무일로 처리
-      const currentDay = koreaTime.getDay()
-      const currentHour = koreaTime.getHours()
-      
-      // 금요일 15시 이후부터 일요일까지인 경우
-      if ((currentDay === 5 && currentHour >= 15) || currentDay === 6 || currentDay === 0) {
-        // 금요일 15:00를 시작으로 설정
-        workdayStart = new Date(koreaTime)
-        workdayStart.setDate(workdayStart.getDate() - (currentDay === 0 ? 2 : currentDay === 6 ? 1 : 0))
-        workdayStart.setHours(15, 0, 0, 0)
-        
-        // 일요일 23:59를 끝으로 설정
-        workdayEnd = new Date(koreaTime)
-        workdayEnd.setDate(workdayEnd.getDate() + (currentDay === 5 ? 2 : currentDay === 6 ? 1 : 0))
-        workdayEnd.setHours(23, 59, 59, 999)
-      }
-
-      console.log('🔍 발주 제한 확인:', {
-        koreaTime: koreaTime.toISOString(),
-        workdayStart: workdayStart.toISOString(),
-        workdayEnd: workdayEnd.toISOString(),
-        currentDay,
-        currentHour
-      })
-
       // 예상 working_date 계산 (트리거와 동일한 로직)
       const expectedWorkingDate = (() => {
-        const now = new Date()
-        const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
         let workingDate = new Date(koreaTime)
-        const originalDayOfWeek = koreaTime.getDay() // 원래 요일 저장
+        const originalDayOfWeek = koreaTime.getUTCDay() // 원래 요일 저장
         
         // 15시 이후면 다음날로 설정
-        if (koreaTime.getHours() >= 15) {
-          workingDate.setDate(workingDate.getDate() + 1)
+        if (koreaTime.getUTCHours() >= 15) {
+          workingDate.setUTCDate(workingDate.getUTCDate() + 1)
         }
         
         // 원래 요일을 기준으로 주말 처리
         if (originalDayOfWeek === 6) { // 토요일
-          workingDate.setDate(workingDate.getDate() + 2)
+          workingDate.setUTCDate(workingDate.getUTCDate() + 2)
         }
         else if (originalDayOfWeek === 0) { // 일요일
-          workingDate.setDate(workingDate.getDate() + 1)
+          workingDate.setUTCDate(workingDate.getUTCDate() + 1)
         }
         // 금요일(5)이고 현재가 15시 이후면 월요일로
-        else if (originalDayOfWeek === 5 && koreaTime.getHours() >= 15) {
+        else if (originalDayOfWeek === 5 && koreaTime.getUTCHours() >= 15) {
           // 금요일 15시 이후 주문은 월요일이 working_date (이미 +1 했으므로 +2만 추가)
-          workingDate.setDate(workingDate.getDate() + 2)
+          workingDate.setUTCDate(workingDate.getUTCDate() + 2)
         }
         
         return workingDate.toISOString().split('T')[0]
@@ -131,57 +82,38 @@ export async function POST(request: NextRequest) {
 
       console.log('🔍 발주 제한 확인:', {
         koreaTime: koreaTime.toISOString(),
-        workdayStart: workdayStart.toISOString(),
-        workdayEnd: workdayEnd.toISOString(),
         expectedWorkingDate
       })
 
-      // 방법 1: created_at 기준으로 중복 확인 (기존 로직)
-      const { data: existingOrdersByCreatedAt, error: existingOrdersError } = await supabase
+      // working_date 기준으로 중복 확인 (가장 확실한 방법)
+      const { data: existingOrders, error: existingOrdersError } = await supabase
         .from('orders')
-        .select('id, order_number, created_at, order_type')
+        .select('id, order_number, working_date, order_type, created_at')
         .eq('user_id', user_id)
         .in('order_type', ['purchase', 'mixed'])
-        .gte('created_at', workdayStart.toISOString())
-        .lte('created_at', workdayEnd.toISOString())
+        .eq('working_date', expectedWorkingDate)
 
       if (existingOrdersError) {
         console.error('기존 주문 조회 오류:', existingOrdersError)
         return NextResponse.json({ success: false, message: '기존 주문 조회에 실패했습니다.' }, { status: 500 })
       }
 
-      // 방법 2: working_date 기준으로도 중복 확인 (추가 보안)
-      const { data: existingOrdersByWorkingDate, error: workingDateError } = await supabase
-        .from('orders')
-        .select('id, order_number, working_date, order_type')
-        .eq('user_id', user_id)
-        .in('order_type', ['purchase', 'mixed'])
-        .eq('working_date', expectedWorkingDate)
-
-      if (workingDateError) {
-        console.error('working_date 기준 주문 조회 오류:', workingDateError)
-        return NextResponse.json({ success: false, message: '주문 조회에 실패했습니다.' }, { status: 500 })
-      }
-
-      // 두 방법 모두로 중복 확인
-      const purchaseOrdersByCreatedAt = existingOrdersByCreatedAt?.filter(order => order.order_type !== 'return_only') || []
-      const purchaseOrdersByWorkingDate = existingOrdersByWorkingDate?.filter(order => order.order_type !== 'return_only') || []
+      // 중복 주문 확인
+      const purchaseOrders = existingOrders?.filter(order => order.order_type !== 'return_only') || []
       
-      if (purchaseOrdersByCreatedAt.length > 0 || purchaseOrdersByWorkingDate.length > 0) {
-        const existingOrder = purchaseOrdersByCreatedAt[0] || purchaseOrdersByWorkingDate[0]
-        const orderTime = new Date(existingOrder.created_at)
-        const orderKoreaTime = new Date(orderTime.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }))
+      if (purchaseOrders.length > 0) {
+        const existingOrder = purchaseOrders[0]
         
         console.log('❌ 중복 발주 감지:', {
-          byCreatedAt: purchaseOrdersByCreatedAt.length,
-          byWorkingDate: purchaseOrdersByWorkingDate.length,
           existingOrder: existingOrder.order_number,
-          expectedWorkingDate
+          workingDate: existingOrder.working_date,
+          expectedWorkingDate,
+          created_at: existingOrder.created_at
         })
         
         return NextResponse.json({
           success: false,
-          message: `하루에 발주는 1건만 가능합니다. 기존 발주서를 '수정'해서 이용해주세요.\n\n업무일 기준: ${workdayStart.toLocaleDateString('ko-KR')} 15:00 ~ ${workdayEnd.toLocaleDateString('ko-KR')} 14:59\n\n`
+          message: `이미 해당 업무일에 발주서가 존재합니다. 기존 발주서를 '수정'해서 이용해주세요.\n\n발주서 번호: ${existingOrder.order_number}\n업무일: ${expectedWorkingDate}\n\n`
         }, { status: 400 })
       }
     }
@@ -199,28 +131,26 @@ export async function POST(request: NextRequest) {
     // working_date 계산 (주말 고려)
     const calculateWorkingDate = () => {
       const now = new Date()
-      const koreaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+      const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
       let workingDate = new Date(koreaTime)
-      const originalDayOfWeek = koreaTime.getDay() // 원래 요일 저장
+      const originalDayOfWeek = koreaTime.getUTCDay() // 원래 요일 저장
       
       // 15시 이후면 다음날로 설정
-      if (koreaTime.getHours() >= 15) {
-        workingDate.setDate(workingDate.getDate() + 1)
+      if (koreaTime.getUTCHours() >= 15) {
+        workingDate.setUTCDate(workingDate.getUTCDate() + 1)
       }
       
       // 원래 요일을 기준으로 주말 처리
-      // 토요일(6)이면 월요일로
-      if (originalDayOfWeek === 6) {
-        workingDate.setDate(workingDate.getDate() + 2)
+      if (originalDayOfWeek === 6) { // 토요일
+        workingDate.setUTCDate(workingDate.getUTCDate() + 2)
       }
-      // 일요일(0)이면 월요일로
-      else if (originalDayOfWeek === 0) {
-        workingDate.setDate(workingDate.getDate() + 1)
+      else if (originalDayOfWeek === 0) { // 일요일
+        workingDate.setUTCDate(workingDate.getUTCDate() + 1)
       }
       // 금요일(5)이고 현재가 15시 이후면 월요일로
-      else if (originalDayOfWeek === 5 && koreaTime.getHours() >= 15) {
-        // 금요일 15시 이후 주문은 월요일이 working_date
-        workingDate.setDate(workingDate.getDate() + 3)
+      else if (originalDayOfWeek === 5 && koreaTime.getUTCHours() >= 15) {
+        // 금요일 15시 이후 주문은 월요일이 working_date (이미 +1 했으므로 +2만 추가)
+        workingDate.setUTCDate(workingDate.getUTCDate() + 2)
       }
       
       return workingDate.toISOString().split('T')[0]
