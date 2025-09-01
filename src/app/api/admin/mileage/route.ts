@@ -20,6 +20,17 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit
     const supabase = createClient()
 
+    // 회사명 검색을 위한 user_id 목록 조회
+    let userIds: any[] = []
+    if (search) {
+      const { data: userSearchResult } = await supabase
+        .from('users')
+        .select('id')
+        .ilike('company_name', `%${search}%`)
+      
+      userIds = userSearchResult || []
+    }
+
     // 🚀 성능 최적화: 단일 쿼리로 검색 및 조회
     let query = supabase
       .from('mileage')
@@ -50,9 +61,17 @@ export async function GET(request: NextRequest) {
       query = query.eq('source', source)
     }
     
-    // 🚀 개선된 검색 로직: 별도 쿼리 없이 직접 검색
+    // 🚀 개선된 검색 로직
     if (search) {
-      query = query.or(`description.ilike.%${search}%,users.company_name.ilike.%${search}%`)
+      // description 검색과 회사명 검색을 OR 조건으로 결합
+      const searchConditions = [`description.ilike.%${search}%`]
+      
+      if (userIds.length > 0) {
+        const userIdList = userIds.map(user => user.id)
+        searchConditions.push(`user_id.in.(${userIdList.join(',')})`)
+      }
+      
+      query = query.or(searchConditions.join(','))
     }
     
     if (dateFrom) {
@@ -75,12 +94,24 @@ export async function GET(request: NextRequest) {
       .from('mileage')
       .select('id', { count: 'exact', head: true })
 
-    // 동일한 필터 적용 (간소화)
+    // 동일한 필터 적용
     if (userId) countQuery = countQuery.eq('user_id', userId)
     if (type && type !== 'all') countQuery = countQuery.eq('type', type)
     if (status && status !== 'all') countQuery = countQuery.eq('status', status)
     if (source && source !== 'all') countQuery = countQuery.eq('source', source)
-    if (search) countQuery = countQuery.or(`description.ilike.%${search}%,users.company_name.ilike.%${search}%`)
+    
+    // 검색 필터 적용
+    if (search) {
+      const searchConditions = [`description.ilike.%${search}%`]
+      
+      if (userIds.length > 0) {
+        const userIdList = userIds.map(user => user.id)
+        searchConditions.push(`user_id.in.(${userIdList.join(',')})`)
+      }
+      
+      countQuery = countQuery.or(searchConditions.join(','))
+    }
+    
     if (dateFrom) countQuery = countQuery.gte('created_at', dateFrom)
     if (dateTo) countQuery = countQuery.lte('created_at', dateTo + 'T23:59:59')
 
@@ -266,4 +297,4 @@ export async function PUT(request: NextRequest) {
       error: '서버 오류가 발생했습니다.'
     }, { status: 500 })
   }
-} 
+}

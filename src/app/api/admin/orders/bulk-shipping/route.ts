@@ -111,12 +111,19 @@ export async function POST(request: NextRequest) {
           if (shippableQuantity > 0) {
             hasShippableItems = true
 
+            // 출고 수량 검증: 주문 수량을 초과할 수 없음
+            const newShippedQuantity = (item.shipped_quantity || 0) + shippableQuantity
+            if (newShippedQuantity > item.quantity) {
+              console.error(`출고 수량 초과 오류: ${item.product_name} (${item.color}/${item.size}) - 주문수량: ${item.quantity}, 새 출고수량: ${newShippedQuantity}`)
+              continue // 이 아이템은 건너뛰고 다음 아이템 처리
+            }
+
             // 1. 출고 수량 업데이트
             updatePromises.push(
               supabase
                 .from('order_items')
                 .update({
-                  shipped_quantity: (item.shipped_quantity || 0) + shippableQuantity,
+                  shipped_quantity: newShippedQuantity,
                   updated_at: getKoreaTime()
                 })
                 .eq('id', item.id)

@@ -196,12 +196,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           quantityDiff: quantityDiff
         })
 
+        // 수량이 감소한 경우 shipped_quantity와 allocated_quantity 조정
+        let newShippedQuantity = existingItem.shipped_quantity || 0
+        let newAllocatedQuantity = existingItem.allocated_quantity || 0
+        
+        if (quantityDiff < 0) {
+          // 수량이 감소한 경우, 출고수량과 할당수량을 새 수량으로 제한
+          newShippedQuantity = Math.min(newShippedQuantity, item.quantity)
+          newAllocatedQuantity = Math.min(newAllocatedQuantity, item.quantity)
+        }
+
         const { error: updateError } = await supabase
           .from('order_items')
           .update({
             quantity: item.quantity,
             unit_price: item.unit_price,
-            total_price: item.unit_price * item.quantity
+            total_price: item.unit_price * item.quantity,
+            shipped_quantity: newShippedQuantity,
+            allocated_quantity: newAllocatedQuantity
           })
           .eq('id', existingItem.id)
 

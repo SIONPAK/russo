@@ -35,6 +35,19 @@ export async function PUT(
     // 각 주문 아이템의 출고 수량 업데이트
     const updatePromises = items.map(async (item: { id: string; shipped_quantity: number }) => {
       
+      // 출고 수량 검증: 주문 수량을 초과할 수 없음
+      const orderItem = orderData.order_items.find((oi: any) => oi.id === item.id)
+      if (!orderItem) {
+        throw new Error(`주문 아이템을 찾을 수 없습니다: ${item.id}`)
+      }
+      
+      if (item.shipped_quantity > orderItem.quantity) {
+        throw new Error(`출고 수량(${item.shipped_quantity})이 주문 수량(${orderItem.quantity})을 초과할 수 없습니다.`)
+      }
+      
+      if (item.shipped_quantity < 0) {
+        throw new Error(`출고 수량은 0 이상이어야 합니다: ${item.shipped_quantity}`)
+      }
       
       const { data, error } = await supabase
         .from('order_items')
