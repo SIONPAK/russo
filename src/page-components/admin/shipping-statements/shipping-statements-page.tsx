@@ -91,7 +91,7 @@ export default function ShippingStatementsPage() {
       setLoading(true)
       console.log('🔍 [출고명세서] 조회 시작')
       
-      // 가장 간단한 API 호출 (모든 데이터 가져오기)
+      // 모든 주문을 가져온 후 프론트엔드에서 필터링
       const response = await fetch('/api/admin/orders?status=all&limit=1000')
       const result = await response.json()
       
@@ -109,59 +109,91 @@ export default function ShippingStatementsPage() {
 
         console.log('🔍 [출고명세서] 이메일 로그:', emailLogs.length)
 
-        // 주문 데이터와 이메일 로그 매칭
-        const statementsWithEmail = result.data.orders.map((order: any) => {
-          // 해당 주문의 이메일 발송 로그 찾기
-          const emailLog = emailLogs.find((log: any) => 
-            log.order_id === order.id && 
-            (log.email_type === 'shipping_statement' || log.email_type === 'confirmed_statement')
-          )
+        // 주문 데이터와 이메일 로그 매칭 (출고처리된 주문만)
+        const statementsWithEmail = result.data.orders
+          .filter((order: any) => {
+            // pending 상태인 주문은 제외
+            if (order.status === 'pending') {
+              console.log('🔍 [출고명세서] pending 상태 제외:', order.order_number)
+              return false
+            }
+            
+            // 출고처리된 주문만 필터링
+            // 1. status가 shipped, delivered, completed인 경우
+            const isShippedStatus = ['shipped', 'delivered', 'completed'].includes(order.status)
+            
+            // 2. 또는 실제로 shipped_quantity가 있는 경우
+            const hasShippedItems = order.order_items?.some((item: any) => 
+              item.shipped_quantity && item.shipped_quantity > 0
+            )
+            
+            // 3. 또는 tracking_number가 설정된 경우 (출고처리됨)
+            const hasTrackingNumber = order.tracking_number && order.tracking_number !== '미출고'
+            
+            console.log('🔍 [출고명세서] 주문 필터링:', {
+              orderNumber: order.order_number,
+              status: order.status,
+              isShippedStatus,
+              hasShippedItems,
+              hasTrackingNumber,
+              trackingNumber: order.tracking_number,
+              willInclude: isShippedStatus || hasShippedItems || hasTrackingNumber
+            })
+            
+            return isShippedStatus || hasShippedItems || hasTrackingNumber
+          })
+          .map((order: any) => {
+            // 해당 주문의 이메일 발송 로그 찾기
+            const emailLog = emailLogs.find((log: any) => 
+              log.order_id === order.id && 
+              (log.email_type === 'shipping_statement' || log.email_type === 'confirmed_statement')
+            )
 
-          return {
-            id: order.id,
-            order_id: order.id,
-            order_number: order.order_number,
-            company_name: order.users?.company_name || '알 수 없음',
-            customer_grade: order.users?.customer_grade || 'general',
-            created_at: order.created_at,
-            shipped_at: order.shipped_at || order.created_at,
-            status: order.status,
-            email_sent: !!emailLog,
-            email_sent_at: emailLog?.sent_at || null,
-            total_amount: (() => {
-              // 실제 출고된 상품만 필터링
-              const shippedItems = order.order_items?.filter((item: any) => 
-                item.shipped_quantity && item.shipped_quantity > 0
-              ) || [];
-              
-              // 상품 공급가액 계산 (출고 수량 기준)
-              const itemSupplyAmount = shippedItems.reduce((sum: number, item: any) => 
-                sum + (item.shipped_quantity * item.unit_price), 0);
-              
-              // 상품 부가세액 계산 (공급가액의 10%, 소수점 절사)
-              const itemTaxAmount = Math.floor(itemSupplyAmount * 0.1);
-              
-              // 총 출고 수량 계산 (배송비 계산용)
-              const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => 
-                sum + (item.shipped_quantity || 0), 0);
-              
-              // 배송비 계산 (출고 수량 20장 미만일 때 3,000원)
-              const shippingFee = totalShippedQuantity > 0 && totalShippedQuantity < 20 ? 3000 : 0;
-              
-              // 총 금액 = 공급가액 + 부가세액 + 배송비
-              return itemSupplyAmount + itemTaxAmount + shippingFee;
-            })(),
-            items: order.order_items?.map((item: any) => ({
-              product_name: item.product_name,
-              color: item.color || '기본',
-              size: item.size || '',
-              quantity: item.quantity,
-              shipped_quantity: item.shipped_quantity || 0,
-              unit_price: item.unit_price,
-              total_price: item.unit_price * item.quantity
-            })) || []
-          }
-        })
+            return {
+              id: order.id,
+              order_id: order.id,
+              order_number: order.order_number,
+              company_name: order.users?.company_name || '알 수 없음',
+              customer_grade: order.users?.customer_grade || 'general',
+              created_at: order.created_at,
+              shipped_at: order.shipped_at || order.created_at,
+              status: order.status,
+              email_sent: !!emailLog,
+              email_sent_at: emailLog?.sent_at || null,
+              total_amount: (() => {
+                // 실제 출고된 상품만 필터링
+                const shippedItems = order.order_items?.filter((item: any) => 
+                  item.shipped_quantity && item.shipped_quantity > 0
+                ) || [];
+                
+                // 상품 공급가액 계산 (출고 수량 기준)
+                const itemSupplyAmount = shippedItems.reduce((sum: number, item: any) => 
+                  sum + (item.shipped_quantity * item.unit_price), 0);
+                
+                // 상품 부가세액 계산 (공급가액의 10%, 소수점 절사)
+                const itemTaxAmount = Math.floor(itemSupplyAmount * 0.1);
+                
+                // 총 출고 수량 계산 (배송비 계산용)
+                const totalShippedQuantity = shippedItems.reduce((sum: number, item: any) => 
+                  sum + (item.shipped_quantity || 0), 0);
+                
+                // 배송비 계산 (출고 수량 20장 미만일 때 3,000원)
+                const shippingFee = totalShippedQuantity > 0 && totalShippedQuantity < 20 ? 3000 : 0;
+                
+                // 총 금액 = 공급가액 + 부가세액 + 배송비
+                return itemSupplyAmount + itemTaxAmount + shippingFee;
+              })(),
+              items: order.order_items?.map((item: any) => ({
+                product_name: item.product_name,
+                color: item.color || '기본',
+                size: item.size || '',
+                quantity: item.quantity,
+                shipped_quantity: item.shipped_quantity || 0,
+                unit_price: item.unit_price,
+                total_price: item.unit_price * item.quantity
+              })) || []
+            }
+          })
 
         console.log('🔍 [출고명세서] 최종 변환 완료:', statementsWithEmail.length)
         setStatements(statementsWithEmail)
