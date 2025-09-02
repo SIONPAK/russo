@@ -144,8 +144,17 @@ export function OrderManagementPage() {
       // 다음 월요일로 이동
       targetDate.setDate(targetDate.getDate() + 2)
     } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
-      // 다음 월요일로 이동 (이미 +1 했으므로 +2만 추가)
+      // 금요일 오후 3시 → 월요일로 이동
+      // 현재 15시 이후 +1이 적용된 상태에서 추가로 +2를 더해서 총 +3
       targetDate.setDate(targetDate.getDate() + 2)
+    }
+    
+    // 금요일 오후 3시 이후 주문은 무조건 월요일로 표시
+    // 현재 요일이 금요일이고 15시 이후인 경우
+    if (currentDay === 5 && currentHour >= 15) {
+      // 금요일 오후 3시 → 토요일(+1) → 일요일(+1) → 월요일(+1) = 총 +3
+      targetDate = new Date(koreaTime)
+      targetDate.setDate(targetDate.getDate() + 3)
     }
     
     const result = targetDate.toISOString().split('T')[0]
@@ -157,7 +166,8 @@ export function OrderManagementPage() {
       currentDay,
       targetDate: targetDate.toISOString(),
       result,
-      explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일'
+      explanation: currentHour >= 15 ? '15시 이후 - 익일 업무일' : '15시 이전 - 당일 업무일',
+      fridayAfter3PM: currentDay === 5 && currentHour >= 15 ? '금요일 오후 3시 이후 - 월요일로 이동' : '일반 업무일'
     })
     
     return result
@@ -825,7 +835,17 @@ export function OrderManagementPage() {
         } else if (currentDay === 6) { // 토요일
           targetDate.setDate(targetDate.getDate() + 2)
         } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
+          // 금요일 오후 3시 → 월요일로 이동
+          // 현재 15시 이후 +1이 적용된 상태에서 추가로 +2를 더해서 총 +3
           targetDate.setDate(targetDate.getDate() + 2)
+        }
+        
+        // 금요일 오후 3시 이후 주문은 무조건 월요일로 표시
+        // 현재 요일이 금요일이고 15시 이후인 경우
+        if (currentDay === 5 && currentHour >= 15) {
+          // 금요일 오후 3시 → 토요일(+1) → 일요일(+1) → 월요일(+1) = 총 +3
+          targetDate = new Date(koreaTime)
+          targetDate.setDate(targetDate.getDate() + 3)
         }
         
         const latestSelectedDate = targetDate.toISOString().split('T')[0]
