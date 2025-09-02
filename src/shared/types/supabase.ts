@@ -23,6 +23,8 @@ export interface Database {
           recipient_name: string
           recipient_phone: string
           business_license: string | null
+          business_type: string | null
+          business_category: string | null
           approval_status: 'pending' | 'approved' | 'rejected'
           is_active: boolean
           mileage: number
@@ -42,6 +44,8 @@ export interface Database {
           recipient_name: string
           recipient_phone: string
           business_license?: string | null
+          business_type?: string | null
+          business_category?: string | null
           approval_status?: 'pending' | 'approved' | 'rejected'
           is_active?: boolean
           mileage?: number
@@ -61,6 +65,8 @@ export interface Database {
           recipient_name?: string
           recipient_phone?: string
           business_license?: string | null
+          business_type?: string | null
+          business_category?: string | null
           approval_status?: 'pending' | 'approved' | 'rejected'
           is_active?: boolean
           mileage?: number

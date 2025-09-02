@@ -20,11 +20,13 @@ export async function POST(request: NextRequest) {
       recipientPhone,
       recipientAddress,
       recipientPostalCode,
-      businessLicense
+      businessLicense,
+      businessType,        // 업태 추가
+      businessCategory     // 업종 추가
     } = body
 
     // 필수 필드 검증
-    if (!username || !email || !password || !companyName || !businessNumber || !representativeName || !phone || !address || !postalCode || !recipientName || !recipientPhone || !recipientAddress || !recipientPostalCode) {
+    if (!username || !email || !password || !companyName || !businessNumber || !representativeName || !phone || !address || !postalCode || !recipientName || !recipientPhone || !recipientAddress || !recipientPostalCode || !businessType || !businessCategory) {
       return NextResponse.json(
         { success: false, message: '모든 필수 필드를 입력해주세요.' },
         { status: 400 }
@@ -139,7 +141,9 @@ export async function POST(request: NextRequest) {
         recipient_phone: recipientPhone,
         business_license: businessLicense || null,
         approval_status: 'pending',
-        is_active: true
+        is_active: true,
+        business_type: businessType,
+        business_category: businessCategory
       })
       .select()
       .single()
