@@ -374,29 +374,60 @@ export function ProductList({
                     {/* 재고 */}
                     <div className="col-span-1 text-center">
                       <div className="flex flex-col">
-                        <span className={`text-sm font-medium ${
-                          product.stock_quantity === 0 ? 'text-red-600' : 
-                          product.stock_quantity < 10 ? 'text-orange-600' : 'text-green-600'
-                        }`}>
-                          {product.total_stock !== undefined ? product.total_stock : product.stock_quantity}개
-                        </span>
-                        <span className={`text-xs text-gray-500 ${
-                          getStockStatusColor(
-                            product.stock_status || '', 
-                            product.total_stock !== undefined ? product.total_stock : product.stock_quantity
+                        {/* 총 재고 수량 */}
+                        {(() => {
+                          let totalStock = 0
+                          let stockDetails = ''
+                          
+                          if (product.inventory_options && Array.isArray(product.inventory_options)) {
+                            // inventory_options에서 모든 stock_quantity 합계
+                            totalStock = product.inventory_options.reduce((sum, opt) => sum + (opt.stock_quantity || 0), 0)
+                            
+                            // 옵션별 재고 상세 정보
+                            const stockByColor: { [key: string]: number } = {}
+                            product.inventory_options.forEach(opt => {
+                              if (opt.color && opt.stock_quantity !== undefined) {
+                                if (!stockByColor[opt.color]) stockByColor[opt.color] = 0
+                                stockByColor[opt.color] += opt.stock_quantity || 0
+                              }
+                            })
+                            
+                            stockDetails = Object.entries(stockByColor)
+                              .map(([color, stock]) => `${color}:${stock}`)
+                              .join(', ')
+                          } else {
+                            // 기본 재고
+                            totalStock = product.stock_quantity || 0
+                          }
+                          
+                          return (
+                            <>
+                              <span className={`text-sm font-medium ${
+                                totalStock === 0 ? 'text-red-600' : 
+                                totalStock < 10 ? 'text-orange-600' : 'text-green-600'
+                              }`}>
+                                {totalStock}개
+                              </span>
+                              <span className={`text-xs text-gray-500 ${
+                                getStockStatusColor(
+                                  product.stock_status || '', 
+                                  totalStock
+                                )
+                              }`}>
+                                {getStockStatusText(
+                                  product.stock_status || '', 
+                                  totalStock
+                                )}
+                              </span>
+                              {/* 옵션별 재고 상세 정보 */}
+                              {stockDetails && (
+                                <div className="text-xs text-gray-400 mt-1 max-w-[80px] truncate" title={stockDetails}>
+                                  {stockDetails}
+                                </div>
+                              )}
+                            </>
                           )
-                        }`}>
-                          {getStockStatusText(
-                            product.stock_status || '', 
-                            product.total_stock !== undefined ? product.total_stock : product.stock_quantity
-                          )}
-                        </span>
-                        {/* 옵션별 사이즈 표시 */}
-                        {product.inventory_options && product.inventory_options.length > 0 && (
-                          <div className="text-xs text-gray-400 mt-1">
-                            {Array.from(new Set(product.inventory_options.map(opt => opt.size))).join(', ')}
-                          </div>
-                        )}
+                        })()}
                       </div>
                     </div>
 

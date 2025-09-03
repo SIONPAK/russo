@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     
     console.log(`세금계산서 조회 기간: ${startDate} ~ ${endDate}`);
 
-    // 1. 해당 월의 모든 업체 차감 마일리지 조회
+    // 1. 해당 월의 모든 업체 적립 마일리지 조회 (실제 입금받은 금액)
     // 한국시간을 UTC로 변환
     const utcStartDate = new Date(startDate + 'T00:00:00+09:00').toISOString();
     // 종료일 다음날 자정으로 설정해서 확실하게 포함
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     const nextDayStr = nextDay.toISOString().split('T')[0];
     const utcEndDate = new Date(nextDayStr + 'T00:00:00+09:00').toISOString();
 
-    console.log(`🔍 [세금계산서] 차감 마일리지 조회 시작:`, {
+    console.log(`🔍 [세금계산서] 적립 마일리지 조회 시작 (실제 입금 기준):`, {
       한국시간_시작: startDate + 'T00:00:00+09:00',
       한국시간_종료: endDate + 'T23:59:59+09:00',
       UTC_시작: utcStartDate,
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
       전체범위포함: baedenDataTime >= utcStartDate && baedenDataTime <= utcEndDate
     });
 
-    // 베이든의 누락된 데이터를 정확히 같은 조건으로 조회
+    // 베이든의 누락된 데이터를 정확히 같은 조건으로 조회 (적립 기준)
     const { data: baedenTestData, error: baedenTestError } = await supabase
       .from('mileage')
       .select(`
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('user_id', '2483076a-f0e8-4ca0-808a-e8dc1f17b1fb')
-      .eq('type', 'spend')
+      .eq('type', 'earn')
       .gte('created_at', utcStartDate)
       .lt('created_at', utcEndDate)
       .not('users', 'is', null);
@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { data: deductionData, error: deductionError } = await supabase
+    const { data: earningData, error: earningError } = await supabase
       .from('mileage')
       .select(`
         user_id,
@@ -206,21 +206,21 @@ export async function GET(request: NextRequest) {
           email
         )
       `)
-      .eq('type', 'spend')
+      .eq('type', 'earn')
       .gte('created_at', utcStartDate)
       .lt('created_at', utcEndDate);
 
-    if (deductionError) {
-      console.error('차감 마일리지 조회 오류:', deductionError);
+    if (earningError) {
+      console.error('적립 마일리지 조회 오류:', earningError);
       return NextResponse.json(
-        { success: false, error: '차감 마일리지 조회 중 오류가 발생했습니다.' },
+        { success: false, error: '적립 마일리지 조회 중 오류가 발생했습니다.' },
         { status: 500 }
       );
     }
 
-    console.log(`🔍 [세금계산서] 마일리지 차감 데이터 조회 완료:`, {
-      총건수: deductionData?.length || 0,
-      샘플: deductionData?.slice(0, 3).map((d: any) => ({
+    console.log(`🔍 [세금계산서] 마일리지 적립 데이터 조회 완료 (실제 입금 기준):`, {
+      총건수: earningData?.length || 0,
+      샘플: earningData?.slice(0, 3).map((d: any) => ({
         업체명: d.users?.company_name,
         금액: d.amount,
         타입: d.type,
@@ -230,13 +230,13 @@ export async function GET(request: NextRequest) {
       }))
     });
 
-    // 디버깅용: 전체 spend 타입 데이터 개수 확인
-    const { count: totalSpendCount } = await supabase
+    // 디버깅용: 전체 earn 타입 데이터 개수 확인
+    const { count: totalEarnCount } = await supabase
       .from('mileage')
       .select('*', { count: 'exact', head: true })
-      .eq('type', 'spend');
+      .eq('type', 'earn');
 
-    console.log(`🔍 [세금계산서] 전체 spend 타입 마일리지 개수: ${totalSpendCount || 0}건`);
+    console.log(`🔍 [세금계산서] 전체 earn 타입 마일리지 개수 (실제 입금): ${totalEarnCount || 0}건`);
 
     // 2. 세금계산서 발행 상태 조회
     const { data: taxInvoiceStatus, error: statusError } = await supabase
@@ -249,24 +249,24 @@ export async function GET(request: NextRequest) {
       // 상태 조회 실패는 무시하고 계속 진행
     }
 
-    // 3. 업체별 데이터 집계
+    // 3. 업체별 데이터 집계 (적립 기준)
     const companySummaries = new Map<string, {
-      totalDeduction: number;
+      totalEarning: number;
       recordCount: number;
-      latestDeductionDate: string | null;
+      latestEarningDate: string | null;
       memberInfo: any;
       is_issued: string;
       issuedAt: string | null;
       issuedBy: string | null;
     }>();
 
-    console.log(`🔍 [세금계산서] 업체별 집계 시작: ${deductionData?.length || 0}건 처리`);
+    console.log(`🔍 [세금계산서] 업체별 집계 시작: ${earningData?.length || 0}건 처리 (실제 입금 기준)`);
 
     // 베이든 데이터 필터링 확인
-    const baedenDataInQuery = deductionData?.filter((record: any) => 
+    const baedenDataInQuery = earningData?.filter((record: any) => 
       (record.users as any)?.company_name === '베이든'
     );
-    console.log(`🔍 [세금계산서] 쿼리 결과에서 베이든 데이터:`, {
+    console.log(`🔍 [세금계산서] 쿼리 결과에서 베이든 데이터 (적립 기준):`, {
       건수: baedenDataInQuery?.length || 0,
       데이터: baedenDataInQuery?.map((d: any) => ({
         금액: d.amount,
@@ -276,7 +276,7 @@ export async function GET(request: NextRequest) {
       }))
     });
 
-    deductionData?.forEach((record: any, index: number) => {
+    earningData?.forEach((record: any, index: number) => {
       const user = record.users as any;
       const businessName = user?.company_name;
       const amount = Math.abs(record.amount);
@@ -299,9 +299,9 @@ export async function GET(request: NextRequest) {
       }
       
       const summary = companySummaries.get(businessName) || {
-        totalDeduction: 0,
+        totalEarning: 0,
         recordCount: 0,
-        latestDeductionDate: null,
+        latestEarningDate: null,
         memberInfo: {
           ceoName: user?.representative_name,
           businessNumber: user?.business_number,
@@ -314,23 +314,23 @@ export async function GET(request: NextRequest) {
         issuedBy: null
       };
 
-      summary.totalDeduction += amount;
+      summary.totalEarning += amount;
       summary.recordCount += 1;
       
-      // 최신 차감일 업데이트
-      if (!summary.latestDeductionDate || record.created_at > summary.latestDeductionDate) {
-        summary.latestDeductionDate = record.created_at;
+      // 최신 적립일 업데이트
+      if (!summary.latestEarningDate || record.created_at > summary.latestEarningDate) {
+        summary.latestEarningDate = record.created_at;
       }
 
       companySummaries.set(businessName, summary);
     });
 
-    console.log(`🔍 [세금계산서] 업체별 집계 완료:`, {
+    console.log(`🔍 [세금계산서] 업체별 집계 완료 (적립 기준):`, {
       총업체수: companySummaries.size,
       업체목록: Array.from(companySummaries.keys()).slice(0, 5),
       샘플집계: Array.from(companySummaries.entries()).slice(0, 3).map(([name, summary]) => ({
         업체명: name,
-        총차감액: summary.totalDeduction,
+        총적립액: summary.totalEarning,
         건수: summary.recordCount
       }))
     });
@@ -338,15 +338,15 @@ export async function GET(request: NextRequest) {
     // 베이든 데이터 특별 확인
     const baedenSummary = companySummaries.get('베이든');
     if (baedenSummary) {
-      console.log(`🔍 [세금계산서] 베이든 집계 결과:`, {
+      console.log(`🔍 [세금계산서] 베이든 집계 결과 (적립 기준):`, {
         업체명: '베이든',
-        총차감액: baedenSummary.totalDeduction,
+        총적립액: baedenSummary.totalEarning,
         건수: baedenSummary.recordCount,
-        최근차감일: baedenSummary.latestDeductionDate
+        최근적립일: baedenSummary.latestEarningDate
       });
     }
 
-    // 베이든의 전체 마일리지 데이터 확인 (날짜 무관)
+    // 베이든의 전체 마일리지 데이터 확인 (날짜 무관, 적립 기준)
     const { data: baedenAllData, error: baedenError } = await supabase
       .from('mileage')
       .select(`
@@ -358,12 +358,12 @@ export async function GET(request: NextRequest) {
         created_at,
         users!inner(company_name)
       `)
-      .eq('type', 'spend')
+      .eq('type', 'earn')
       .eq('users.company_name', '베이든')
       .order('created_at', { ascending: false });
 
     if (!baedenError && baedenAllData) {
-      console.log(`🔍 [세금계산서] 베이든 전체 spend 데이터:`, {
+      console.log(`🔍 [세금계산서] 베이든 전체 earn 데이터 (적립 기준):`, {
         총건수: baedenAllData.length,
         전체목록: baedenAllData.map((d: any) => ({
           금액: d.amount,
@@ -385,10 +385,10 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // 5. 결과 데이터 구성
+    // 5. 결과 데이터 구성 (적립 기준)
     const results: CompanySummary[] = Array.from(companySummaries.entries()).map(([businessName, summary]) => {
-      // 차감 마일리지 = 부가세 포함 금액 (1.0)
-      const totalWithVat = summary.totalDeduction;
+      // 적립 마일리지 = 부가세 포함 금액 (1.0)
+      const totalWithVat = summary.totalEarning;
       
       // 공급가액 계산 (부가세 포함 금액 / 1.1)
       const actualSupplyAmount = Math.round(totalWithVat / 1.1);
@@ -398,12 +398,12 @@ export async function GET(request: NextRequest) {
 
       return {
         businessName,
-        totalDeduction: summary.totalDeduction,
+        totalDeduction: summary.totalEarning, // 기존 인터페이스 호환성을 위해 유지
         actualSupplyAmount,
         estimatedVat,
         totalWithVat,
         recordCount: summary.recordCount,
-        latestDeductionDate: summary.latestDeductionDate,
+        latestDeductionDate: summary.latestEarningDate, // 기존 인터페이스 호환성을 위해 유지
         memberInfo: summary.memberInfo,
         is_issued: summary.is_issued,
         issuedAt: summary.issuedAt,
@@ -440,7 +440,7 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    console.log(`세금계산서 집계 완료: ${results.length}개 업체, 총 차감액: ${grandTotal.totalDeduction.toLocaleString()}원`);
+    console.log(`세금계산서 집계 완료 (적립 기준): ${results.length}개 업체, 총 적립액: ${grandTotal.totalDeduction.toLocaleString()}원`);
 
     return NextResponse.json({
       success: true,

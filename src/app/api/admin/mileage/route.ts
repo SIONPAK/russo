@@ -61,17 +61,21 @@ export async function GET(request: NextRequest) {
       query = query.eq('source', source)
     }
     
-    // 🚀 개선된 검색 로직
+    // 🚀 개선된 검색 로직 (안전한 방식)
     if (search) {
-      // description 검색과 회사명 검색을 OR 조건으로 결합
-      const searchConditions = [`description.ilike.%${search}%`]
+      // 검색어에서 특수문자 이스케이프 처리
+      const escapedSearch = search.replace(/[%_]/g, '\\$&')
       
+      // 회사명으로 검색된 사용자 ID가 있는 경우
       if (userIds.length > 0) {
         const userIdList = userIds.map(user => user.id)
-        searchConditions.push(`user_id.in.(${userIdList.join(',')})`)
+        
+        // description 검색과 user_id 검색을 OR 조건으로 결합
+        query = query.or(`description.ilike.%${escapedSearch}%,user_id.in.(${userIdList.join(',')})`)
+      } else {
+        // description만 검색
+        query = query.ilike('description', `%${escapedSearch}%`)
       }
-      
-      query = query.or(searchConditions.join(','))
     }
     
     if (dateFrom) {
@@ -100,16 +104,21 @@ export async function GET(request: NextRequest) {
     if (status && status !== 'all') countQuery = countQuery.eq('status', status)
     if (source && source !== 'all') countQuery = countQuery.eq('source', source)
     
-    // 검색 필터 적용
+    // 검색 필터 적용 (메인 쿼리와 동일한 로직)
     if (search) {
-      const searchConditions = [`description.ilike.%${search}%`]
+      // 검색어에서 특수문자 이스케이프 처리
+      const escapedSearch = search.replace(/[%_]/g, '\\$&')
       
+      // 회사명으로 검색된 사용자 ID가 있는 경우
       if (userIds.length > 0) {
         const userIdList = userIds.map(user => user.id)
-        searchConditions.push(`user_id.in.(${userIdList.join(',')})`)
+        
+        // description 검색과 user_id 검색을 OR 조건으로 결합
+        countQuery = countQuery.or(`description.ilike.%${escapedSearch}%,user_id.in.(${userIdList.join(',')})`)
+      } else {
+        // description만 검색
+        countQuery = countQuery.ilike('description', `%${escapedSearch}%`)
       }
-      
-      countQuery = countQuery.or(searchConditions.join(','))
     }
     
     if (dateFrom) countQuery = countQuery.gte('created_at', dateFrom)

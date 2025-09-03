@@ -6,12 +6,12 @@ import * as XLSX from 'xlsx';
 
 interface CompanySummary {
   businessName: string;
-  totalDeduction: number;
+  totalDeduction: number; // 실제로는 적립 금액 (기존 인터페이스 호환성을 위해 유지)
   actualSupplyAmount: number;
   estimatedVat: number;
   totalWithVat: number;
-  recordCount: number;
-  latestDeductionDate: string | null;
+  recordCount: number; // 적립 건수
+  latestDeductionDate: string | null; // 실제로는 최근 적립일 (기존 인터페이스 호환성을 위해 유지)
   memberInfo: {
     ceoName: string;
     businessNumber: string;
@@ -152,8 +152,8 @@ export default function AdminTaxInvoicePage() {
         '실제_공급가액': item.actualSupplyAmount,
         '부가세': item.estimatedVat,
         '부가세포함': item.totalWithVat,
-        '차감건수': item.recordCount,
-        '최근_차감일': item.latestDeductionDate ? new Date(item.latestDeductionDate).toLocaleDateString('ko-KR') : '',
+        '적립건수': item.recordCount,
+        '최근_적립일': item.latestDeductionDate ? new Date(item.latestDeductionDate).toLocaleDateString('ko-KR') : '',
         '발행상태': item.is_issued === 'O' ? '완료' : item.is_issued === '△' ? '진행중' : '미발행'
       }));
 
@@ -281,7 +281,7 @@ export default function AdminTaxInvoicePage() {
             세금계산서 관리
           </h1>
           <p className="text-gray-600 mt-2">
-            업체별 차감 마일리지 내역 및 세금계산서 발행 상태를 관리할 수 있습니다.
+            업체별 적립 마일리지 내역 및 세금계산서 발행 상태를 관리할 수 있습니다. (실제 입금 기준)
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -395,7 +395,7 @@ export default function AdminTaxInvoicePage() {
                 </p>
               </div>
               <div className="bg-indigo-50 p-4 rounded-lg">
-                <p className="text-sm text-indigo-600 font-medium">차감 건수 총합</p>
+                <p className="text-sm text-indigo-600 font-medium">적립 건수 총합</p>
                 <p className="text-2xl font-bold text-indigo-700">
                   {data.results.reduce((sum, item) => sum + item.recordCount, 0)}건
                 </p>
@@ -463,8 +463,8 @@ export default function AdminTaxInvoicePage() {
                     <th className="border border-gray-300 px-4 py-2 text-center">공급가액 (0.9)</th>
                     <th className="border border-gray-300 px-4 py-2 text-center">부가세 (0.1)</th>
                     <th className="border border-gray-300 px-4 py-2 text-center">부가세포함 (1.0)</th>
-                    <th className="border border-gray-300 px-4 py-2 text-center">차감건수</th>
-                    <th className="border border-gray-300 px-4 py-2 text-center">최근차감일</th>
+                    <th className="border border-gray-300 px-4 py-2 text-center">적립건수</th>
+                    <th className="border border-gray-300 px-4 py-2 text-center">최근적립일</th>
                     <th className="border border-gray-300 px-4 py-2 text-center">발행상태</th>
                   </tr>
                 </thead>
