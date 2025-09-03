@@ -20,17 +20,6 @@ export async function GET(request: NextRequest) {
       .select('*')
       .order('created_at', { ascending: false })
 
-    // yearMonth 필터 추가 (해당 월의 데이터만 조회)
-    if (yearMonth) {
-      const [year, month] = yearMonth.split('-')
-      const startOfMonth = `${year}-${month}-01T00:00:00+09:00`
-      const endOfMonth = new Date(parseInt(year), parseInt(month), 0)
-      const lastDay = endOfMonth.getDate()
-      const endOfMonthStr = `${year}-${month}-${lastDay}T23:59:59+09:00`
-      
-      query = query.gte('created_at', startOfMonth).lte('created_at', endOfMonthStr)
-    }
-
     // 날짜 필터 (DB에 이미 한국 시간으로 저장되어 있음)
     if (startDate) {
       const startDateObj = new Date(startDate)

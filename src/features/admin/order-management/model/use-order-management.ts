@@ -191,9 +191,10 @@ export function useOrderManagement() {
   const fetchTodayOrders = () => {
     // 현재 업무일 계산 (전일 15:00 ~ 당일 14:59 기준)
     const now = new Date()
-    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
-    const currentHour = koreaTime.getUTCHours()
-    const currentDay = koreaTime.getUTCDay()
+    const koreaTimeString = now.toLocaleString("en-US", {timeZone: "Asia/Seoul"})
+    const koreaTime = new Date(koreaTimeString)
+    const currentHour = koreaTime.getHours()
+    const currentDay = koreaTime.getDay()
     
     let targetDate = new Date(koreaTime)
     
@@ -201,20 +202,20 @@ export function useOrderManagement() {
     // 15:00 이후면 당일 15:00 이후 주문들을 보여줌 (익일 업무일)
     if (currentHour >= 15) {
       // 15:00 이후면 다음날 업무일로 설정
-      targetDate.setUTCDate(targetDate.getUTCDate() + 1)
+      targetDate.setDate(targetDate.getDate() + 1)
     }
     // 15:00 이전이면 당일 업무일 (변경 없음)
     
     // 주말 처리: 원래 요일(currentDay)을 기준으로 판단
     if (currentDay === 0) { // 일요일
       // 다음 월요일로 이동
-      targetDate.setUTCDate(targetDate.getUTCDate() + 1)
+      targetDate.setDate(targetDate.getDate() + 1)
     } else if (currentDay === 6) { // 토요일
       // 다음 월요일로 이동
-      targetDate.setUTCDate(targetDate.getUTCDate() + 2)
+      targetDate.setDate(targetDate.getDate() + 2)
     } else if (currentDay === 5 && currentHour >= 15) { // 금요일 오후 3시 이후
       // 다음 월요일로 이동 (이미 +1 했으므로 +2만 추가)
-      targetDate.setUTCDate(targetDate.getUTCDate() + 2)
+      targetDate.setDate(targetDate.getDate() + 2)
     }
     
     const result = targetDate.toISOString().split('T')[0]

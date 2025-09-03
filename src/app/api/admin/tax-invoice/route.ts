@@ -203,9 +203,7 @@ export async function GET(request: NextRequest) {
           business_number,
           address,
           phone,
-          email,
-          business_type,
-          business_category
+          email
         )
       `)
       .eq('type', 'spend')
@@ -309,9 +307,7 @@ export async function GET(request: NextRequest) {
           businessNumber: user?.business_number,
           businessAddress: user?.address,
           tel: user?.phone,
-          email: user?.email,
-          businessType: user?.business_type,
-          businessCategory: user?.business_category
+          email: user?.email
         },
         is_issued: 'X',
         issuedAt: null,

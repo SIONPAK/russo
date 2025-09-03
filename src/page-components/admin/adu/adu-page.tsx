@@ -10,6 +10,7 @@ interface ADUData {
   productName: string
   color: string
   size: string
+  currentStock: number // 현재 재고
   adu7: number    // 7일 평균
   adu30: number   // 30일 평균
   adu60: number   // 60일 평균
@@ -76,7 +77,7 @@ export function ADUPage() {
             일평균주문량(ADU) 분석
           </h1>
           <p className="text-gray-600 mt-2">
-            제품별 옵션별 일평균주문량을 분석하여 재고 관리 및 구매 계획에 활용하세요.
+            제품별 옵션별 일평균주문량과 현재 재고를 분석하여 재고 관리 및 구매 계획에 활용하세요.
           </p>
         </div>
       </div>
@@ -136,6 +137,13 @@ export function ADUPage() {
                 </th>
                 <th 
                   className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('currentStock')}
+                >
+                  현재 재고
+                  {sortBy === 'currentStock' && (sortOrder === 'desc' ? ' ↓' : ' ↑')}
+                </th>
+                <th 
+                  className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('adu7')}
                 >
                   7일 ADU
@@ -179,13 +187,13 @@ export function ADUPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {isLoading ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={13} className="px-6 py-8 text-center text-gray-500">
                     데이터를 불러오는 중...
                   </td>
                 </tr>
               ) : aduData.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={13} className="px-6 py-8 text-center text-gray-500">
                     조회된 데이터가 없습니다.
                   </td>
                 </tr>
@@ -196,6 +204,25 @@ export function ADUPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.productName}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.color}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.size}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          item.currentStock === 0 
+                            ? 'bg-red-100 text-red-800' 
+                            : item.currentStock <= 10 
+                              ? 'bg-yellow-100 text-yellow-800' 
+                              : 'bg-green-100 text-green-800'
+                        }`}>
+                          {item.currentStock}개
+                        </span>
+                        {item.currentStock === 0 && (
+                          <span className="text-xs text-red-600 font-medium">품절</span>
+                        )}
+                        {item.currentStock > 0 && item.currentStock <= 10 && (
+                          <span className="text-xs text-yellow-600 font-medium">재고 부족</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center text-gray-900">{item.adu7.toFixed(1)}개</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center text-gray-900">{item.adu30.toFixed(1)}개</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-center text-gray-900">{item.adu60.toFixed(1)}개</td>

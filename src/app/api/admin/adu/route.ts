@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         code,
-        name
+        name,
+        inventory_options
       `)
       .eq('is_active', true)
 
@@ -173,36 +174,71 @@ export async function GET(request: NextRequest) {
     // 3. 데이터 집계 및 ADU 계산
     const aduMap = new Map<string, any>()
 
-    // 각 상품의 옵션별로 초기화
-    products.forEach(product => {
-      // 해당 상품의 모든 주문 아이템에서 고유한 색상/사이즈 조합 찾기
-      const allItems = [
-        ...(orderData180.data || []).filter(item => item.product_id === product.id)
-      ]
+    // 각 상품의 옵션별로 초기화 - 모든 재고 옵션을 표시
+    console.log('🔍 상품 데이터 확인:', products.length, '개')
+    
+    products.forEach((product: any) => {
+      console.log(`📦 상품: ${product.name} (${product.code})`)
+      console.log(`   - inventory_options:`, product.inventory_options)
       
-      const uniqueOptions = new Set<string>()
+      // 1. 재고 데이터에서 모든 옵션 조합 가져오기
+      if (product.inventory_options && Array.isArray(product.inventory_options)) {
+        console.log(`   - 재고 옵션 ${product.inventory_options.length}개 발견`)
+        
+        product.inventory_options.forEach((option: any) => {
+          if (option.color && option.size) {
+            const key = `${product.id}|${option.color}|${option.size}`
+            const currentStock = option.stock_quantity || 0
+            
+            console.log(`   - 옵션: ${option.color}/${option.size}, 재고: ${currentStock}`)
+            
+            aduMap.set(key, {
+              productId: product.id,
+              productCode: product.code,
+              productName: product.name,
+              color: option.color,
+              size: option.size,
+              currentStock: currentStock,
+              total7: 0,
+              total30: 0,
+              total60: 0,
+              total180: 0
+            })
+          }
+        })
+      } else {
+        console.log(`   - inventory_options 없음 또는 배열 아님`)
+      }
+      
+      // 2. 주문 데이터에서 추가 옵션 조합 찾기 (재고에 없는 경우)
+      const allItems = (orderData180.data || []).filter(item => item.product_id === product.id)
+      console.log(`   - 주문 데이터: ${allItems.length}개`)
+      
       allItems.forEach(item => {
         if (item.color && item.size) {
-          uniqueOptions.add(`${item.color}|${item.size}`)
+          const key = `${product.id}|${item.color}|${item.size}`
+          // 이미 재고 데이터에 있는 경우는 건너뛰기
+          if (!aduMap.has(key)) {
+            console.log(`   - 주문만 있는 옵션: ${item.color}/${item.size}`)
+            aduMap.set(key, {
+              productId: product.id,
+              productCode: product.code,
+              productName: product.name,
+              color: item.color,
+              size: item.size,
+              currentStock: 0, // 주문만 있고 재고는 없는 경우
+              total7: 0,
+              total30: 0,
+              total60: 0,
+              total180: 0
+            })
+          }
         }
       })
-
-      uniqueOptions.forEach(option => {
-        const [color, size] = option.split('|')
-        const key = `${product.id}|${color}|${size}`
-        aduMap.set(key, {
-          productId: product.id,
-          productCode: product.code,
-          productName: product.name,
-          color,
-          size,
-          total7: 0,
-          total30: 0,
-          total60: 0,
-          total180: 0
-        })
-      })
     })
+    
+    console.log('📊 aduMap 크기:', aduMap.size)
+    console.log('📊 aduMap 샘플 데이터:', Array.from(aduMap.entries()).slice(0, 3))
 
     // 각 기간별 데이터 집계 (날짜 필터링 포함)
     const aggregateData = (data: any[], period: string, startDate: Date) => {
@@ -262,7 +298,6 @@ export async function GET(request: NextRequest) {
 
     // ADU 계산 및 결과 변환
     let aduData = Array.from(aduMap.values())
-      .filter(item => item.total7 > 0 || item.total30 > 0 || item.total60 > 0 || item.total180 > 0)
       .map(item => ({
         ...item,
         adu7: item.total7 / 7,
@@ -270,6 +305,14 @@ export async function GET(request: NextRequest) {
         adu60: item.total60 / 60,
         adu180: item.total180 / 180
       }))
+    
+    console.log('📊 최종 ADU 데이터:', aduData.length, '개')
+    console.log('📊 재고 샘플:', aduData.slice(0, 3).map(item => ({
+      product: item.productName,
+      color: item.color,
+      size: item.size,
+      stock: item.currentStock
+    })))
 
     // 정렬
     aduData.sort((a, b) => {

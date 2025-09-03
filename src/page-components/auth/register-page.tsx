@@ -164,9 +164,7 @@ export default function RegisterPage() {
         recipientPhone: data.recipientPhone,
         recipientAddress: `${data.recipientAddress} ${data.recipientDetailAddress}`.trim(),
         recipientPostalCode: data.recipientPostalCode,
-        businessLicense: '', // 추후 파일 업로드 기능 추가
-        businessType: data.businessType,        // 업태 추가
-        businessCategory: data.businessCategory // 업종 추가
+        businessLicense: '' // 추후 파일 업로드 기능 추가
       }
 
       // 실제 회원가입 API 호출
