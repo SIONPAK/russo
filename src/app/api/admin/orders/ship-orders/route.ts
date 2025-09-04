@@ -107,22 +107,81 @@ export async function POST(request: NextRequest) {
             if (shippedQuantity > 0) {
               console.log(`🔄 출고 처리 시작: ${item.product_name} (${item.color}/${item.size}) - 출고: ${shippedQuantity}개, 할당: ${allocatedQuantity}개`)
               
-              // 1. 물리재고 차감 (process_shipment)
-              const { data: stockResult, error: stockError } = await supabase
-                .rpc('process_shipment', {
-                  p_product_id: item.product_id,
-                  p_color: item.color,
-                  p_size: item.size,
-                  p_shipped_quantity: shippedQuantity,
-                  p_order_number: order.order_number
-                })
+              // 1. 물리재고 차감 (JavaScript에서 직접 처리)
+              try {
+                // 상품 정보 조회
+                const { data: product, error: productError } = await supabase
+                  .from('products')
+                  .select('inventory_options')
+                  .eq('id', item.product_id)
+                  .single()
 
-              if (stockError) {
+                if (productError || !product) {
+                  console.error('❌ 상품 정보 조회 실패:', productError)
+                  continue
+                }
+
+                if (product.inventory_options && Array.isArray(product.inventory_options)) {
+                  // 해당 옵션 찾기
+                  const optionIndex = product.inventory_options.findIndex((opt: any) => 
+                    opt.color === item.color && opt.size === item.size
+                  )
+
+                  if (optionIndex !== -1) {
+                    const option = product.inventory_options[optionIndex]
+                    const currentPhysicalStock = option.physical_stock || 0
+                    const newPhysicalStock = Math.max(0, currentPhysicalStock - shippedQuantity)
+
+                    // 옵션 업데이트
+                    const updatedOptions = [...product.inventory_options]
+                    updatedOptions[optionIndex] = {
+                      ...option,
+                      physical_stock: newPhysicalStock,
+                      allocated_stock: 0,
+                      stock_quantity: newPhysicalStock
+                    }
+
+                    // 상품 업데이트
+                    const { error: updateError } = await supabase
+                      .from('products')
+                      .update({ 
+                        inventory_options: updatedOptions,
+                        updated_at: currentTime
+                      })
+                      .eq('id', item.product_id)
+
+                    if (updateError) {
+                      console.error('❌ 재고 업데이트 실패:', updateError)
+                    } else {
+                      console.log(`✅ 출고 처리 완료: ${item.product_name} (${item.color}/${item.size}) ${shippedQuantity}개`)
+                      console.log(`📊 재고 변동: ${currentPhysicalStock}개 → ${newPhysicalStock}개`)
+                      
+                      // 재고 변동 이력 기록
+                      try {
+                        await supabase
+                          .from('stock_movements')
+                          .insert({
+                            product_id: item.product_id,
+                            movement_type: 'shipment',
+                            quantity: -shippedQuantity, // 출고는 음수
+                            color: item.color,
+                            size: item.size,
+                            notes: `출고 처리 - 주문번호: ${order.order_number} (물리재고: ${currentPhysicalStock} → ${newPhysicalStock})`,
+                            created_at: currentTime
+                          })
+                      } catch (historyError) {
+                        console.error('❌ 재고 변동 이력 기록 실패:', historyError)
+                      }
+                    }
+                  } else {
+                    console.error('❌ 해당 옵션을 찾을 수 없음:', item.color, item.size)
+                  }
+                } else {
+                  console.error('❌ 상품에 옵션 정보가 없음')
+                }
+              } catch (stockError) {
                 console.error('❌ 출고 처리 실패:', stockError)
                 // 출고 처리 실패해도 주문은 출고 처리 계속 진행
-              } else {
-                console.log(`✅ 출고 처리 완료: ${item.product_name} (${item.color}/${item.size}) ${shippedQuantity}개`)
-                console.log(`📊 재고 변동: ${stockResult.previous_physical_stock}개 → ${stockResult.new_physical_stock}개`)
               }
 
               // 2. allocated_quantity를 0으로 초기화
