@@ -447,11 +447,9 @@ export function SamplesPage() {
             },
             body: JSON.stringify({
               ...updates,
-              // 개별 아이템의 정보도 함께 업데이트
+              // color와 size를 product_options로 변환하여 전송
               color: item.color,
-              size: item.size,
-              quantity: item.quantity,
-              product_options: `색상: ${item.color || '기본'}, 사이즈: ${item.size || 'FREE'}`
+              size: item.size
             })
           }).then(res => res.json())
         )

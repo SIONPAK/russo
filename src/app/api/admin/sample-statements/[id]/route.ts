@@ -66,10 +66,18 @@ export async function PATCH(
     const actualSampleNumbers = samples.map(sample => sample.sample_number)
     console.log('🎯 실제 업데이트할 sample_numbers:', actualSampleNumbers)
 
-    // 업데이트 데이터 준비
-    const updateData = {
-      ...updates,
+    // 업데이트 데이터 준비 (color, size는 제외하고 product_options만 사용)
+    const { color, size, ...safeUpdates } = updates
+    
+    // product_options가 있는 경우에만 포함
+    const updateData: any = {
+      ...safeUpdates,
       updated_at: getKoreaTime()
+    }
+    
+    // color와 size가 제공된 경우 product_options로 변환
+    if (color && size) {
+      updateData.product_options = `색상: ${color}, 사이즈: ${size}`
     }
 
     // 상태별 특별 처리
