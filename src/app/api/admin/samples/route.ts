@@ -513,97 +513,15 @@ export async function PUT(request: NextRequest) {
           }
           updateData.return_date = now
           
-          // 색상/사이즈 정보 파싱
-          const parseOptions = (options: string) => {
-            const colorMatch = options.match(/색상:\s*([^,]+)/);
-            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
-            return {
-              color: colorMatch ? colorMatch[1].trim() : null,
-              size: sizeMatch ? sizeMatch[1].trim() : null
-            };
-          };
-
-          const { color: sampleColor, size: sampleSize } = parseOptions(currentSample.product_options || '');
-
-          // 반납 시 재고 복구
-          const { data: productData, error: productError } = await supabase
-            .from('products')
-            .select('stock_quantity')
-            .eq('id', currentSample.product_id)
-            .single()
-
-          if (!productError && productData) {
-            await supabase
-              .from('products')
-              .update({ 
-                stock_quantity: productData.stock_quantity + currentSample.quantity,
-                updated_at: now
-              })
-              .eq('id', currentSample.product_id)
-          }
-
-          // 재고 복구 이력 기록
-          await supabase
-            .from('stock_movements')
-            .insert({
-              product_id: currentSample.product_id,
-              movement_type: 'sample_return',
-              quantity: currentSample.quantity,
-              color: sampleColor,
-              size: sampleSize,
-              reason: `샘플 반납 (${currentSample.sample_number})`,
-              reference_id: currentSample.id,
-              reference_type: 'sample',
-              created_at: now
-            })
+                    // 💡 샘플은 재고와 연동하지 않음 - 수동 관리
+          console.log(`📝 샘플 반납 처리: ${currentSample.sample_number} - 재고 연동 없음`)
           break
           
         case 'rejected':
           updateData.rejected_at = now
           
-          // 색상/사이즈 정보 파싱
-          const parseOptionsReject = (options: string) => {
-            const colorMatch = options.match(/색상:\s*([^,]+)/);
-            const sizeMatch = options.match(/사이즈:\s*([^,]+)/);
-            return {
-              color: colorMatch ? colorMatch[1].trim() : null,
-              size: sizeMatch ? sizeMatch[1].trim() : null
-            };
-          };
-
-          const { color: rejectColor, size: rejectSize } = parseOptionsReject(currentSample.product_options || '');
-          
-          // 거절 시 재고 복구
-          const { data: rejectedProductData, error: rejectedProductError } = await supabase
-            .from('products')
-            .select('stock_quantity')
-            .eq('id', currentSample.product_id)
-            .single()
-
-          if (!rejectedProductError && rejectedProductData) {
-            await supabase
-              .from('products')
-              .update({ 
-                stock_quantity: rejectedProductData.stock_quantity + currentSample.quantity,
-                updated_at: now
-              })
-              .eq('id', currentSample.product_id)
-
-            // 재고 복구 이력 기록
-            await supabase
-              .from('stock_movements')
-              .insert({
-                product_id: currentSample.product_id,
-                movement_type: 'sample_reject',
-                quantity: currentSample.quantity,
-                color: rejectColor,
-                size: rejectSize,
-                reason: `샘플 거절 (${currentSample.sample_number})`,
-                reference_id: currentSample.id,
-                reference_type: 'sample',
-                created_at: now
-              })
-          }
+          // 💡 샘플은 재고와 연동하지 않음 - 수동 관리
+          console.log(`📝 샘플 거절 처리: ${currentSample.sample_number} - 재고 연동 없음`)
           break
       }
 
