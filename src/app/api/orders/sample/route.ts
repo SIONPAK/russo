@@ -138,47 +138,8 @@ export async function POST(request: NextRequest) {
 
     const { color, size } = parseOptions(product_options || '');
 
-    const { data: stockResult, error: stockError } = await supabase
-      .rpc('adjust_physical_stock', {
-        p_product_id: product_id,
-        p_color: color,
-        p_size: size,
-        p_quantity_change: -quantity, // 음수로 차감
-        p_reason: `사용자 샘플 주문 - ${sampleNumber}`
-      })
-
-    if (stockError || !stockResult) {
-      console.error('❌ 사용자 샘플 재고 차감 실패:', stockError)
-      // 샘플 주문 롤백
-      await supabase.from('samples').delete().eq('id', sample.id)
-      return NextResponse.json({
-        success: false,
-        error: '재고 차감에 실패했습니다.'
-      }, { status: 500 })
-    }
-
-    // 재고 부족 확인 (adjust_physical_stock 함수에서 false 반환)
-    if (stockResult === false) {
-      // 샘플 주문 롤백
-      await supabase.from('samples').delete().eq('id', sample.id)
-      return NextResponse.json({
-        success: false,
-        error: '재고가 부족합니다.'
-      }, { status: 400 })
-    }
-
-    // 재고 변동 이력 기록
-    await supabase
-      .from('stock_movements')
-      .insert({
-        product_id,
-        movement_type: 'sample_out',
-        quantity: -quantity,
-        reason: `샘플 출고 (${sampleNumber})`,
-        reference_id: sample.id,
-        reference_type: 'sample',
-        created_at: getKoreaTime()
-      })
+    // 샘플 주문은 재고 차감 없이 주문만 생성
+    console.log(`✅ 샘플 주문 생성 완료: ${sampleNumber} (재고 차감 없음)`)
 
     return NextResponse.json({
       success: true,
