@@ -79,39 +79,47 @@ export async function GET(request: NextRequest) {
 
     const productIds = products.map(p => p.id)
 
-    // 2. 주문 아이템 데이터 조회 (각 기간별로) - 샘플 주문 제외
+    // 2. 주문 아이템 데이터 조회 (각 기간별로) - 샘플 주문 제외, 실제 출고 수량 사용
     const [orderData7, orderData30, orderData60, orderData180] = await Promise.all([
-      // 7일 데이터 (최근 7일) - 샘플 주문 제외
+      // 7일 데이터 (최근 7일) - 샘플 주문 제외, 실제 출고 수량 사용
       supabase
         .from('order_items')
-        .select('product_id, color, size, quantity, orders!order_items_order_id_fkey(created_at, order_type)')
+        .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
         .in('product_id', productIds)
         .gte('orders.created_at', date7.toISOString())
-        .neq('orders.order_type', 'sample'), // 샘플 주문 제외
+        .neq('orders.order_type', 'sample') // 샘플 주문 제외
+        .not('shipped_quantity', 'is', null) // 출고 수량이 있는 것만
+        .gt('shipped_quantity', 0), // 출고 수량이 0보다 큰 것만
       
-      // 30일 데이터 (최근 30일) - 샘플 주문 제외
+      // 30일 데이터 (최근 30일) - 샘플 주문 제외, 실제 출고 수량 사용
       supabase
         .from('order_items')
-        .select('product_id, color, size, quantity, orders!order_items_order_id_fkey(created_at, order_type)')
+        .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
         .in('product_id', productIds)
         .gte('orders.created_at', date30.toISOString())
-        .neq('orders.order_type', 'sample'), // 샘플 주문 제외
+        .neq('orders.order_type', 'sample') // 샘플 주문 제외
+        .not('shipped_quantity', 'is', null) // 출고 수량이 있는 것만
+        .gt('shipped_quantity', 0), // 출고 수량이 0보다 큰 것만
       
-      // 60일 데이터 (최근 60일) - 샘플 주문 제외
+      // 60일 데이터 (최근 60일) - 샘플 주문 제외, 실제 출고 수량 사용
       supabase
         .from('order_items')
-        .select('product_id, color, size, quantity, orders!order_items_order_id_fkey(created_at, order_type)')
+        .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
         .in('product_id', productIds)
         .gte('orders.created_at', date60.toISOString())
-        .neq('orders.order_type', 'sample'), // 샘플 주문 제외
+        .neq('orders.order_type', 'sample') // 샘플 주문 제외
+        .not('shipped_quantity', 'is', null) // 출고 수량이 있는 것만
+        .gt('shipped_quantity', 0), // 출고 수량이 0보다 큰 것만
       
-      // 180일 데이터 (최근 180일) - 샘플 주문 제외
+      // 180일 데이터 (최근 180일) - 샘플 주문 제외, 실제 출고 수량 사용
       supabase
         .from('order_items')
-        .select('product_id, color, size, quantity, orders!order_items_order_id_fkey(created_at, order_type)')
+        .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
         .in('product_id', productIds)
         .gte('orders.created_at', date180.toISOString())
         .neq('orders.order_type', 'sample') // 샘플 주문 제외
+        .not('shipped_quantity', 'is', null) // 출고 수량이 있는 것만
+        .gt('shipped_quantity', 0) // 출고 수량이 0보다 큰 것만
     ])
 
     // 3. 차감 명세서 데이터 조회 (각 기간별로)
@@ -161,7 +169,7 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    console.log('📊 기간별 주문 데이터 개수 (샘플 제외):', {
+    console.log('📊 기간별 주문 데이터 개수 (샘플 제외, 출고 수량만):', {
       '7일': orderData7.data?.length || 0,
       '30일': orderData30.data?.length || 0,
       '60일': orderData60.data?.length || 0,
@@ -244,7 +252,7 @@ export async function GET(request: NextRequest) {
     console.log('📊 aduMap 크기:', aduMap.size)
     console.log('📊 aduMap 샘플 데이터:', Array.from(aduMap.entries()).slice(0, 3))
 
-    // 각 기간별 데이터 집계 (날짜 필터링 포함) - 샘플 주문 제외
+    // 각 기간별 데이터 집계 (날짜 필터링 포함) - 샘플 주문 제외, 실제 출고 수량 사용
     const aggregateData = (data: any[], period: string, startDate: Date) => {
       if (!data) return
       
@@ -260,7 +268,9 @@ export async function GET(request: NextRequest) {
           const key = `${item.product_id}|${item.color}|${item.size}`
           if (aduMap.has(key)) {
             const existing = aduMap.get(key)
-            existing[`total${period}`] += item.quantity || 0
+            // 실제 출고 수량 사용 (shipped_quantity가 있으면 그것을, 없으면 quantity 사용)
+            const quantity = item.shipped_quantity || item.quantity || 0
+            existing[`total${period}`] += quantity
           }
         }
       })
@@ -336,7 +346,7 @@ export async function GET(request: NextRequest) {
       return sortOrder === 'desc' ? bVal - aVal : aVal - bVal
     })
 
-    console.log(`✅ ADU 데이터 조회 완료: ${aduData.length}건 (차감명세서 + 일반주문만 포함, 샘플주문 제외)`)
+    console.log(`✅ ADU 데이터 조회 완료: ${aduData.length}건 (차감명세서 + 출고처리된 주문만 포함, 샘플주문 제외)`)
 
     return NextResponse.json({
       success: true,

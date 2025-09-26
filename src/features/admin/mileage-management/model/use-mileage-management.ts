@@ -130,6 +130,7 @@ export function useMileageManagement() {
           processed_by: item.processed_by,
           created_at: item.created_at,
           updated_at: item.updated_at,
+          cumulative_balance: item.cumulative_balance, // 누적 잔액 추가
           user: item.users ? {
             id: item.users.id,
             company_name: item.users.company_name,

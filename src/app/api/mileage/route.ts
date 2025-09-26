@@ -95,18 +95,46 @@ export async function GET(request: NextRequest) {
     console.log('🔍 조회된 마일리지 데이터:', mileageData)
     console.log('🔍 마일리지 데이터 수:', mileageData?.length || 0)
 
-    // 전체 마일리지 데이터로 잔액 계산
-    const { data: allMileageData, error: allMileageError } = await supabase
-      .from('mileage')
-      .select('amount, type, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
+    // 전체 마일리지 데이터로 잔액 계산 - 페이지네이션으로 모든 데이터 가져오기
+    let allMileageData: any[] = [];
+    let fetchPage = 0;
+    const fetchLimit = 1000; // Supabase 기본 limit
+    let hasMore = true;
 
-    if (allMileageError) {
-      console.error('전체 마일리지 조회 오류:', allMileageError)
+    console.log(`🔍 사용자 ${userId} 마일리지 데이터 페이지네이션으로 조회 시작...`);
+
+    while (hasMore) {
+      const { data: pageData, error: allMileageError } = await supabase
+        .from('mileage')
+        .select('amount, type, created_at, status')
+        .eq('user_id', userId)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: true })
+        .range(fetchPage * fetchLimit, (fetchPage + 1) * fetchLimit - 1);
+
+      if (allMileageError) {
+        console.error(`사용자 ${userId} 페이지 ${fetchPage} 조회 오류:`, allMileageError);
+        break;
+      }
+
+      if (pageData && pageData.length > 0) {
+        allMileageData = allMileageData.concat(pageData);
+        console.log(`🔍 사용자 ${userId} 페이지 ${fetchPage + 1}: ${pageData.length}건 조회 (총 ${allMileageData.length}건)`);
+        fetchPage++;
+        
+        // 1000건 미만이면 마지막 페이지
+        if (pageData.length < fetchLimit) {
+          hasMore = false;
+        }
+      } else {
+        hasMore = false;
+      }
     }
 
+    console.log(`🔍 사용자 ${userId} 전체 마일리지 데이터 조회 완료: ${allMileageData.length}건`);
+
     console.log('🔍 전체 마일리지 데이터 수:', allMileageData?.length || 0)
+    console.log(`🔍 사용자 ${userId}의 전체 마일리지 데이터: ${allMileageData?.length || 0}건`)
 
     // 상세 디버깅: 각 마일리지 데이터 출력
     console.log('🔍 전체 마일리지 데이터 상세:')
@@ -135,11 +163,32 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('🔍 계산 결과:')
-    console.log(`  - 총 적립: ${earnTotal}원`)
-    console.log(`  - 총 차감: ${spendTotal}원`)
-    console.log(`  - 계산된 잔액: ${currentBalance}원`)
-    console.log(`  - DB 저장된 잔액: ${userData.mileage_balance || 0}원`)
-    console.log(`  - 잔액 차이: ${currentBalance - (userData.mileage_balance || 0)}원`)
+    console.log(`  - 사용자: ${userData.company_name} (${userData.representative_name})`)
+    console.log(`  - 총 적립: ${earnTotal.toLocaleString()}원`)
+    console.log(`  - 총 차감: ${spendTotal.toLocaleString()}원`)
+    console.log(`  - 계산된 잔액: ${currentBalance.toLocaleString()}원`)
+    console.log(`  - 계산된 잔액 (음수 확인): ${currentBalance < 0 ? '음수' : '양수'} (${currentBalance})`)
+    console.log(`  - DB 저장된 잔액: ${(userData.mileage_balance || 0).toLocaleString()}원`)
+    console.log(`  - 잔액 차이: ${(currentBalance - (userData.mileage_balance || 0)).toLocaleString()}원`)
+    
+    // 미스터제이슨 회사의 경우 상세 디버깅
+    if (userData.company_name?.includes('미스터제이슨') || userData.company_name?.includes('제이슨')) {
+      console.log('🔍 미스터제이슨 상세 디버깅:')
+      console.log(`  - 회사명: ${userData.company_name}`)
+      console.log(`  - 대표자: ${userData.representative_name}`)
+      console.log(`  - 사용자 ID: ${userId}`)
+      console.log(`  - 마일리지 내역 수: ${allMileageData?.length || 0}`)
+      console.log(`  - 계산된 잔액: ${currentBalance.toLocaleString()}원`)
+      console.log(`  - DB 저장된 잔액: ${(userData.mileage_balance || 0).toLocaleString()}원`)
+      
+      // 최근 5개 마일리지 내역 상세 출력
+      if (allMileageData && allMileageData.length > 0) {
+        console.log('  - 최근 5개 마일리지 내역:')
+        allMileageData.slice(0, 5).forEach((item, index) => {
+          console.log(`    ${index + 1}. ${item.type === 'earn' ? '적립' : '차감'}: ${item.amount}원 (${item.created_at})`)
+        })
+      }
+    }
 
     // 이번 달 통계 계산
     const now = new Date()

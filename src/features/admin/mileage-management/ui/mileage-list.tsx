@@ -444,7 +444,11 @@ export function MileageList({
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-blue-50">
-                    {cumulativeBalances && cumulativeBalances[mileage.id] !== undefined ? (
+                    {mileage.cumulative_balance !== undefined ? (
+                      <span className={mileage.cumulative_balance >= 0 ? 'text-blue-600' : 'text-red-600'}>
+                        {formatCurrency(mileage.cumulative_balance)}
+                      </span>
+                    ) : cumulativeBalances && cumulativeBalances[mileage.id] !== undefined ? (
                       <span className={cumulativeBalances[mileage.id] >= 0 ? 'text-blue-600' : 'text-red-600'}>
                         {formatCurrency(cumulativeBalances[mileage.id])}
                       </span>

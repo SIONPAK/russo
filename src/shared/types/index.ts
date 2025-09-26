@@ -211,6 +211,7 @@ export interface Mileage {
   processed_by: string | null
   created_at: string
   updated_at: string
+  cumulative_balance?: number // 누적 잔액
   user?: {
     id: string
     company_name: string
