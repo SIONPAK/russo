@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       // 최근 5개 마일리지 내역 상세 출력
       if (mileages && mileages.length > 0) {
         console.log('  - 최근 5개 마일리지 내역:')
-        mileages.slice(0, 5).forEach((item, index) => {
+        mileages.slice(0, 5).forEach((item: any, index: number) => {
           console.log(`    ${index + 1}. ${item.type === 'earn' ? '적립' : '차감'}: ${item.amount}원 (${item.created_at}) - 누적잔액: ${item.cumulative_balance?.toLocaleString()}원`)
         })
       }
