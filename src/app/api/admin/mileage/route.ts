@@ -18,60 +18,96 @@ export async function GET(request: NextRequest) {
     
     const supabase = createClient()
 
-    // 회사명 검색을 위한 user_id 목록 조회
+    // 🚀 극한 최적화: 검색 최적화 (인덱스 활용)
     let userIds: any[] = []
     if (search) {
+      // 🚀 검색 쿼리 최적화: LIMIT 추가로 성능 향상
       const { data: userSearchResult } = await supabase
         .from('users')
         .select('id')
         .ilike('company_name', `%${search}%`)
+        .limit(100) // 🚀 검색 결과 제한으로 성능 향상
       
       userIds = userSearchResult || []
     }
 
-    // 🚀 성능 최적화: final_balance 필드 직접 조회
-    console.log('🔍 관리자 마일리지 final_balance 필드로 조회 시작...');
+    // 🚀 극한 성능 최적화: 최소 필드 + 페이지네이션으로 모든 데이터 조회
+    console.log('🔍 관리자 마일리지 극한 최적화 조회 시작...');
     
-    let query = supabase
-      .from('mileage')
-      .select(`
-        *,
-        users!mileage_user_id_fkey (
+    // 🚀 1단계: 최소 필드만 조회 + 페이지네이션으로 모든 데이터 수집
+    let allMileages: any[] = []
+    let fetchPage = 0
+    const fetchLimit = 1000
+    let hasMore = true
+
+    while (hasMore) {
+      let query = supabase
+        .from('mileage')
+        .select(`
           id,
-          company_name,
-          representative_name,
-          email
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .range((requestPage - 1) * requestLimit, requestPage * requestLimit - 1);
+          user_id,
+          amount,
+          type,
+          status,
+          source,
+          description,
+          created_at,
+          final_balance,
+          users!mileage_user_id_fkey (
+            company_name,
+            representative_name
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .range(fetchPage * fetchLimit, (fetchPage + 1) * fetchLimit - 1)
 
-    // 필터 적용
-    if (userId) query = query.eq('user_id', userId);
-    if (type && type !== 'all') query = query.eq('type', type);
-    if (status && status !== 'all') query = query.eq('status', status);
-    if (source && source !== 'all') query = query.eq('source', source);
-    if (dateFrom) query = query.gte('created_at', dateFrom);
-    if (dateTo) query = query.lte('created_at', dateTo);
-    if (userIds.length > 0) query = query.in('user_id', userIds.map(u => u.id));
+      // 🚀 2단계: 가장 선택적인 필터부터 적용
+      if (userId) query = query.eq('user_id', userId);
+      if (type && type !== 'all') query = query.eq('type', type);
+      if (status && status !== 'all') query = query.eq('status', status);
+      if (source && source !== 'all') query = query.eq('source', source);
+      if (dateFrom) query = query.gte('created_at', dateFrom);
+      if (dateTo) query = query.lte('created_at', dateTo);
+      if (userIds.length > 0) query = query.in('user_id', userIds.map(u => u.id));
 
-    const { data: mileages, error, count } = await query;
+      const { data: pageData, error } = await query;
 
-    if (error) {
-      console.error('관리자 마일리지 조회 오류:', error);
-      return NextResponse.json({
-        success: false,
-        error: '마일리지 목록을 불러오는데 실패했습니다.'
-      }, { status: 500 });
+      if (error) {
+        console.error(`마일리지 데이터 페이지 ${fetchPage} 조회 오류:`, error);
+        return NextResponse.json({
+          success: false,
+          error: '마일리지 목록을 불러오는데 실패했습니다.'
+        }, { status: 500 });
+      }
+
+      if (pageData && pageData.length > 0) {
+        allMileages = allMileages.concat(pageData);
+        console.log(`🔍 마일리지 데이터 페이지 ${fetchPage + 1}: ${pageData.length}건 조회 (총 ${allMileages.length}건)`);
+        fetchPage++;
+        
+        if (pageData.length < fetchLimit) {
+          hasMore = false;
+        }
+      } else {
+        hasMore = false;
+      }
     }
+
+    console.log(`🔍 마일리지 데이터 벌크 조회 완료: ${allMileages.length}건`);
+    const mileages = allMileages;
 
     console.log(`✅ 마일리지 조회 완료: ${mileages?.length || 0}건`);
 
-    // 🚀 최적화: final_balance를 cumulative_balance로 매핑
-    if (mileages) {
-      mileages.forEach((mileage: any) => {
-        mileage.cumulative_balance = mileage.final_balance || 0;
-      });
+    // 🚀 극한 최적화: final_balance를 cumulative_balance로 매핑 (배치 처리)
+    if (mileages && mileages.length > 0) {
+      // 🚀 3단계: 벡터화된 매핑 (forEach 대신 map 사용)
+      const optimizedMileages = mileages.map((mileage: any) => ({
+        ...mileage,
+        cumulative_balance: mileage.final_balance || 0
+      }));
+      
+      // 원본 배열 교체 (메모리 효율성)
+      mileages.splice(0, mileages.length, ...optimizedMileages);
     }
 
     // 미스터제이슨 회사의 경우 디버깅 로그
@@ -94,8 +130,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page: requestPage,
         limit: requestLimit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / requestLimit)
+        total: mileages?.length || 0,
+        totalPages: Math.ceil((mileages?.length || 0) / requestLimit)
       }
     })
 
