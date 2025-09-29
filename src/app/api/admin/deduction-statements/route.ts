@@ -42,15 +42,41 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status)
     }
 
-    const { data, error } = await query
+    // 페이지네이션으로 모든 데이터 가져오기
+    console.log('🔍 차감명세서 데이터 페이지네이션으로 조회 시작...')
+    
+    let allData: any[] = []
+    let page = 0
+    const limit = 1000
+    let hasMore = true
 
-    if (error) {
-      console.error('Deduction statements fetch error:', error)
-      return NextResponse.json({
-        success: false,
-        error: '차감명세서 조회 중 오류가 발생했습니다.'
-      }, { status: 500 })
+    while (hasMore) {
+      const { data: pageData, error } = await query
+        .range(page * limit, (page + 1) * limit - 1)
+
+      if (error) {
+        console.error(`차감명세서 페이지 ${page} 조회 오류:`, error)
+        return NextResponse.json({
+          success: false,
+          error: '차감명세서 조회 중 오류가 발생했습니다.'
+        }, { status: 500 })
+      }
+
+      if (pageData && pageData.length > 0) {
+        allData = allData.concat(pageData)
+        console.log(`🔍 차감명세서 페이지 ${page + 1}: ${pageData.length}건 조회 (총 ${allData.length}건)`)
+        page++
+        
+        if (pageData.length < limit) {
+          hasMore = false
+        }
+      } else {
+        hasMore = false
+      }
     }
+
+    console.log(`🔍 차감명세서 전체 데이터 조회 완료: ${allData.length}건`)
+    const data = allData
 
     // 회사명으로 필터링 (클라이언트 사이드)
     let statements = data || []

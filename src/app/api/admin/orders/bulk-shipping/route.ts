@@ -139,6 +139,42 @@ export async function POST(request: NextRequest) {
                   p_shipped_quantity: shippableQuantity,
                   p_order_number: order.order_number
                 })
+                .then(async (result: any) => {
+                  if (!result.error && result.data) {
+                    // 🔧 allocated_stock에서 출고 수량만큼 차감 (0으로 초기화가 아님)
+                    const { data: product, error: productError } = await supabase
+                      .from('products')
+                      .select('inventory_options')
+                      .eq('id', item.product_id)
+                      .single()
+
+                    if (!productError && product?.inventory_options) {
+                      let needsUpdate = false
+                      const updatedOptions = product.inventory_options.map((option: any) => {
+                        if (option.color === item.color && option.size === item.size) {
+                          // 출고 수량만큼 allocated_stock에서 차감
+                          const currentAllocated = option.allocated_stock || 0
+                          const newAllocated = Math.max(0, currentAllocated - shippableQuantity)
+                          
+                          if (currentAllocated !== newAllocated) {
+                            console.log(`🔧 allocated_stock 차감: ${item.product_name} (${item.color}/${item.size}) - ${currentAllocated} → ${newAllocated} (출고: ${shippableQuantity}개)`)
+                            needsUpdate = true
+                            return { ...option, allocated_stock: newAllocated }
+                          }
+                        }
+                        return option
+                      })
+
+                      if (needsUpdate) {
+                        await supabase
+                          .from('products')
+                          .update({ inventory_options: updatedOptions })
+                          .eq('id', item.product_id)
+                      }
+                    }
+                  }
+                  return result
+                })
             )
 
             // 3. 재고 변동 이력 기록

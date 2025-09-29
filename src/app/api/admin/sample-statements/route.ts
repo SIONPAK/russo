@@ -58,15 +58,40 @@ export async function GET(request: NextRequest) {
       allSamplesQuery = allSamplesQuery.or(`sample_number.ilike.%${search}%,customer_name.ilike.%${search}%,product_name.ilike.%${search}%`)
     }
 
-    const { data: allSamples, error } = await allSamplesQuery
+    // 페이지네이션으로 모든 데이터 가져오기
+    console.log('🔍 샘플 명세서 데이터 페이지네이션으로 조회 시작...')
+    
+    let allSamples: any[] = []
+    let fetchPage = 0
+    const fetchLimit = 1000
+    let hasMore = true
 
-    if (error) {
-      console.error('샘플 명세서 조회 오류:', error)
-      return NextResponse.json({
-        success: false,
-        error: '샘플 명세서 조회에 실패했습니다.'
-      }, { status: 500 })
+    while (hasMore) {
+      const { data: pageData, error } = await allSamplesQuery
+        .range(fetchPage * fetchLimit, (fetchPage + 1) * fetchLimit - 1)
+
+      if (error) {
+        console.error(`샘플 명세서 페이지 ${fetchPage} 조회 오류:`, error)
+        return NextResponse.json({
+          success: false,
+          error: '샘플 명세서 조회에 실패했습니다.'
+        }, { status: 500 })
+      }
+
+      if (pageData && pageData.length > 0) {
+        allSamples = allSamples.concat(pageData)
+        console.log(`🔍 샘플 명세서 페이지 ${fetchPage + 1}: ${pageData.length}건 조회 (총 ${allSamples.length}건)`)
+        fetchPage++
+        
+        if (pageData.length < fetchLimit) {
+          hasMore = false
+        }
+      } else {
+        hasMore = false
+      }
     }
+
+    console.log(`🔍 샘플 명세서 전체 데이터 조회 완료: ${allSamples.length}건`)
 
     console.log(`✅ 샘플 명세서 조회 완료: ${allSamples?.length || 0}건`)
 

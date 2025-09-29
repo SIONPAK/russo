@@ -99,35 +99,50 @@ export async function GET(request: NextRequest) {
     const sortOrder = filters.sort_order === 'asc' ? true : false
     query = query.order(sortColumn, { ascending: sortOrder })
 
-    // 페이지네이션
-    const page = filters.page || 1
-    const limit = filters.limit || 20
-    const offset = (page - 1) * limit
-    query = query.range(offset, offset + limit - 1)
+    // 벌크로 1000건씩 모든 데이터 가져오기
+    console.log('🔍 상품 데이터 벌크 조회 시작...')
+    
+    let allProducts: any[] = []
+    let page = 0
+    const limit = 1000
+    let hasMore = true
 
-    const { data: products, error } = await query
+    while (hasMore) {
+      const { data: pageData, error } = await query
+        .range(page * limit, (page + 1) * limit - 1)
 
-    if (error) {
-      console.error('Products fetch error:', error)
-      return NextResponse.json({
-        success: false,
-        error: '상품 목록을 불러오는데 실패했습니다.'
-      }, { status: 500 })
+      if (error) {
+        console.error(`상품 데이터 페이지 ${page} 조회 오류:`, error)
+        return NextResponse.json({
+          success: false,
+          error: '상품 목록을 불러오는데 실패했습니다.'
+        }, { status: 500 })
+      }
+
+      if (pageData && pageData.length > 0) {
+        allProducts = allProducts.concat(pageData)
+        console.log(`🔍 상품 데이터 페이지 ${page + 1}: ${pageData.length}건 조회 (총 ${allProducts.length}건)`)
+        page++
+        
+        if (pageData.length < limit) {
+          hasMore = false
+        }
+      } else {
+        hasMore = false
+      }
     }
 
-    // 총 개수 조회
-    const { count: totalCount } = await supabase
-      .from('products')
-      .select('*', { count: 'exact', head: true })
+    console.log(`🔍 상품 데이터 벌크 조회 완료: ${allProducts.length}건`)
+    const products = allProducts
 
     return NextResponse.json({
       success: true,
       data: products,
       pagination: {
-        page,
-        limit,
-        total: totalCount || 0,
-        totalPages: Math.ceil((totalCount || 0) / limit)
+        page: 1,
+        limit: products.length,
+        total: products.length,
+        totalPages: 1
       }
     })
 

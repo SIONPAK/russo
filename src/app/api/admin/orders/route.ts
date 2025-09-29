@@ -121,42 +121,43 @@ export async function GET(request: NextRequest) {
       query = query.order('created_at', { ascending: true })
     }
 
-    // 페이지네이션으로 모든 데이터 가져오기
-    let allOrders: any[] = [];
-    let fetchPage = 0;
-    const fetchLimit = 1000; // Supabase 기본 limit
-    let hasMore = true;
-
-    console.log('🔍 주문 데이터 페이지네이션으로 조회 시작...');
+    // 벌크로 1000건씩 모든 데이터 가져오기
+    console.log('🔍 주문 데이터 벌크 조회 시작...');
+    
+    let allOrders: any[] = []
+    let fetchPage = 0
+    const fetchLimit = 1000
+    let hasMore = true
 
     while (hasMore) {
       const { data: pageData, error } = await query
-        .range(fetchPage * fetchLimit, (fetchPage + 1) * fetchLimit - 1);
+        .range(fetchPage * fetchLimit, (fetchPage + 1) * fetchLimit - 1)
 
       if (error) {
-        console.error(`주문 페이지 ${fetchPage} 조회 오류:`, error);
-        return NextResponse.json({
-          success: false,
-          error: '주문 목록을 불러오는데 실패했습니다.'
-        }, { status: 500 });
+        console.error(`주문 데이터 페이지 ${fetchPage} 조회 오류:`, error)
+        return NextResponse.json({ 
+          success: false, 
+          error: '주문 목록을 불러오는데 실패했습니다.' 
+        }, { status: 500 })
       }
 
       if (pageData && pageData.length > 0) {
-        allOrders = allOrders.concat(pageData);
-        console.log(`🔍 주문 페이지 ${fetchPage + 1}: ${pageData.length}건 조회 (총 ${allOrders.length}건)`);
-        fetchPage++;
+        allOrders = allOrders.concat(pageData)
+        console.log(`🔍 주문 데이터 페이지 ${fetchPage + 1}: ${pageData.length}건 조회 (총 ${allOrders.length}건)`)
+        fetchPage++
         
-        // 1000건 미만이면 마지막 페이지
         if (pageData.length < fetchLimit) {
-          hasMore = false;
+          hasMore = false
         }
       } else {
-        hasMore = false;
+        hasMore = false
       }
     }
 
-    console.log(`🔍 주문 전체 데이터 조회 완료: ${allOrders.length}건`);
-    const orders = allOrders;
+    console.log(`🔍 주문 데이터 벌크 조회 완료: ${allOrders.length}건`)
+    const orders = allOrders
+
+    console.log(`🔍 주문 데이터 조회 완료: ${orders?.length || 0}건`);
 
     // 재고 할당 상태 계산
     const ordersWithAllocation = await Promise.all(

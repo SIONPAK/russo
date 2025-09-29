@@ -2,6 +2,99 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase'
 import { getKoreaTime, getKoreaDate } from '@/shared/lib/utils'
 
+// 미출고 명세서 생성 함수
+async function createUnshippedStatement(supabase: any, orderId: string, orderNumber: string) {
+  try {
+    // 주문 정보 조회
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        user_id,
+        order_items (
+          id,
+          product_id,
+          product_name,
+          color,
+          size,
+          quantity,
+          shipped_quantity,
+          unit_price
+        )
+      `)
+      .eq('id', orderId)
+      .single()
+
+    if (orderError || !order) {
+      throw new Error('주문 정보를 찾을 수 없습니다.')
+    }
+
+    // 미출고 아이템 필터링
+    const unshippedItems = order.order_items.filter((item: any) => 
+      (item.quantity - (item.shipped_quantity || 0)) > 0
+    )
+
+    if (unshippedItems.length === 0) {
+      console.log(`미출고 아이템 없음: ${orderNumber}`)
+      return
+    }
+
+    // 미출고 명세서 생성
+    const timestamp = Date.now()
+    const unshippedStatementNumber = `UNSHIPPED-${orderNumber}-${timestamp}`
+    
+    const { data: unshippedStatement, error: statementError } = await supabase
+      .from('unshipped_statements')
+      .insert({
+        statement_number: unshippedStatementNumber,
+        order_id: orderId,
+        user_id: order.user_id,
+        total_unshipped_amount: unshippedItems.reduce((sum: number, item: any) => 
+          sum + (item.unit_price * (item.quantity - (item.shipped_quantity || 0))), 0
+        ),
+        status: 'pending',
+        reason: '재고 부족으로 인한 미출고',
+        created_at: getKoreaTime()
+      })
+      .select()
+      .single()
+
+    if (statementError || !unshippedStatement) {
+      throw new Error('미출고 명세서 생성에 실패했습니다.')
+    }
+
+    // 미출고 아이템 등록
+    const unshippedItemsData = unshippedItems.map((item: any) => ({
+      unshipped_statement_id: unshippedStatement.id,
+      order_item_id: item.id,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      color: item.color,
+      size: item.size,
+      ordered_quantity: item.quantity,
+      shipped_quantity: item.shipped_quantity || 0,
+      unshipped_quantity: item.quantity - (item.shipped_quantity || 0),
+      unit_price: item.unit_price,
+      total_amount: item.unit_price * (item.quantity - (item.shipped_quantity || 0)),
+      created_at: getKoreaTime()
+    }))
+
+    const { error: itemsError } = await supabase
+      .from('unshipped_statement_items')
+      .insert(unshippedItemsData)
+
+    if (itemsError) {
+      throw new Error('미출고 아이템 등록에 실패했습니다.')
+    }
+
+    console.log(`✅ 미출고 명세서 생성 완료: ${orderNumber} (${unshippedItems.length}개 아이템)`)
+    
+  } catch (error) {
+    console.error(`❌ 미출고 명세서 생성 실패: ${orderNumber}`, error)
+    throw error
+  }
+}
+
 // GET - 주문 목록 엑셀 다운로드
 export async function GET(request: NextRequest) {
   try {
@@ -198,22 +291,9 @@ export async function POST(request: NextRequest) {
         // "미출고" 처리 시 미출고 명세서 자동 생성
         if (isUnshipped) {
           try {
-            // 미출고 명세서 생성 API 호출
-            const unshippedResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/orders/bulk-unshipped-process`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                orderIds: [order.id]
-              })
-            })
-
-            if (!unshippedResponse.ok) {
-              console.error(`미출고 명세서 생성 실패: ${orderNumber}`)
-            } else {
-              console.log(`미출고 명세서 생성 완료: ${orderNumber}`)
-            }
+            // 미출고 명세서 직접 생성 (API 호출 대신)
+            await createUnshippedStatement(supabase, order.id, orderNumber)
+            console.log(`미출고 명세서 생성 완료: ${orderNumber}`)
           } catch (unshippedError) {
             console.error(`미출고 명세서 생성 중 오류: ${orderNumber}`, unshippedError)
           }

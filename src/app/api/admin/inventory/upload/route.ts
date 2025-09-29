@@ -129,7 +129,42 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ [엑셀 업로드] 물리적 재고 조정 완료')
 
-        // 📝 재고 변동 이력은 set_physical_stock_absolute 함수에서 자동 기록됨
+        // 🔧 allocated_stock 초기화 확인 및 수정
+        const { data: updatedProduct, error: refetchError } = await supabase
+          .from('products')
+          .select('inventory_options')
+          .eq('id', product.id)
+          .single()
+
+        if (!refetchError && updatedProduct?.inventory_options) {
+          let needsUpdate = false
+          const updatedOptions = updatedProduct.inventory_options.map((option: any) => {
+            if (option.color === color && option.size === size) {
+              // allocated_stock이 0이 아닌 경우 0으로 초기화
+              if (option.allocated_stock && option.allocated_stock > 0) {
+                console.log(`🔧 allocated_stock 초기화: ${productCode} (${color}/${size}) - ${option.allocated_stock} → 0`)
+                needsUpdate = true
+                return { ...option, allocated_stock: 0 }
+              }
+            }
+            return option
+          })
+
+          if (needsUpdate) {
+            const { error: updateError } = await supabase
+              .from('products')
+              .update({ inventory_options: updatedOptions })
+              .eq('id', product.id)
+
+            if (updateError) {
+              console.error('❌ allocated_stock 초기화 실패:', updateError)
+            } else {
+              console.log(`✅ allocated_stock 초기화 완료: ${productCode} (${color}/${size})`)
+            }
+          }
+        }
+
+        // 📝 재고 변동 이력은 add_physical_stock 함수에서 자동 기록됨
         console.log('✅ 재고 변동 이력 기록 완료')
 
         // 🎯 모든 경우에 재할당 실행 (절대값 설정 후)
@@ -766,6 +801,41 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
       }
 
       console.log(`✅ 재고 차감 완료: ${totalAllocated}개`)
+
+      // 🔧 allocated_stock 업데이트 확인 및 수정
+      const { data: updatedProduct, error: refetchError } = await supabase
+        .from('products')
+        .select('inventory_options')
+        .eq('id', productId)
+        .single()
+
+      if (!refetchError && updatedProduct?.inventory_options) {
+        let needsUpdate = false
+        const updatedOptions = updatedProduct.inventory_options.map((option: any) => {
+          if (option.color === color && option.size === size) {
+            // allocated_stock을 totalAllocated로 업데이트
+            if (option.allocated_stock !== totalAllocated) {
+              console.log(`🔧 allocated_stock 업데이트: ${productId} (${color}/${size}) - ${option.allocated_stock} → ${totalAllocated}`)
+              needsUpdate = true
+              return { ...option, allocated_stock: totalAllocated }
+            }
+          }
+          return option
+        })
+
+        if (needsUpdate) {
+          const { error: updateError } = await supabase
+            .from('products')
+            .update({ inventory_options: updatedOptions })
+            .eq('id', productId)
+
+          if (updateError) {
+            console.error('❌ allocated_stock 업데이트 실패:', updateError)
+          } else {
+            console.log(`✅ allocated_stock 업데이트 완료: ${productId} (${color}/${size})`)
+          }
+        }
+      }
     }
     
     console.log(`🎯 자동 할당 완료: ${totalAllocated}개 할당, ${reallocations.length}개 주문 처리`)

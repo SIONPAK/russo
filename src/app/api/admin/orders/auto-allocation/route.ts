@@ -90,6 +90,15 @@ export async function POST(request: NextRequest) {
             })
 
             // 재고 할당
+            console.log(`🔄 [자동 할당] allocate_stock RPC 호출 시작:`, {
+              productId: item.product_id,
+              productName: item.product_name,
+              color: item.color,
+              size: item.size,
+              quantity: allocatableQuantity,
+              timestamp: new Date().toISOString()
+            })
+            
             const { data: allocationResult, error: allocationError } = await supabase
               .rpc('allocate_stock', {
                 p_product_id: item.product_id,
@@ -97,10 +106,28 @@ export async function POST(request: NextRequest) {
                 p_color: item.color,
                 p_size: item.size
               })
+              
+            console.log(`📊 [자동 할당] allocate_stock RPC 결과:`, {
+              success: !allocationError,
+              error: allocationError,
+              result: allocationResult,
+              timestamp: new Date().toISOString()
+            })
 
             if (!allocationError && allocationResult) {
               // 출고 수량 업데이트 (기존 출고수량 + 할당수량)
               const newShippedQuantity = (item.shipped_quantity || 0) + allocatableQuantity
+              
+              console.log(`🔄 [자동 할당] order_items 업데이트 시작:`, {
+                orderItemId: item.id,
+                orderNumber: order.order_number,
+                productName: item.product_name,
+                previousShippedQuantity: item.shipped_quantity || 0,
+                newShippedQuantity,
+                allocatedQuantity: allocatableQuantity,
+                timestamp: new Date().toISOString()
+              })
+              
               const { error: updateError } = await supabase
                 .from('order_items')
                 .update({
@@ -108,8 +135,95 @@ export async function POST(request: NextRequest) {
                   allocated_quantity: ((item as any).allocated_quantity || 0) + allocatableQuantity
                 })
                 .eq('id', item.id)
+                
+              console.log(`📊 [자동 할당] order_items 업데이트 결과:`, {
+                success: !updateError,
+                error: updateError,
+                timestamp: new Date().toISOString()
+              })
 
               if (!updateError) {
+                // 🔧 allocated_stock 업데이트
+                console.log(`🔄 [자동 할당] products 조회 시작:`, {
+                  productId: item.product_id,
+                  productName: item.product_name,
+                  timestamp: new Date().toISOString()
+                })
+                
+                const { data: product, error: productError } = await supabase
+                  .from('products')
+                  .select('inventory_options')
+                  .eq('id', item.product_id)
+                  .single()
+                  
+                console.log(`📊 [자동 할당] products 조회 결과:`, {
+                  success: !productError,
+                  error: productError,
+                  hasInventoryOptions: !!product?.inventory_options,
+                  timestamp: new Date().toISOString()
+                })
+
+                if (!productError && product?.inventory_options) {
+                  const updatedOptions = product.inventory_options.map((option: any) => {
+                    if (option.color === item.color && option.size === item.size) {
+                      const currentAllocated = option.allocated_stock || 0
+                      const newAllocated = currentAllocated + allocatableQuantity
+                      const physicalStock = option.physical_stock || 0
+                      const newStockQuantity = Math.max(0, physicalStock - newAllocated)
+                      
+                      console.log(`🔧 [자동 할당] allocated_stock 업데이트 상세:`, {
+                        productName: item.product_name,
+                        color: item.color,
+                        size: item.size,
+                        currentAllocated,
+                        newAllocated,
+                        physicalStock,
+                        newStockQuantity,
+                        allocatedQuantity: allocatableQuantity,
+                        timestamp: new Date().toISOString()
+                      })
+                      
+                      return {
+                        ...option,
+                        allocated_stock: newAllocated,
+                        stock_quantity: newStockQuantity
+                      }
+                    }
+                    return option
+                  })
+
+                  const totalStock = updatedOptions.reduce((sum: number, opt: any) => sum + (opt.stock_quantity || 0), 0)
+                  
+                  console.log(`🔄 [자동 할당] products 업데이트 시작:`, {
+                    productId: item.product_id,
+                    totalStock,
+                    updatedOptionsCount: updatedOptions.length,
+                    timestamp: new Date().toISOString()
+                  })
+
+                  const { error: productUpdateError } = await supabase
+                    .from('products')
+                    .update({
+                      inventory_options: updatedOptions,
+                      stock_quantity: totalStock,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', item.product_id)
+                    
+                  console.log(`📊 [자동 할당] products 업데이트 결과:`, {
+                    success: !productUpdateError,
+                    error: productUpdateError,
+                    productId: item.product_id,
+                    timestamp: new Date().toISOString()
+                  })
+
+                  if (!productUpdateError) {
+                    console.log(`✅ [자동 할당] allocated_stock 업데이트 완료: ${item.product_name} (${item.color}/${item.size})`)
+                  } else {
+                    console.error(`❌ [자동 할당] allocated_stock 업데이트 실패:`, productUpdateError)
+                  }
+                }
+
                 allocatedCount++
                 console.log(`✅ [자동 할당] 할당 완료:`, {
                   orderNumber: order.order_number,

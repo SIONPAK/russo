@@ -266,6 +266,16 @@ export async function POST(request: NextRequest) {
 
         // 🎯 5. 출고 처리 (물리재고 차감 + allocated_stock 초기화 + 재할당)
         for (const item of shippedItems) {
+          console.log(`🔄 [출고 처리] process_shipment RPC 호출 시작:`, {
+            orderNumber: order.order_number,
+            productId: item.product_id,
+            productName: item.product_name,
+            color: item.color,
+            size: item.size,
+            shippedQuantity: item.shipped_quantity,
+            timestamp: new Date().toISOString()
+          })
+          
           const { data: stockResult, error: stockError } = await supabase
             .rpc('process_shipment', {
               p_product_id: item.product_id,
@@ -274,13 +284,115 @@ export async function POST(request: NextRequest) {
               p_shipped_quantity: item.shipped_quantity,
               p_order_number: order.order_number
             })
+            
+          console.log(`📊 [출고 처리] process_shipment RPC 결과:`, {
+            success: !stockError,
+            error: stockError,
+            result: stockResult,
+            orderNumber: order.order_number,
+            productName: item.product_name,
+            timestamp: new Date().toISOString()
+          })
 
           if (stockError) {
-            console.error('출고 처리 실패:', stockError)
+            console.error('❌ 출고 처리 실패:', stockError)
+            console.error('출고 처리 실패 상세:', {
+              product_id: item.product_id,
+              color: item.color,
+              size: item.size,
+              shipped_quantity: item.shipped_quantity,
+              order_number: order.order_number,
+              error: stockError
+            })
             // 출고 처리 실패해도 주문은 출고 완료로 처리 (이미 명세서와 마일리지 처리됨)
           } else {
             console.log(`✅ 출고 처리 완료: ${item.product_name} (${item.color}/${item.size}) ${item.shipped_quantity}개`)
             console.log(`📊 재고 변동: ${stockResult.previous_physical_stock}개 → ${stockResult.new_physical_stock}개`)
+            console.log(`🔍 process_shipment 결과:`, stockResult)
+
+            // 🔧 allocated_stock에서 출고 수량만큼 차감 (0으로 초기화가 아님)
+            console.log(`🔄 [출고 처리] allocated_stock 차감 시작:`, {
+              orderNumber: order.order_number,
+              productId: item.product_id,
+              productName: item.product_name,
+              color: item.color,
+              size: item.size,
+              shippedQuantity: item.shipped_quantity,
+              timestamp: new Date().toISOString()
+            })
+            
+            const { data: product, error: productError } = await supabase
+              .from('products')
+              .select('inventory_options')
+              .eq('id', item.product_id)
+              .single()
+              
+            console.log(`📊 [출고 처리] products 조회 결과:`, {
+              success: !productError,
+              error: productError,
+              hasInventoryOptions: !!product?.inventory_options,
+              orderNumber: order.order_number,
+              timestamp: new Date().toISOString()
+            })
+
+            if (!productError && product?.inventory_options) {
+              let needsUpdate = false
+              const updatedOptions = product.inventory_options.map((option: any) => {
+                if (option.color === item.color && option.size === item.size) {
+                  // 출고 수량만큼 allocated_stock에서 차감
+                  const currentAllocated = option.allocated_stock || 0
+                  const newAllocated = Math.max(0, currentAllocated - item.shipped_quantity)
+                  
+                  console.log(`🔧 [출고 처리] allocated_stock 차감 상세:`, {
+                    orderNumber: order.order_number,
+                    productName: item.product_name,
+                    color: item.color,
+                    size: item.size,
+                    currentAllocated,
+                    newAllocated,
+                    shippedQuantity: item.shipped_quantity,
+                    needsUpdate: currentAllocated !== newAllocated,
+                    timestamp: new Date().toISOString()
+                  })
+                  
+                  if (currentAllocated !== newAllocated) {
+                    needsUpdate = true
+                    return { ...option, allocated_stock: newAllocated }
+                  }
+                }
+                return option
+              })
+
+              if (needsUpdate) {
+                console.log(`🔄 [출고 처리] products 업데이트 시작:`, {
+                  orderNumber: order.order_number,
+                  productId: item.product_id,
+                  updatedOptionsCount: updatedOptions.length,
+                  timestamp: new Date().toISOString()
+                })
+                
+                const { error: updateError } = await supabase
+                  .from('products')
+                  .update({ inventory_options: updatedOptions })
+                  .eq('id', item.product_id)
+                  
+                console.log(`📊 [출고 처리] products 업데이트 결과:`, {
+                  success: !updateError,
+                  error: updateError,
+                  orderNumber: order.order_number,
+                  productId: item.product_id,
+                  timestamp: new Date().toISOString()
+                })
+
+                if (updateError) {
+                  console.error('❌ [출고 처리] allocated_stock 차감 실패:', updateError)
+                } else {
+                  console.log(`✅ [출고 처리] allocated_stock 차감 완료: ${item.product_name} (${item.color}/${item.size})`)
+                }
+              } else {
+                console.log(`ℹ️ [출고 처리] allocated_stock 차감 불필요: ${item.product_name} (${item.color}/${item.size}) - 변경사항 없음`)
+              }
+            }
           }
         }
 

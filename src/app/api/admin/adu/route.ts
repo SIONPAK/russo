@@ -79,78 +79,99 @@ export async function GET(request: NextRequest) {
 
     const productIds = products.map(p => p.id)
 
-    // 2. 주문 아이템 데이터 조회 (각 기간별로) - 샘플 주문 제외, 실제 출고 수량 사용
+    // 2. 주문 아이템 데이터 조회 (각 기간별로) - 페이지네이션으로 모든 데이터 가져오기
+    console.log('🔍 ADU 주문 데이터 페이지네이션으로 조회 시작...')
+    
+    const fetchOrderData = async (startDate: Date, period: string) => {
+      let allData: any[] = []
+      let page = 0
+      const limit = 1000
+      let hasMore = true
+
+      while (hasMore) {
+        const { data: pageData, error } = await supabase
+          .from('order_items')
+          .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
+          .in('product_id', productIds)
+          .gte('orders.created_at', startDate.toISOString())
+          .neq('orders.order_type', 'sample')
+          .not('shipped_quantity', 'is', null)
+          .gt('shipped_quantity', 0)
+          .range(page * limit, (page + 1) * limit - 1)
+
+        if (error) {
+          console.error(`ADU 주문 데이터 ${period} 페이지 ${page} 조회 오류:`, error)
+          break
+        }
+
+        if (pageData && pageData.length > 0) {
+          allData = allData.concat(pageData)
+          console.log(`🔍 ADU 주문 데이터 ${period} 페이지 ${page + 1}: ${pageData.length}건 조회 (총 ${allData.length}건)`)
+          page++
+          
+          if (pageData.length < limit) {
+            hasMore = false
+          }
+        } else {
+          hasMore = false
+        }
+      }
+
+      console.log(`🔍 ADU 주문 데이터 ${period} 전체 조회 완료: ${allData.length}건`)
+      return { data: allData, error: null }
+    }
+
     const [orderData7, orderData30, orderData60, orderData180] = await Promise.all([
-      // 7일 데이터 (최근 7일) - 샘플 주문 제외, 실제 출고 수량 사용
-      supabase
-        .from('order_items')
-        .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
-        .in('product_id', productIds)
-        .gte('orders.created_at', date7.toISOString())
-        .neq('orders.order_type', 'sample') // 샘플 주문 제외
-        .not('shipped_quantity', 'is', null) // 출고 수량이 있는 것만
-        .gt('shipped_quantity', 0), // 출고 수량이 0보다 큰 것만
-      
-      // 30일 데이터 (최근 30일) - 샘플 주문 제외, 실제 출고 수량 사용
-      supabase
-        .from('order_items')
-        .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
-        .in('product_id', productIds)
-        .gte('orders.created_at', date30.toISOString())
-        .neq('orders.order_type', 'sample') // 샘플 주문 제외
-        .not('shipped_quantity', 'is', null) // 출고 수량이 있는 것만
-        .gt('shipped_quantity', 0), // 출고 수량이 0보다 큰 것만
-      
-      // 60일 데이터 (최근 60일) - 샘플 주문 제외, 실제 출고 수량 사용
-      supabase
-        .from('order_items')
-        .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
-        .in('product_id', productIds)
-        .gte('orders.created_at', date60.toISOString())
-        .neq('orders.order_type', 'sample') // 샘플 주문 제외
-        .not('shipped_quantity', 'is', null) // 출고 수량이 있는 것만
-        .gt('shipped_quantity', 0), // 출고 수량이 0보다 큰 것만
-      
-      // 180일 데이터 (최근 180일) - 샘플 주문 제외, 실제 출고 수량 사용
-      supabase
-        .from('order_items')
-        .select('product_id, color, size, quantity, shipped_quantity, orders!order_items_order_id_fkey(created_at, order_type, status)')
-        .in('product_id', productIds)
-        .gte('orders.created_at', date180.toISOString())
-        .neq('orders.order_type', 'sample') // 샘플 주문 제외
-        .not('shipped_quantity', 'is', null) // 출고 수량이 있는 것만
-        .gt('shipped_quantity', 0) // 출고 수량이 0보다 큰 것만
+      fetchOrderData(date7, '7일'),
+      fetchOrderData(date30, '30일'),
+      fetchOrderData(date60, '60일'),
+      fetchOrderData(date180, '180일')
     ])
 
-    // 3. 차감 명세서 데이터 조회 (각 기간별로)
+    // 3. 차감 명세서 데이터 조회 (각 기간별로) - 페이지네이션으로 모든 데이터 가져오기
+    console.log('🔍 ADU 차감명세서 데이터 페이지네이션으로 조회 시작...')
+    
+    const fetchDeductionData = async (startDate: Date, period: string) => {
+      let allData: any[] = []
+      let page = 0
+      const limit = 1000
+      let hasMore = true
+
+      while (hasMore) {
+        const { data: pageData, error } = await supabase
+          .from('deduction_statements')
+          .select('items, created_at')
+          .gte('created_at', startDate.toISOString())
+          .eq('status', 'completed')
+          .range(page * limit, (page + 1) * limit - 1)
+
+        if (error) {
+          console.error(`ADU 차감명세서 데이터 ${period} 페이지 ${page} 조회 오류:`, error)
+          break
+        }
+
+        if (pageData && pageData.length > 0) {
+          allData = allData.concat(pageData)
+          console.log(`🔍 ADU 차감명세서 데이터 ${period} 페이지 ${page + 1}: ${pageData.length}건 조회 (총 ${allData.length}건)`)
+          page++
+          
+          if (pageData.length < limit) {
+            hasMore = false
+          }
+        } else {
+          hasMore = false
+        }
+      }
+
+      console.log(`🔍 ADU 차감명세서 데이터 ${period} 전체 조회 완료: ${allData.length}건`)
+      return { data: allData, error: null }
+    }
+
     const [deductionData7, deductionData30, deductionData60, deductionData180] = await Promise.all([
-      // 7일 데이터 (최근 7일)
-      supabase
-        .from('deduction_statements')
-        .select('items, created_at')
-        .gte('created_at', date7.toISOString())
-        .eq('status', 'completed'),
-      
-      // 30일 데이터 (최근 30일)
-      supabase
-        .from('deduction_statements')
-        .select('items, created_at')
-        .gte('created_at', date30.toISOString())
-        .eq('status', 'completed'),
-      
-      // 60일 데이터 (최근 60일)
-      supabase
-        .from('deduction_statements')
-        .select('items, created_at')
-        .gte('created_at', date60.toISOString())
-        .eq('status', 'completed'),
-      
-      // 180일 데이터 (최근 180일)
-      supabase
-        .from('deduction_statements')
-        .select('items, created_at')
-        .gte('created_at', date180.toISOString())
-        .eq('status', 'completed')
+      fetchDeductionData(date7, '7일'),
+      fetchDeductionData(date30, '30일'),
+      fetchDeductionData(date60, '60일'),
+      fetchDeductionData(date180, '180일')
     ])
 
     if (orderData7.error || orderData30.error || orderData60.error || orderData180.error) {

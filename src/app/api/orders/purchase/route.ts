@@ -324,18 +324,35 @@ export async function POST(request: NextRequest) {
       // 가용재고 범위 내에서만 할당
       const allocatedQuantity = Math.min(item.quantity, availableStock || 0)
       
-      console.log(`📊 가용재고 기반 할당:`, {
+      console.log(`📊 [주문 생성] 가용재고 기반 할당:`, {
         productId: item.product_id,
         productName: item.product_name,
         color: item.color,
         size: item.size,
         requestedQuantity: item.quantity,
         availableStock: availableStock || 0,
-        allocatedQuantity: allocatedQuantity
+        allocatedQuantity: allocatedQuantity,
+        allocationRatio: `${allocatedQuantity}/${item.quantity} (${Math.round((allocatedQuantity / item.quantity) * 100)}%)`,
+        timestamp: new Date().toISOString()
       })
+
+      // 🔍 할당 실패 시 상세 로그
+      if (allocatedQuantity < item.quantity) {
+        console.error(`❌ 할당 부족: ${item.product_name} (${item.color}/${item.size}) - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개, 부족: ${item.quantity - allocatedQuantity}개`)
+        console.error(`❌ 가용재고 부족 원인: availableStock=${availableStock}, requestedQuantity=${item.quantity}`)
+      }
 
       if (allocatedQuantity > 0) {
         // 재고 할당
+        console.log(`🔄 [주문 생성] allocate_stock RPC 호출 시작:`, {
+          productId: item.product_id,
+          productName: item.product_name,
+          color: item.color,
+          size: item.size,
+          quantity: allocatedQuantity,
+          timestamp: new Date().toISOString()
+        })
+        
         const { error: allocationError } = await supabase
           .rpc('allocate_stock', {
             p_product_id: item.product_id,
@@ -343,6 +360,14 @@ export async function POST(request: NextRequest) {
             p_color: item.color,
             p_size: item.size
           })
+          
+        console.log(`📊 [주문 생성] allocate_stock RPC 결과:`, {
+          success: !allocationError,
+          error: allocationError,
+          productId: item.product_id,
+          productName: item.product_name,
+          timestamp: new Date().toISOString()
+        })
 
         if (allocationError) {
           console.error('재고 할당 실패:', allocationError)
