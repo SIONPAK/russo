@@ -29,50 +29,27 @@ export async function GET(request: NextRequest) {
       userIds = userSearchResult || []
     }
 
-    // 🚀 성능 최적화: final_balance 필드 사용으로 빠른 조회
-    console.log('🔍 관리자 마일리지 final_balance 필드로 조회 시작...');
+    // 🚀 성능 최적화: RPC 함수로 빠른 조회
+    console.log('🔍 관리자 마일리지 RPC 함수로 조회 시작...');
     
-    // 🚀 최적화: final_balance 필드가 있는 단순 조회
-    let query = supabase
-      .from('mileage')
-      .select(`
-        *,
-        users!mileage_user_id_fkey (
-          id,
-          company_name,
-          representative_name,
-          email
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .range((requestPage - 1) * requestLimit, requestPage * requestLimit - 1);
-
-    // 필터 적용
-    if (userId) query = query.eq('user_id', userId);
-    if (type && type !== 'all') query = query.eq('type', type);
-    if (status && status !== 'all') query = query.eq('status', status);
-    if (source && source !== 'all') query = query.eq('source', source);
-    if (dateFrom) query = query.gte('created_at', dateFrom);
-    if (dateTo) query = query.lte('created_at', dateTo);
-    if (userIds.length > 0) query = query.in('user_id', userIds.map(u => u.id));
-
-    const { data: mileages, error, count } = await query;
+    const { data: mileages, error } = await supabase.rpc('get_mileage_with_balance', {
+      p_user_id: userId || null,
+      p_type: type && type !== 'all' ? type : null,
+      p_status: status && status !== 'all' ? status : null,
+      p_source: source && source !== 'all' ? source : null,
+      p_date_from: dateFrom || null,
+      p_date_to: dateTo || null,
+      p_user_ids: userIds.length > 0 ? userIds.map(u => u.id) : null,
+      p_limit: requestLimit,
+      p_offset: (requestPage - 1) * requestLimit
+    });
 
     if (error) {
-      console.error('관리자 마일리지 조회 오류:', error);
+      console.error('관리자 마일리지 RPC 조회 오류:', error);
       return NextResponse.json({
         success: false,
         error: '마일리지 목록을 불러오는데 실패했습니다.'
       }, { status: 500 });
-    }
-
-    console.log(`✅ 마일리지 조회 완료: ${mileages?.length || 0}건`);
-
-    // 🚀 최적화: final_balance를 cumulative_balance로 매핑
-    if (mileages) {
-      mileages.forEach(mileage => {
-        mileage.cumulative_balance = mileage.final_balance || 0;
-      });
     }
 
     console.log(`✅ 마일리지 RPC 조회 완료: ${mileages?.length || 0}건`);
