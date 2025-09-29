@@ -74,8 +74,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page: requestPage,
         limit: requestLimit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / requestLimit)
+        total: mileages?.length || 0,
+        totalPages: Math.ceil((mileages?.length || 0) / requestLimit)
       }
     })
 
