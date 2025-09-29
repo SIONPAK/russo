@@ -312,7 +312,32 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // 2. 사용자 마일리지 잔액 업데이트
+    // 2. final_balance 수동 계산 및 업데이트
+    try {
+      // 사용자의 최종 마일리지 잔액 계산
+      const { data: userMileages } = await supabase
+        .from('mileage')
+        .select('amount, type')
+        .eq('user_id', userId)
+        .eq('status', 'completed');
+      
+      let finalBalance = 0;
+      if (userMileages) {
+        finalBalance = userMileages.reduce((sum, m) => {
+          return m.type === 'earn' ? sum + m.amount : sum - Math.abs(m.amount);
+        }, 0);
+      }
+      
+      // final_balance 업데이트
+      await supabase
+        .from('mileage')
+        .update({ final_balance: finalBalance })
+        .eq('id', mileageData[0].id);
+    } catch (balanceError) {
+      console.error('final_balance 업데이트 실패:', balanceError);
+    }
+
+    // 3. 사용자 마일리지 잔액 업데이트
     const { data: updatedUser, error: updateError } = await supabase
       .from('users')
       .update({ 

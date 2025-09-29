@@ -317,7 +317,7 @@ export async function PATCH(request: NextRequest) {
           console.log('RPC function not found, processing manually')
           
           // 1. 마일리지 차감 기록 생성
-          const { error: mileageError } = await supabase
+          const { data: insertedMileage, error: mileageError } = await supabase
             .from('mileage')
             .insert({
               user_id: userId,
@@ -331,11 +331,38 @@ export async function PATCH(request: NextRequest) {
               created_at: getKoreaTime(),
               updated_at: getKoreaTime()
             })
+            .select('id')
+            .single()
 
           if (mileageError) {
             console.error('Mileage insert error:', mileageError)
             errors.push(`${statement.orders.users.company_name}: 마일리지 기록 생성 실패`)
             continue
+          }
+
+          // final_balance 수동 계산 및 업데이트
+          try {
+            // 사용자의 최종 마일리지 잔액 계산
+            const { data: userMileages } = await supabase
+              .from('mileage')
+              .select('amount, type')
+              .eq('user_id', userId)
+              .eq('status', 'completed');
+            
+            let finalBalance = 0;
+            if (userMileages) {
+              finalBalance = userMileages.reduce((sum, m) => {
+                return m.type === 'earn' ? sum + m.amount : sum - Math.abs(m.amount);
+              }, 0);
+            }
+            
+            // final_balance 업데이트
+            await supabase
+              .from('mileage')
+              .update({ final_balance: finalBalance })
+              .eq('id', insertedMileage.id);
+          } catch (balanceError) {
+            console.error('final_balance 업데이트 실패:', balanceError);
           }
 
           // 2. 사용자 마일리지 잔액 업데이트
