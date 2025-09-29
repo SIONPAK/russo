@@ -72,15 +72,38 @@ export async function GET(request: NextRequest) {
 
     console.log(`✅ 마일리지 조회 완료: ${mileages?.length || 0}건`);
 
-    // 🚀 극한 최적화: final_balance를 cumulative_balance로 매핑 (배치 처리)
+    // 🚀 3단계: 사용자 정보 별도 조회 (JOIN 대신)
+    let userInfoMap = new Map();
     if (mileages && mileages.length > 0) {
-      // 🚀 3단계: 벡터화된 매핑 (forEach 대신 map 사용)
-      const optimizedMileages = mileages.map((mileage: any) => ({
-        ...mileage,
-        cumulative_balance: mileage.final_balance || 0
-      }));
+      const userIds = [...new Set(mileages.map(m => m.user_id).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, company_name, representative_name, email')
+          .in('id', userIds);
+        
+        users?.forEach(user => {
+          userInfoMap.set(user.id, user);
+        });
+      }
+    }
+
+    // 🚀 4단계: 데이터 병합 (JOIN 없이)
+    if (mileages && mileages.length > 0) {
+      const optimizedMileages = mileages.map((mileage: any) => {
+        const userInfo = userInfoMap.get(mileage.user_id) || {};
+        return {
+          ...mileage,
+          cumulative_balance: mileage.final_balance || 0,
+          users: {
+            company_name: userInfo.company_name || '알 수 없음',
+            representative_name: userInfo.representative_name || '',
+            email: userInfo.email || ''
+          }
+        };
+      });
       
-      // 원본 배열 교체 (메모리 효율성)
+      // 원본 배열 교체
       mileages.splice(0, mileages.length, ...optimizedMileages);
     }
 
