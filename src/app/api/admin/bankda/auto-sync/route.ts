@@ -312,10 +312,12 @@ async function performBankdaSync() {
           updated_at: currentTime
         };
         
-        // 🚀 최적화: 단순한 INSERT만 수행
-        const { error } = await supabase
+        // 🚀 최적화: INSERT 후 ID 반환받기
+        const { data: insertedMileage, error } = await supabase
           .from('mileage')
-          .insert(insertData);
+          .insert(insertData)
+          .select('id')
+          .single();
         
         if (error) {
           console.error(`마일리지 등록 실패 (${matchedCompany}):`, error);
@@ -347,11 +349,11 @@ async function performBankdaSync() {
               }, 0);
             }
             
-            // final_balance 업데이트
+            // final_balance 업데이트 (삽입된 레코드의 ID 사용)
             await supabase
               .from('mileage')
               .update({ final_balance: finalBalance })
-              .eq('id', insertData.id || 'temp'); // 임시 ID 사용
+              .eq('id', insertedMileage.id);
             
             // 사용자 잔액 업데이트
             await supabase
