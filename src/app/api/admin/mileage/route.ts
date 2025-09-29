@@ -31,10 +31,10 @@ export async function GET(request: NextRequest) {
       userIds = userSearchResult || []
     }
 
-    // 🚀 극한 성능 최적화: 단순 조회 + 인덱스 활용
+    // 🚀 극한 성능 최적화: JOIN 제거 + 최소 필드
     console.log('🔍 관리자 마일리지 극한 최적화 조회 시작...');
     
-    // 🚀 1단계: 최소 필드만 조회 (JOIN 최소화)
+    // 🚀 1단계: JOIN 완전 제거 - 마일리지 테이블만 조회
     let query = supabase
       .from('mileage')
       .select(`
@@ -46,16 +46,12 @@ export async function GET(request: NextRequest) {
         source,
         description,
         created_at,
-        final_balance,
-        users!mileage_user_id_fkey (
-          company_name,
-          representative_name
-        )
+        final_balance
       `)
       .order('created_at', { ascending: false })
       .range((requestPage - 1) * requestLimit, requestPage * requestLimit - 1);
 
-    // 🚀 2단계: 가장 선택적인 필터부터 적용
+    // 🚀 2단계: 필터 적용
     if (userId) query = query.eq('user_id', userId);
     if (type && type !== 'all') query = query.eq('type', type);
     if (status && status !== 'all') query = query.eq('status', status);
