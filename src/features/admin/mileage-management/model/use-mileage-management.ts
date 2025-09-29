@@ -18,51 +18,16 @@ export function useMileageManagement() {
     totalPages: 0
   })
 
-  // 시점별 누적 잔액 계산 - 전체 마일리지 내역을 고려하여 정확한 계산
+  // 🚀 서버에서 이미 계산된 final_balance 사용 (개별 API 호출 제거)
   const calculateCumulativeBalances = async (currentMileages: any[]) => {
     try {
-      // 현재 페이지의 사용자들의 ID 목록 생성
-      const userIds = [...new Set(currentMileages.map(m => m.user_id))]
-      
+      // 서버에서 이미 계산된 final_balance를 사용
       const userCumulativeBalances: {[mileageId: string]: number} = {}
       
-      // 각 사용자별로 전체 마일리지 내역을 조회하여 정확한 누적 잔액 계산
-      for (const userId of userIds) {
-        try {
-          // 해당 사용자의 전체 마일리지 내역 조회 (시간순 정렬)
-          const response = await fetch(`/api/admin/mileage?userId=${userId}&limit=10000&type=all&status=all`)
-          const result = await response.json()
-          
-          if (result.success && result.data) {
-            // 시간순으로 정렬 (오래된 것부터)
-            const allUserMileages = result.data.sort((a: any, b: any) => 
-              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            )
-            
-            let runningBalance = 0
-            
-            // 각 마일리지별로 누적 잔액 계산
-            allUserMileages.forEach((mileage: any) => {
-              // 해당 마일리지 적용 (완료된 마일리지만 계산에 포함)
-              if (mileage.status === 'completed') {
-                if (mileage.type === 'earn') {
-                  runningBalance += Math.abs(mileage.amount)
-                } else if (mileage.type === 'spend') {
-                  runningBalance -= Math.abs(mileage.amount)
-                }
-              }
-              
-              // 현재 페이지에 표시된 마일리지라면 누적 잔액 저장
-              const currentPageMileage = currentMileages.find(cm => cm.id === mileage.id)
-              if (currentPageMileage) {
-                userCumulativeBalances[mileage.id] = runningBalance
-              }
-            })
-          }
-        } catch (error) {
-          console.error(`사용자 ${userId}의 마일리지 계산 오류:`, error)
-        }
-      }
+      currentMileages.forEach((mileage: any) => {
+        // 서버에서 계산된 final_balance 사용
+        userCumulativeBalances[mileage.id] = mileage.final_balance || 0
+      })
       
       setCumulativeBalances(userCumulativeBalances)
     } catch (error) {
@@ -142,7 +107,7 @@ export function useMileageManagement() {
         setMileages(transformedMileages)
         setPagination(result.pagination)
 
-        // 시점별 누적 잔액 계산
+        // 🚀 서버에서 이미 계산된 final_balance 사용
         if (transformedMileages.length > 0) {
           await calculateCumulativeBalances(transformedMileages)
         } else {

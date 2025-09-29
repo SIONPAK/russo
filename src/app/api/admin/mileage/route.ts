@@ -31,10 +31,9 @@ export async function GET(request: NextRequest) {
       userIds = userSearchResult || []
     }
 
-    // 🚀 극한 성능 최적화: JOIN 제거 + 최소 필드
-    console.log('🔍 관리자 마일리지 극한 최적화 조회 시작...');
+    // 🚀 극한 성능 최적화: 한 번의 쿼리로 모든 데이터 조회
+    console.log('🔍 관리자 마일리지 한 번에 모든 데이터 조회 시작...');
     
-    // 🚀 1단계: JOIN 완전 제거 - 마일리지 테이블만 조회
     let query = supabase
       .from('mileage')
       .select(`
@@ -49,9 +48,8 @@ export async function GET(request: NextRequest) {
         final_balance
       `)
       .order('created_at', { ascending: false })
-      .range((requestPage - 1) * requestLimit, requestPage * requestLimit - 1);
 
-    // 🚀 2단계: 필터 적용
+    // 🚀 필터 적용
     if (userId) query = query.eq('user_id', userId);
     if (type && type !== 'all') query = query.eq('type', type);
     if (status && status !== 'all') query = query.eq('status', status);
@@ -60,7 +58,7 @@ export async function GET(request: NextRequest) {
     if (dateTo) query = query.lte('created_at', dateTo);
     if (userIds.length > 0) query = query.in('user_id', userIds.map(u => u.id));
 
-    const { data: mileages, error, count } = await query;
+    const { data: mileages, error } = await query;
 
     if (error) {
       console.error('관리자 마일리지 조회 오류:', error);
@@ -70,7 +68,7 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    console.log(`✅ 마일리지 조회 완료: ${mileages?.length || 0}건`);
+    console.log(`🔍 마일리지 데이터 조회 완료: ${mileages?.length || 0}건`);
 
     // 🚀 3단계: 사용자 정보 별도 조회 (JOIN 대신)
     let userInfoMap = new Map();
@@ -127,8 +125,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page: requestPage,
         limit: requestLimit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / requestLimit)
+        total: mileages?.length || 0,
+        totalPages: Math.ceil((mileages?.length || 0) / requestLimit)
       }
     })
 
