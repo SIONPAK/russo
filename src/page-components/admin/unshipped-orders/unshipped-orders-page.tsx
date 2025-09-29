@@ -51,7 +51,7 @@ export function UnshippedOrdersPage() {
     startDate: '',
     endDate: '',
     page: 1,
-    limit: 20
+    limit: 10000 // 모든 데이터를 가져오기 위해 큰 값으로 설정
   })
   const [pagination, setPagination] = useState({
     currentPage: 1,

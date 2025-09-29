@@ -107,28 +107,56 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 정렬 처리 (조인 테이블 정렬 제거 - 프론트엔드에서 처리)
+    // 정렬 처리 - 조인된 테이블 컬럼은 프론트엔드에서 처리
     if (sortBy === 'created_at') {
       query = query.order('created_at', { ascending: sortOrder === 'asc' })
     } else if (sortBy === 'total_amount') {
       query = query.order('total_amount', { ascending: sortOrder === 'asc' })
+    } else if (sortBy === 'company_name') {
+      // 회사명 정렬은 조인된 테이블이므로 기본 정렬로 대체
+      console.log('🔍 회사명 정렬 요청됨 - 기본 정렬로 대체 (프론트엔드에서 처리)')
+      query = query.order('created_at', { ascending: true })
     } else {
       // 기본 정렬: 주문 시간 순 (오래된 순서대로 - 주문 들어온 순서)
       query = query.order('created_at', { ascending: true })
     }
 
-    // 페이지네이션
-    query = query.range(offset, offset + limit - 1)
+    // 페이지네이션으로 모든 데이터 가져오기
+    let allOrders: any[] = [];
+    let fetchPage = 0;
+    const fetchLimit = 1000; // Supabase 기본 limit
+    let hasMore = true;
 
-    const { data: orders, error } = await query
+    console.log('🔍 주문 데이터 페이지네이션으로 조회 시작...');
 
-    if (error) {
-      console.error('주문 조회 오류:', error)
-      return NextResponse.json({ 
-        success: false, 
-        error: '주문 목록을 불러오는데 실패했습니다.' 
-      }, { status: 500 })
+    while (hasMore) {
+      const { data: pageData, error } = await query
+        .range(fetchPage * fetchLimit, (fetchPage + 1) * fetchLimit - 1);
+
+      if (error) {
+        console.error(`주문 페이지 ${fetchPage} 조회 오류:`, error);
+        return NextResponse.json({
+          success: false,
+          error: '주문 목록을 불러오는데 실패했습니다.'
+        }, { status: 500 });
+      }
+
+      if (pageData && pageData.length > 0) {
+        allOrders = allOrders.concat(pageData);
+        console.log(`🔍 주문 페이지 ${fetchPage + 1}: ${pageData.length}건 조회 (총 ${allOrders.length}건)`);
+        fetchPage++;
+        
+        // 1000건 미만이면 마지막 페이지
+        if (pageData.length < fetchLimit) {
+          hasMore = false;
+        }
+      } else {
+        hasMore = false;
+      }
     }
+
+    console.log(`🔍 주문 전체 데이터 조회 완료: ${allOrders.length}건`);
+    const orders = allOrders;
 
     // 재고 할당 상태 계산
     const ordersWithAllocation = await Promise.all(
@@ -153,91 +181,31 @@ export async function GET(request: NextRequest) {
       }) || []
     )
 
-    // 통계 계산을 위한 전체 데이터 조회 (배치 처리)
-    let statsQuery = supabase
-      .from('orders')
-      .select('id, status, created_at')
-      .like('order_number', 'PO%')
-      .neq('order_type', 'return_only')
-
-    // 검색 조건 적용 (통계에도 동일하게)
-    if (search) {
-      const { data: matchingUsers } = await supabase
-        .from('users')
-        .select('id')
-        .or(`company_name.ilike.%${search}%,representative_name.ilike.%${search}%`)
-      
-      const matchingUserIds = matchingUsers?.map(u => u.id) || []
-      
-      if (matchingUserIds.length > 0) {
-        statsQuery = statsQuery.in('user_id', matchingUserIds)
-      } else {
-        statsQuery = statsQuery.or(`order_number.ilike.%${search}%,shipping_name.ilike.%${search}%`)
-      }
+    // 통계 계산 - 이미 가져온 모든 데이터 사용
+    const stats = {
+      pending: orders?.filter((o: any) => o.status === 'pending').length || 0,
+      processing: orders?.filter((o: any) => o.status === 'processing').length || 0,
+      confirmed: orders?.filter((o: any) => o.status === 'confirmed' || o.status === 'shipped').length || 0,
+      total: orders?.length || 0,
+      allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
+      partial: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial').length,
+      insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
     }
 
-    // 상태 필터 적용 (통계에도 동일하게)
-    if (status !== 'all') {
-      if (status === 'not_shipped') {
-        statsQuery = statsQuery.neq('status', 'shipped')
-      } else {
-        statsQuery = statsQuery.eq('status', status)
-      }
-    }
+    console.log(`🔍 주문 데이터 조회 완료: ${orders?.length || 0}건`);
 
-    // 날짜 필터 적용 (통계에도 동일하게 - working_date 기준)
-    if (startDate) {
-      statsQuery = statsQuery.gte('working_date', startDate)
-      if (endDate) {
-        statsQuery = statsQuery.lte('working_date', endDate)
-      }
-    }
-
-    // 배치 처리로 통계 데이터 조회
-    const statsResult = await executeBatchQuery(
-      statsQuery.order('created_at', { ascending: false }),
-      '주문 통계'
-    )
-
-    let stats
-    if (statsResult.error) {
-      console.error('통계 조회 오류:', statsResult.error)
-      // 에러 시 기존 방식으로 폴백
-      stats = {
-        pending: orders?.filter((o: any) => o.status === 'pending').length || 0,
-        processing: orders?.filter((o: any) => o.status === 'processing').length || 0,
-        confirmed: orders?.filter((o: any) => o.status === 'confirmed' || o.status === 'shipped').length || 0,
-        total: 0, // 배치로 계산된 stats.total에서 설정됨
-        allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
-        partial: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial').length,
-        insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
-      }
-    } else {
-      const allOrdersForStats = statsResult.data
-      stats = {
-        pending: allOrdersForStats.filter((o: any) => o.status === 'pending').length,
-        processing: allOrdersForStats.filter((o: any) => o.status === 'processing').length,
-        confirmed: allOrdersForStats.filter((o: any) => o.status === 'confirmed' || o.status === 'shipped').length,
-        total: allOrdersForStats.length,
-        allocated: ordersWithAllocation.filter((o: any) => o.allocation_status === 'allocated').length,
-        partial: ordersWithAllocation.filter((o: any) => o.allocation_status === 'partial').length,
-        insufficient_stock: ordersWithAllocation.filter((o: any) => o.allocation_status === 'insufficient').length
-      }
-    }
-
-    const totalPages = Math.ceil((stats.total || 0) / limit)
-
+    // 모든 데이터를 가져오므로 페이지네이션 정보 단순화
     return NextResponse.json({
       success: true,
       data: {
         orders: ordersWithAllocation,
         stats,
         pagination: {
-          currentPage: page,
-          totalPages,
+          currentPage: 1,
+          totalPages: 1,
           totalCount: stats.total || 0,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: false,
+          hasPrevPage: false
         }
       }
     })

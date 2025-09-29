@@ -48,7 +48,7 @@ export function useProductManagement(): UseProductManagementReturn {
     sort_by: 'created_at',
     sort_order: 'desc',
     page: 1,
-    limit: 20
+    limit: 10000 // 모든 데이터를 가져오기 위해 큰 값으로 설정
   })
   const [pagination, setPagination] = useState({
     page: 1,

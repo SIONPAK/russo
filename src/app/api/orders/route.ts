@@ -162,42 +162,67 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '주문 조회 중 오류가 발생했습니다.' }, { status: 500 })
     }
 
-    // 미발송 내역 조회 (요청 시에만)
+    // 미발송 내역 조회 (요청 시에만) - 페이지네이션으로 모든 데이터 가져오기
     let unshippedStatements: any[] = []
     if (includeUnshipped) {
-      const { data: unshippedData, error: unshippedError } = await supabase
-        .from('unshipped_statements')
-        .select(`
-          id,
-          statement_number,
-          order_id,
-          total_unshipped_amount,
-          status,
-          reason,
-          created_at,
-          updated_at,
-          orders (
-            order_number,
-            created_at
-          ),
-          unshipped_statement_items (
-            id,
-            product_name,
-            color,
-            size,
-            ordered_quantity,
-            shipped_quantity,
-            unshipped_quantity,
-            unit_price,
-            total_amount
-          )
-        `)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
+      let unshippedPage = 0;
+      const unshippedLimit = 1000; // Supabase 기본 limit
+      let hasMoreUnshipped = true;
 
-      if (!unshippedError) {
-        unshippedStatements = unshippedData || []
+      console.log(`🔍 사용자 ${userId} 미발송 내역 페이지네이션으로 조회 시작...`);
+
+      while (hasMoreUnshipped) {
+        const { data: unshippedPageData, error: unshippedError } = await supabase
+          .from('unshipped_statements')
+          .select(`
+            id,
+            statement_number,
+            order_id,
+            total_unshipped_amount,
+            status,
+            reason,
+            created_at,
+            updated_at,
+            orders (
+              order_number,
+              created_at
+            ),
+            unshipped_statement_items (
+              id,
+              product_name,
+              color,
+              size,
+              ordered_quantity,
+              shipped_quantity,
+              unshipped_quantity,
+              unit_price,
+              total_amount
+            )
+          `)
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .range(unshippedPage * unshippedLimit, (unshippedPage + 1) * unshippedLimit - 1)
+
+        if (unshippedError) {
+          console.error(`사용자 ${userId} 미발송 내역 페이지 ${unshippedPage} 조회 오류:`, unshippedError);
+          break;
+        }
+
+        if (unshippedPageData && unshippedPageData.length > 0) {
+          unshippedStatements = unshippedStatements.concat(unshippedPageData);
+          console.log(`🔍 사용자 ${userId} 미발송 내역 페이지 ${unshippedPage + 1}: ${unshippedPageData.length}건 조회 (총 ${unshippedStatements.length}건)`);
+          unshippedPage++;
+          
+          // 1000건 미만이면 마지막 페이지
+          if (unshippedPageData.length < unshippedLimit) {
+            hasMoreUnshipped = false;
+          }
+        } else {
+          hasMoreUnshipped = false;
+        }
       }
+
+      console.log(`🔍 사용자 ${userId} 미발송 내역 전체 데이터 조회 완료: ${unshippedStatements.length}건`);
     }
 
     // 페이지네이션 정보 계산

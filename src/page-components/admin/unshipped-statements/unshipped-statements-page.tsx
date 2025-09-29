@@ -80,7 +80,7 @@ export default function UnshippedStatementsPage() {
       setLoading(true)
       const params = new URLSearchParams({
         page: currentPage.toString(),
-        limit: '20',
+        limit: '10000', // 모든 데이터를 가져오기 위해 큰 값으로 설정
         search: filters.search,
         status: filters.status,
         startDate: filters.startDate,
