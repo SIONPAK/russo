@@ -31,70 +31,48 @@ export async function GET(request: NextRequest) {
       userIds = userSearchResult || []
     }
 
-    // 🚀 극한 성능 최적화: 최소 필드 + 페이지네이션으로 모든 데이터 조회
+    // 🚀 극한 성능 최적화: 단순 조회 + 인덱스 활용
     console.log('🔍 관리자 마일리지 극한 최적화 조회 시작...');
     
-    // 🚀 1단계: 최소 필드만 조회 + 페이지네이션으로 모든 데이터 수집
-    let allMileages: any[] = []
-    let fetchPage = 0
-    const fetchLimit = 1000
-    let hasMore = true
+    // 🚀 1단계: 최소 필드만 조회 (JOIN 최소화)
+    let query = supabase
+      .from('mileage')
+      .select(`
+        id,
+        user_id,
+        amount,
+        type,
+        status,
+        source,
+        description,
+        created_at,
+        final_balance,
+        users!mileage_user_id_fkey (
+          company_name,
+          representative_name
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .range((requestPage - 1) * requestLimit, requestPage * requestLimit - 1);
 
-    while (hasMore) {
-      let query = supabase
-        .from('mileage')
-        .select(`
-          id,
-          user_id,
-          amount,
-          type,
-          status,
-          source,
-          description,
-          created_at,
-          final_balance,
-          users!mileage_user_id_fkey (
-            company_name,
-            representative_name
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .range(fetchPage * fetchLimit, (fetchPage + 1) * fetchLimit - 1)
+    // 🚀 2단계: 가장 선택적인 필터부터 적용
+    if (userId) query = query.eq('user_id', userId);
+    if (type && type !== 'all') query = query.eq('type', type);
+    if (status && status !== 'all') query = query.eq('status', status);
+    if (source && source !== 'all') query = query.eq('source', source);
+    if (dateFrom) query = query.gte('created_at', dateFrom);
+    if (dateTo) query = query.lte('created_at', dateTo);
+    if (userIds.length > 0) query = query.in('user_id', userIds.map(u => u.id));
 
-      // 🚀 2단계: 가장 선택적인 필터부터 적용
-      if (userId) query = query.eq('user_id', userId);
-      if (type && type !== 'all') query = query.eq('type', type);
-      if (status && status !== 'all') query = query.eq('status', status);
-      if (source && source !== 'all') query = query.eq('source', source);
-      if (dateFrom) query = query.gte('created_at', dateFrom);
-      if (dateTo) query = query.lte('created_at', dateTo);
-      if (userIds.length > 0) query = query.in('user_id', userIds.map(u => u.id));
+    const { data: mileages, error, count } = await query;
 
-      const { data: pageData, error } = await query;
-
-      if (error) {
-        console.error(`마일리지 데이터 페이지 ${fetchPage} 조회 오류:`, error);
-        return NextResponse.json({
-          success: false,
-          error: '마일리지 목록을 불러오는데 실패했습니다.'
-        }, { status: 500 });
-      }
-
-      if (pageData && pageData.length > 0) {
-        allMileages = allMileages.concat(pageData);
-        console.log(`🔍 마일리지 데이터 페이지 ${fetchPage + 1}: ${pageData.length}건 조회 (총 ${allMileages.length}건)`);
-        fetchPage++;
-        
-        if (pageData.length < fetchLimit) {
-          hasMore = false;
-        }
-      } else {
-        hasMore = false;
-      }
+    if (error) {
+      console.error('관리자 마일리지 조회 오류:', error);
+      return NextResponse.json({
+        success: false,
+        error: '마일리지 목록을 불러오는데 실패했습니다.'
+      }, { status: 500 });
     }
-
-    console.log(`🔍 마일리지 데이터 벌크 조회 완료: ${allMileages.length}건`);
-    const mileages = allMileages;
 
     console.log(`✅ 마일리지 조회 완료: ${mileages?.length || 0}건`);
 
@@ -130,8 +108,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page: requestPage,
         limit: requestLimit,
-        total: mileages?.length || 0,
-        totalPages: Math.ceil((mileages?.length || 0) / requestLimit)
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / requestLimit)
       }
     })
 
