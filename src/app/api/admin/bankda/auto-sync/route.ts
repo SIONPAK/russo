@@ -520,7 +520,7 @@ async function findMatchingCompany(supabase: any, extractedNames: string[], depo
     
     const { data: allCompanies, error: companiesError } = await supabase
       .from('users')
-      .select('company_name, name, approval_status, is_active')
+      .select('company_name, representative_name, approval_status, is_active')
       .not('company_name', 'is', null)
       .neq('company_name', '')
       .eq('approval_status', 'approved') // 승인된 회원만
@@ -573,9 +573,9 @@ async function findMatchingCompany(supabase: any, extractedNames: string[], depo
           const companyMatch = company.company_name === companyName || 
                              normalizedCompanyName === normalizedExtractedCompany;
           
-          const nameMatch = company.name === personName ||
-                           company.name.includes(personName) ||
-                           personName.includes(company.name);
+          const nameMatch = company.representative_name === personName ||
+                           company.representative_name.includes(personName) ||
+                           personName.includes(company.representative_name);
           
           return companyMatch && nameMatch;
         });
@@ -602,9 +602,9 @@ async function findMatchingCompany(supabase: any, extractedNames: string[], depo
                              companyNormalizedCompany === companyNormalizedExtracted;
           
           // 입금자명 매칭 (정확한 매칭 또는 부분 매칭)
-          const depositorMatch = company.name === depositorName ||
-                                company.name.includes(depositorName) ||
-                                depositorName.includes(company.name);
+          const depositorMatch = company.representative_name === depositorName ||
+                                company.representative_name.includes(depositorName) ||
+                                depositorName.includes(company.representative_name);
           
           return companyMatch && depositorMatch;
         });
@@ -617,9 +617,9 @@ async function findMatchingCompany(supabase: any, extractedNames: string[], depo
       
       // 입금자명만으로 매칭 시도 (회사명이 불명확한 경우)
       const depositorOnlyMatch = allCompanies.find((company: any) => {
-        return company.name === depositorName ||
-               company.name.includes(depositorName) ||
-               depositorName.includes(company.name);
+        return company.representative_name === depositorName ||
+               company.representative_name.includes(depositorName) ||
+               depositorName.includes(company.representative_name);
       });
       
       if (depositorOnlyMatch) {
