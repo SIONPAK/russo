@@ -516,16 +516,40 @@ async function findMatchingCompany(supabase: any, extractedNames: string[], depo
   
   try {
     // 🎯 users 테이블에서 회사명 조회 (실제 시스템 테이블)
-    const { data: allCompanies } = await supabase
+    console.log('🔍 users 테이블 조회 시작...');
+    
+    const { data: allCompanies, error: companiesError } = await supabase
       .from('users')
-      .select('company_name, name')
+      .select('company_name, name, approval_status, is_active')
       .not('company_name', 'is', null)
       .neq('company_name', '')
       .eq('approval_status', 'approved') // 승인된 회원만
       .eq('is_active', true); // 활성 회원만
     
+    console.log('🔍 users 테이블 조회 결과:', {
+      data: allCompanies,
+      error: companiesError,
+      count: allCompanies?.length || 0
+    });
+    
+    if (companiesError) {
+      console.error('❌ users 테이블 조회 오류:', companiesError);
+      return null;
+    }
+    
     if (!allCompanies || allCompanies.length === 0) {
       console.log('❌ 승인된 활성 회원이 없습니다.');
+      
+      // 전체 사용자 수 확인
+      const { data: allUsers, error: allUsersError } = await supabase
+        .from('users')
+        .select('company_name, approval_status, is_active')
+        .not('company_name', 'is', null)
+        .neq('company_name', '');
+      
+      console.log('🔍 전체 사용자 수:', allUsers?.length || 0);
+      console.log('🔍 전체 사용자 샘플:', allUsers?.slice(0, 3));
+      
       return null;
     }
     
