@@ -391,7 +391,7 @@ export function InventoryPage() {
       })
       
       const response = await fetch(`/api/admin/products/${adjustmentModal.productId}/stock`, {
-        method: 'POST',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json'
         },

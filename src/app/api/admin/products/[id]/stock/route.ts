@@ -195,9 +195,25 @@ async function autoAllocateToUnshippedOrders(supabase: any, productId: string, c
   }
 }
 
+// PATCH 메서드 추가 (프론트엔드 호환성)
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return await handleStockAdjustment(request, params);
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
+) {
+  return await handleStockAdjustment(request, params);
+}
+
+// 공통 처리 함수
+async function handleStockAdjustment(
+  request: NextRequest,
+  params: Promise<{ id: string }>
 ) {
   try {
     const { id: productId } = await params
