@@ -202,7 +202,7 @@ async function performBankdaSync() {
         const extractedNames = extractCompanyName(transaction.bkjukyo);
         console.log(`📝 추출된 회사명 후보: [${extractedNames.join(', ')}]`);
         
-        const matchedCompany = await findMatchingCompany(supabase, extractedNames);
+        const matchedCompany = await findMatchingCompany(supabase, extractedNames, transaction.bkjukyo);
         
         if (!matchedCompany) {
           console.log(`❌ 매칭 실패: "${transaction.bkjukyo}" → [${extractedNames.join(', ')}]`);
@@ -510,15 +510,15 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-// 회사명 매칭 함수
-async function findMatchingCompany(supabase: any, extractedNames: string[]): Promise<string | null> {
+// 회사명 매칭 함수 (입금자명 포함)
+async function findMatchingCompany(supabase: any, extractedNames: string[], depositorName?: string): Promise<string | null> {
   if (!extractedNames || extractedNames.length === 0) return null;
   
   try {
     // 🎯 users 테이블에서 회사명 조회 (실제 시스템 테이블)
     const { data: allCompanies } = await supabase
       .from('users')
-      .select('company_name')
+      .select('company_name, name')
       .not('company_name', 'is', null)
       .neq('company_name', '')
       .eq('approval_status', 'approved') // 승인된 회원만
@@ -531,7 +531,81 @@ async function findMatchingCompany(supabase: any, extractedNames: string[]): Pro
     
     console.log(`🔍 매칭 대상 회사 수: ${allCompanies.length}개`);
     
-    // 1. 정확한 매칭 시도 (법인 형태 정규화 적용)
+    // 🎯 1. "성명(회사명)" 형태 파싱 및 매칭
+    if (depositorName && depositorName.trim()) {
+      console.log(`🔍 입금자명 기반 매칭 시도: "${depositorName}"`);
+      
+      // "성명(회사명)" 형태 파싱
+      const nameCompanyMatch = depositorName.match(/^(.+?)\((.+?)\)$/);
+      if (nameCompanyMatch) {
+        const [, personName, companyName] = nameCompanyMatch;
+        console.log(`📝 파싱된 정보: 성명="${personName}", 회사명="${companyName}"`);
+        
+        // 성명과 회사명이 모두 일치하는 사용자 찾기
+        const exactMatch = allCompanies.find((company: any) => {
+          const normalizedCompanyName = normalizeText(company.company_name);
+          const normalizedExtractedCompany = normalizeText(companyName);
+          
+          const companyMatch = company.company_name === companyName || 
+                             normalizedCompanyName === normalizedExtractedCompany;
+          
+          const nameMatch = company.name === personName ||
+                           company.name.includes(personName) ||
+                           personName.includes(company.name);
+          
+          return companyMatch && nameMatch;
+        });
+
+        if (exactMatch) {
+          console.log(`✅ 성명(회사명) 매칭 성공: "${personName}(${companyName})" → "${exactMatch.company_name}" (${exactMatch.name})`);
+          return exactMatch.company_name;
+        }
+      }
+      
+      // 기존 방식: 입금자명 + 회사명 조합 매칭
+      for (const extractedName of extractedNames) {
+        const normalizedExtracted = normalizeText(extractedName);
+        const companyNormalizedExtracted = normalizeCompanyName(extractedName);
+        
+        // 입금자명과 회사명이 모두 일치하는 사용자 찾기
+        const exactMatch = allCompanies.find((company: any) => {
+          const companyName = company.company_name;
+          const normalizedCompany = normalizeText(companyName);
+          const companyNormalizedCompany = normalizeCompanyName(companyName);
+          
+          const companyMatch = companyName === extractedName || 
+                             normalizedCompany === normalizedExtracted ||
+                             companyNormalizedCompany === companyNormalizedExtracted;
+          
+          // 입금자명 매칭 (정확한 매칭 또는 부분 매칭)
+          const depositorMatch = company.name === depositorName ||
+                                company.name.includes(depositorName) ||
+                                depositorName.includes(company.name);
+          
+          return companyMatch && depositorMatch;
+        });
+
+        if (exactMatch) {
+          console.log(`✅ 입금자명 + 회사명 매칭 성공: "${extractedName}" + "${depositorName}" → "${exactMatch.company_name}" (${exactMatch.name})`);
+          return exactMatch.company_name;
+        }
+      }
+      
+      // 입금자명만으로 매칭 시도 (회사명이 불명확한 경우)
+      const depositorOnlyMatch = allCompanies.find((company: any) => {
+        return company.name === depositorName ||
+               company.name.includes(depositorName) ||
+               depositorName.includes(company.name);
+      });
+      
+      if (depositorOnlyMatch) {
+        console.log(`✅ 입금자명만 매칭 성공: "${depositorName}" → "${depositorOnlyMatch.company_name}" (${depositorOnlyMatch.name})`);
+        return depositorOnlyMatch.company_name;
+      }
+      
+    }
+    
+    // 2. 정확한 매칭 시도 (법인 형태 정규화 적용)
     for (const extractedName of extractedNames) {
       const normalizedExtracted = normalizeText(extractedName);
       const companyNormalizedExtracted = normalizeCompanyName(extractedName);
@@ -914,7 +988,7 @@ async function performBankdaSyncWithDateRange(datefrom: string, dateto: string) 
         processedCount++;
         
         const extractedNames = extractCompanyName(transaction.bkjukyo);
-        const matchedCompany = await findMatchingCompany(supabase, extractedNames);
+        const matchedCompany = await findMatchingCompany(supabase, extractedNames, transaction.bkjukyo);
         
         transactionDetail = {
           date: transaction.bkdate,
