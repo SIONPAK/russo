@@ -238,9 +238,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userId, amount, type, description, source = 'manual' } = body
+    const { userId, user_id, amount, type, description, source = 'manual' } = body
+    
+    // userId 또는 user_id 둘 다 지원
+    const actualUserId = userId || user_id
 
-    if (!userId || !amount || !type || !description) {
+    if (!actualUserId || !amount || !type || !description) {
       return NextResponse.json({ 
         success: false, 
         error: '필수 파라미터가 누락되었습니다' 
@@ -253,7 +256,7 @@ export async function POST(request: NextRequest) {
     const { data: currentUser, error: userError } = await supabase
       .from('users')
       .select('id, mileage_balance')
-      .eq('id', userId)
+      .eq('id', actualUserId)
       .single()
 
     if (userError) {
@@ -280,7 +283,7 @@ export async function POST(request: NextRequest) {
     // }
 
     console.log('🔍 마일리지 업데이트:', {
-      userId,
+      userId: actualUserId,
       currentBalance,
       amountValue,
       type,
@@ -292,7 +295,7 @@ export async function POST(request: NextRequest) {
       .from('mileage')
       .insert([
         {
-          user_id: userId,
+          user_id: actualUserId,
           amount: amountValue,
           type,
           description,
@@ -318,7 +321,7 @@ export async function POST(request: NextRequest) {
       const { data: userMileages } = await supabase
         .from('mileage')
         .select('amount, type')
-        .eq('user_id', userId)
+        .eq('user_id', actualUserId)
         .eq('status', 'completed');
       
       let finalBalance = 0;
@@ -344,7 +347,7 @@ export async function POST(request: NextRequest) {
         mileage_balance: newBalance,
         updated_at: getKoreaTime()
       })
-      .eq('id', userId)
+      .eq('id', actualUserId)
       .select('id, mileage_balance')
 
     if (updateError) {

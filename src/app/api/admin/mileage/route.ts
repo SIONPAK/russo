@@ -143,9 +143,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userId, type, amount, description, source = 'manual' } = body
+    const { userId, user_id, type, amount, description, source = 'manual' } = body
+    
+    // userId 또는 user_id 둘 다 지원
+    const actualUserId = userId || user_id
 
-    if (!userId || !type || !amount || !description) {
+    if (!actualUserId || !type || !amount || !description) {
       return NextResponse.json({
         success: false,
         error: '필수 필드가 누락되었습니다.'
@@ -158,7 +161,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from('mileage')
       .insert({
-        user_id: userId,
+        user_id: actualUserId,
         type,
         amount: type === 'earn' ? Math.abs(amount) : -Math.abs(amount),
         status: 'completed',
@@ -183,7 +186,7 @@ export async function POST(request: NextRequest) {
       const { data: userMileages } = await supabase
         .from('mileage')
         .select('amount, type')
-        .eq('user_id', userId)
+        .eq('user_id', actualUserId)
         .eq('status', 'completed');
       
       let finalBalance = 0;
