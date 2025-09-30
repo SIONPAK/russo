@@ -321,7 +321,7 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      // 가용재고 범위 내에서만 할당
+      // 가용재고 범위 내에서만 할당 (0이어도 주문은 생성)
       const allocatedQuantity = Math.min(item.quantity, availableStock || 0)
       
       console.log(`📊 [주문 생성] 가용재고 기반 할당:`, {
@@ -336,12 +336,14 @@ export async function POST(request: NextRequest) {
         timestamp: new Date().toISOString()
       })
 
-      // 🔍 할당 실패 시 상세 로그
+      // 🔍 할당 부족 시 경고 로그 (하지만 주문은 계속 진행)
       if (allocatedQuantity < item.quantity) {
-        console.error(`❌ 할당 부족: ${item.product_name} (${item.color}/${item.size}) - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개, 부족: ${item.quantity - allocatedQuantity}개`)
-        console.error(`❌ 가용재고 부족 원인: availableStock=${availableStock}, requestedQuantity=${item.quantity}`)
+        console.warn(`⚠️ 할당 부족: ${item.product_name} (${item.color}/${item.size}) - 요청: ${item.quantity}개, 할당: ${allocatedQuantity}개, 부족: ${item.quantity - allocatedQuantity}개`)
+        console.warn(`⚠️ 가용재고 부족 원인: availableStock=${availableStock}, requestedQuantity=${item.quantity}`)
+        console.warn(`⚠️ 재고 부족이지만 주문은 계속 진행됩니다.`)
       }
 
+      // 할당 가능한 수량이 있으면 재고 할당, 없어도 주문은 생성
       if (allocatedQuantity > 0) {
         // 재고 할당
         console.log(`🔄 [주문 생성] allocate_stock RPC 호출 시작:`, {
@@ -397,6 +399,9 @@ export async function POST(request: NextRequest) {
           size: item.size,
           allocatedQuantity: allocatedQuantity
         })
+      } else {
+        // 가용재고가 0이어도 주문 아이템은 생성되지만 재고 할당은 하지 않음
+        console.log(`ℹ️ 재고 부족으로 할당 불가: ${item.product_name} (${item.color}/${item.size}) - 주문은 생성되지만 재고 할당은 하지 않음`)
       }
     }
     

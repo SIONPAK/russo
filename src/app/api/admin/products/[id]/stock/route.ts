@@ -284,6 +284,9 @@ export async function POST(
       console.log(`📊 [재고 조정] add_physical_stock RPC 결과:`, {
         success: !adjustError,
         error: adjustError,
+        errorMessage: adjustError?.message,
+        errorCode: adjustError?.code,
+        errorDetails: adjustError?.details,
         result: adjustResult,
         productId,
         timestamp: new Date().toISOString()

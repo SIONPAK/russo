@@ -105,7 +105,12 @@ export async function PATCH(request: NextRequest) {
           let finalBalance = 0;
           if (userMileages) {
             finalBalance = userMileages.reduce((sum, m) => {
-              return m.type === 'earn' ? sum + m.amount : sum - Math.abs(m.amount);
+              const amount = Math.abs(m.amount); // 모든 amount를 양수로 변환
+              if (m.type === 'earn') {
+                return sum + amount; // 적립은 더하기
+              } else {
+                return sum - amount; // 차감은 빼기
+              }
             }, 0);
           }
           

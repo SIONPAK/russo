@@ -391,14 +391,36 @@ export function InventoryPage() {
       })
       
       const response = await fetch(`/api/admin/products/${adjustmentModal.productId}/stock`, {
-        method: 'PATCH',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(requestData)
       })
 
-      const result = await response.json()
+      console.log('📦 재고 조정 API 응답 상태:', response.status, response.statusText)
+      
+      // 응답이 성공적인지 확인
+      if (!response.ok) {
+        throw new Error(`HTTP 오류: ${response.status} ${response.statusText}`)
+      }
+      
+      // 응답 본문이 있는지 확인
+      const responseText = await response.text()
+      console.log('📦 재고 조정 API 원본 응답:', responseText)
+      
+      if (!responseText) {
+        throw new Error('서버에서 빈 응답을 받았습니다.')
+      }
+      
+      let result
+      try {
+        result = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error('❌ JSON 파싱 오류:', parseError)
+        console.error('❌ 원본 응답:', responseText)
+        throw new Error('서버 응답을 파싱할 수 없습니다.')
+      }
       
       console.log('📦 재고 조정 API 응답:', result)
 
@@ -408,8 +430,8 @@ export function InventoryPage() {
           : `재고가 ${adjustmentType === 'add' ? '증가' : '감소'}되었습니다.`
         
         // 재할당 결과가 있는 경우 추가 정보 표시
-        if (result.data.allocation) {
-          const allocation = result.data.allocation
+        if (result.allocationResults) {
+          const allocation = result.allocationResults
           console.log('🔄 재할당 결과:', allocation)
           
           if (allocation.success) {
