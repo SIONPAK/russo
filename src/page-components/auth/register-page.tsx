@@ -157,6 +157,8 @@ export default function RegisterPage() {
         companyName: data.companyName,
         businessNumber: data.businessNumber,
         representativeName: data.representativeName,
+        businessType: data.businessType,
+        businessCategory: data.businessCategory,
         phone: data.phone,
         address: `${data.address} ${data.detailAddress}`.trim(),
         postalCode: data.postalCode,

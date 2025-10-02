@@ -13,6 +13,8 @@ export async function POST(request: NextRequest) {
       companyName,
       businessNumber,
       representativeName,
+      businessType,
+      businessCategory,
       phone,
       address,
       postalCode,
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
     } = body
 
     // 필수 필드 검증
-    if (!username || !email || !password || !companyName || !businessNumber || !representativeName || !phone || !address || !postalCode || !recipientName || !recipientPhone || !recipientAddress || !recipientPostalCode) {
+    if (!username || !email || !password || !companyName || !businessNumber || !representativeName || !businessType || !businessCategory || !phone || !address || !postalCode || !recipientName || !recipientPhone || !recipientAddress || !recipientPostalCode) {
       return NextResponse.json(
         { success: false, message: '모든 필수 필드를 입력해주세요.' },
         { status: 400 }
@@ -132,6 +134,8 @@ export async function POST(request: NextRequest) {
         company_name: companyName,
         business_number: businessNumber,
         representative_name: representativeName,
+        business_type: businessType,
+        business_category: businessCategory,
         phone,
         address,
         postal_code: postalCode,
