@@ -175,7 +175,7 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   // 배송비를 제외한 실제 상품 개수로 템플릿 선택
   const actualProductItems = items.filter(item => item.productName !== '배송비')
   const actualProductCount = actualProductItems.length
-  const templateFileName = actualProductCount > 10 ? '루소_영수증_10건이상.xlsx' : '루소_영수증.xlsx'
+  const templateFileName = actualProductCount > 9 ? '루소_영수증_10건이상.xlsx' : '루소_영수증.xlsx'
   const templatePath = path.join(process.cwd(), `public/templates/${templateFileName}`)
   console.log('📁 템플릿 선택:', {
     totalItemCount: items.length,
@@ -503,11 +503,11 @@ const processTemplate = (data: any, title: string, items: any[], specialNote?: s
   }
   
   // 템플릿별 합계 행 위치 및 수식 처리
-  const summaryRow = items.length > 10 ? 42 : 22  // 10건이상 템플릿은 42행, 기본은 22행
+  const summaryRow = items.length > 9 ? 42 : 22  // 9건초과 템플릿은 42행, 기본은 22행
   const lastDataRow = 11 + actualItemCount
   
   console.log(`🔧 템플릿별 합계 처리:`, {
-    templateType: items.length > 10 ? '10건이상' : '기본',
+    templateType: items.length > 9 ? '10건이상' : '기본',
     summaryRow,
     dataRange: `G12:G${lastDataRow}`,
     actualItems: actualItemCount
