@@ -75,8 +75,8 @@ export async function GET(request: NextRequest) {
       query = query.gte('created_at', startDate).lte('created_at', endDate + 'T23:59:59')
     }
 
-    // 제한
-    if (limit) {
+    // 제한 - limit이 없거나 매우 큰 경우 벌크로 처리
+    if (limit && limit < 1000) {
       query = query.limit(limit)
     }
 
@@ -216,10 +216,19 @@ export async function GET(request: NextRequest) {
 
     console.log('🔍 계산된 요약:', summary)
 
+    // 벌크로 가져온 모든 데이터를 응답에 포함
+    const allMileageForResponse = allMileageData || []
+    
+    console.log('🔍 응답 데이터:', {
+      originalCount: mileageData?.length || 0,
+      bulkCount: allMileageForResponse.length,
+      summary
+    })
+
     return NextResponse.json({
       success: true,
       data: {
-        mileages: mileageData || [],
+        mileages: allMileageForResponse,
         summary,
         user: userData
       }

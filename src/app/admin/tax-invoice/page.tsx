@@ -153,7 +153,7 @@ export default function AdminTaxInvoicePage() {
         '부가세': item.estimatedVat,
         '부가세포함': item.totalWithVat,
         '적립건수': item.recordCount,
-        '최근_적립일': item.latestDeductionDate ? new Date(item.latestDeductionDate).toLocaleDateString('ko-KR') : '',
+        '최근_적립일': item.latestDeductionDate ? item.latestDeductionDate.split('T')[0].replace(/-/g, '.') : '',
         '발행상태': item.is_issued === 'O' ? '완료' : item.is_issued === '△' ? '진행중' : '미발행'
       }));
 
@@ -192,7 +192,8 @@ export default function AdminTaxInvoicePage() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('ko-KR');
+    // 서버에 이미 한국시간으로 저장되어 있으므로 그대로 사용
+    return dateString.split('T')[0].replace(/-/g, '.');
   };
 
   const formatCurrency = (amount: number) => {

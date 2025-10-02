@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     console.log(`[${getKoreaTime()}] 뱅크다 자동 동기화 크론 실행`);
     
-    // 1. 먼저 활성화 상태 확인
+    // 1. 활성화 상태 확인
     const isEnabled = await checkBankdaAutoSyncStatus();
     
     if (!isEnabled) {

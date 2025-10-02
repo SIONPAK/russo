@@ -16,6 +16,8 @@ interface CompanySummary {
     businessAddress: string;
     tel: string;
     email: string;
+    businessType: string;
+    businessCategory: string;
   } | null;
   is_issued: string;
   issuedAt: string | null;
@@ -42,13 +44,9 @@ export async function GET(request: NextRequest) {
     console.log(`세금계산서 조회 기간: ${startDate} ~ ${endDate}`);
 
     // 1. 해당 월의 모든 업체 적립 마일리지 조회 (실제 입금받은 금액)
-    // 한국시간을 UTC로 변환
-    const utcStartDate = new Date(startDate + 'T00:00:00+09:00').toISOString();
-    // 종료일 다음날 자정으로 설정해서 확실하게 포함
-    const nextDay = new Date(endDate);
-    nextDay.setDate(nextDay.getDate() + 1);
-    const nextDayStr = nextDay.toISOString().split('T')[0];
-    const utcEndDate = new Date(nextDayStr + 'T00:00:00+09:00').toISOString();
+    // 9월 1일부터 9월 30일까지 조회
+    const utcStartDate = '2025-09-01T00:00:00';
+    const utcEndDate = '2025-09-30T23:59:59';
 
     console.log(`🔍 [세금계산서] 적립 마일리지 조회 시작 (실제 입금 기준):`, {
       한국시간_시작: startDate + 'T00:00:00+09:00',
@@ -86,7 +84,9 @@ export async function GET(request: NextRequest) {
           business_number,
           address,
           phone,
-          email
+          email,
+          business_type,
+          business_category
         )
       `)
       .eq('user_id', '2483076a-f0e8-4ca0-808a-e8dc1f17b1fb')
@@ -145,7 +145,9 @@ export async function GET(request: NextRequest) {
           business_number,
           address,
           phone,
-          email
+          email,
+          business_type,
+          business_category
         )
       `)
       .eq('id', 'a7962905-1867-4157-a4c5-2ab9344518fc');
@@ -187,7 +189,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { data: earningData, error: earningError } = await supabase
+    // 간단하게 마일리지 테이블에서 earn만 조회 (데이터 가공 없이)
+    console.log(`🔍 [세금계산서] 마일리지 earn 데이터 조회 시작`);
+
+    const { data: allEarningData, error: earningError } = await supabase
       .from('mileage')
       .select(`
         user_id,
@@ -203,23 +208,31 @@ export async function GET(request: NextRequest) {
           business_number,
           address,
           phone,
-          email
+          email,
+          business_type,
+          business_category
         )
       `)
       .eq('type', 'earn')
       .gte('created_at', utcStartDate)
-      .lt('created_at', utcEndDate);
+      .lte('created_at', utcEndDate)
+      .not('users', 'is', null);
 
     if (earningError) {
-      console.error('적립 마일리지 조회 오류:', earningError);
+      console.error('마일리지 적립 데이터 조회 오류:', earningError);
       return NextResponse.json(
-        { success: false, error: '적립 마일리지 조회 중 오류가 발생했습니다.' },
+        { success: false, error: '마일리지 적립 데이터 조회 중 오류가 발생했습니다.' },
         { status: 500 }
       );
     }
 
+    console.log(`🔍 [세금계산서] 마일리지 earn 데이터 조회 완료: ${allEarningData?.length || 0}건`);
+
+    const earningData = allEarningData;
+
     console.log(`🔍 [세금계산서] 마일리지 적립 데이터 조회 완료 (실제 입금 기준):`, {
       총건수: earningData?.length || 0,
+      총입금액: earningData?.reduce((sum, d) => sum + Math.abs(d.amount), 0) || 0,
       샘플: earningData?.slice(0, 3).map((d: any) => ({
         업체명: d.users?.company_name,
         금액: d.amount,
@@ -237,6 +250,36 @@ export async function GET(request: NextRequest) {
       .eq('type', 'earn');
 
     console.log(`🔍 [세금계산서] 전체 earn 타입 마일리지 개수 (실제 입금): ${totalEarnCount || 0}건`);
+
+    // 마메드로 데이터 디버깅
+    const mamedroData = earningData?.filter((d: any) => 
+      d.users?.company_name?.includes('마메드로') || 
+      d.users?.company_name?.includes('mamedro')
+    ) || [];
+    
+    console.log(`🔍 [세금계산서] 마메드로 데이터 디버깅:`, {
+      건수: mamedroData.length,
+      총액: mamedroData.reduce((sum, d) => sum + Math.abs(d.amount), 0),
+      상세: mamedroData.map((d: any) => ({
+        금액: d.amount,
+        날짜: d.created_at,
+        설명: d.description
+      }))
+    });
+
+    // 9월 30일 데이터 특별 확인
+    const sept30Data = mamedroData.filter((d: any) => 
+      d.created_at?.startsWith('2025-09-30')
+    );
+    console.log(`🔍 [세금계산서] 9월 30일 데이터:`, {
+      건수: sept30Data.length,
+      총액: sept30Data.reduce((sum, d) => sum + Math.abs(d.amount), 0),
+      상세: sept30Data.map((d: any) => ({
+        금액: d.amount,
+        날짜: d.created_at,
+        설명: d.description
+      }))
+    });
 
     // 2. 세금계산서 발행 상태 조회
     const { data: taxInvoiceStatus, error: statusError } = await supabase
@@ -307,7 +350,9 @@ export async function GET(request: NextRequest) {
           businessNumber: user?.business_number,
           businessAddress: user?.address,
           tel: user?.phone,
-          email: user?.email
+          email: user?.email,
+          businessType: user?.business_type,
+          businessCategory: user?.business_category
         },
         is_issued: 'X',
         issuedAt: null,
@@ -403,7 +448,7 @@ export async function GET(request: NextRequest) {
         estimatedVat,
         totalWithVat,
         recordCount: summary.recordCount,
-        latestDeductionDate: summary.latestEarningDate, // 기존 인터페이스 호환성을 위해 유지
+        latestDeductionDate: summary.latestEarningDate, // 원본 데이터 그대로
         memberInfo: summary.memberInfo,
         is_issued: summary.is_issued,
         issuedAt: summary.issuedAt,

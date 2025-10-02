@@ -2,6 +2,46 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/shared/lib/supabase/server'
 import { getKoreaTime, getKoreaDate } from '@/shared/lib/utils'
 
+// 한국 공휴일 확인 함수
+const isKoreanHoliday = (date: Date) => {
+  const year = date.getFullYear()
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  
+  // 고정 공휴일
+  if (month === 1 && day === 1) return true // 신정
+  if (month === 3 && day === 1) return true // 3·1절
+  if (month === 5 && day === 5) return true // 어린이날
+  if (month === 6 && day === 6) return true // 현충일
+  if (month === 8 && day === 15) return true // 광복절
+  if (month === 10 && day === 3) return true // 개천절
+  if (month === 10 && day === 9) return true // 한글날
+  if (month === 12 && day === 25) return true // 성탄절
+  
+  // 2025년 음력 공휴일 (양력 날짜로 변환)
+  if (year === 2025) {
+    // 설날 연휴 (음력 12월 29일, 1월 1일, 1월 2일) = 2025년 1월 28일, 29일, 30일
+    if (month === 1 && (day === 28 || day === 29 || day === 30)) return true
+    
+    // 부처님오신날 (음력 4월 8일) = 2025년 5월 5일 (어린이날과 겹침)
+    // if (month === 5 && day === 5) return true // 이미 어린이날로 처리됨
+    
+    // 추석 연휴 (음력 8월 14일, 15일, 16일) = 2025년 10월 5일, 6일, 7일
+    if (month === 10 && (day === 5 || day === 6 || day === 7)) return true
+  }
+  
+  // 2026년 음력 공휴일도 필요시 추가
+  if (year === 2026) {
+    // 설날 연휴 = 2026년 2월 16일, 17일, 18일
+    if (month === 2 && (day === 16 || day === 17 || day === 18)) return true
+    
+    // 부처님오신날 = 2026년 5월 24일
+    if (month === 5 && day === 24) return true
+  }
+  
+  return false
+}
+
 // GET - 매일 한국시간 자정 5분 후에 pending 주문들을 다음날로 이월 (Vercel Cron Job: UTC 15:05 = KST 00:05)
 export async function GET(request: NextRequest) {
   try {
@@ -20,9 +60,11 @@ export async function GET(request: NextRequest) {
     const yesterdayDate = yesterday.toISOString().split('T')[0]
     const todayDate = koreaTime.toISOString().split('T')[0]
     
-    // 주말 체크 - 금요일 주문은 이월하지 않음 (월요일까지 유효)
+    // 주말 및 공휴일 체크
     const yesterdayDayOfWeek = yesterday.getDay()
     const todayDayOfWeek = koreaTime.getDay()
+    const isTodayHoliday = isKoreanHoliday(koreaTime)
+    const isYesterdayHoliday = isKoreanHoliday(yesterday)
     
     // 토요일(6) 또는 일요일(0)이면 이월 처리 안함
     if (todayDayOfWeek === 0 || todayDayOfWeek === 6) {
@@ -35,6 +77,21 @@ export async function GET(request: NextRequest) {
           todayDate,
           rolledOverCount: 0,
           isWeekend: true
+        }
+      })
+    }
+    
+    // 공휴일이면 이월 처리 안함
+    if (isTodayHoliday) {
+      console.log('📅 [이월 처리] 공휴일은 이월 처리하지 않습니다.')
+      return NextResponse.json({
+        success: true,
+        message: '공휴일은 이월 처리하지 않습니다.',
+        data: {
+          yesterdayDate,
+          todayDate,
+          rolledOverCount: 0,
+          isHoliday: true
         }
       })
     }
